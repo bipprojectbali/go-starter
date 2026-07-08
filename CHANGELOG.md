@@ -17,6 +17,8 @@ Semua perubahan penting pada go_stater dicatat di sini.
 
 ### Fixed
 - Bug integrasi scs + Datastar SSE: `Set-Cookie` tak terkirim karena `NewSSE` flush header sebelum scs menulis cookie. Fix: `session.WriteCookie` manual sebelum `NewSSE`.
+- `make build` gagal `sqlc: No such file or directory`: GNU Make 3.81 (macOS) meng-exec recipe tanpa metachar via `execvp` (lewat shell), jadi `export PATH` tak terbaca. Fix: panggil tool via path absolut `$(GOBIN)/sqlc`.
+- `make setup` bisa hasilkan `tailwindcss` terpotong (unduh parsial `curl -sL` tanpa deteksi gagal) → Mach-O rusak → *"Malformed Mach-o file"* (SIGKILL Apple Silicon). Fix: `make tailwind` pakai `curl -fL --retry` + exec-test hasil unduh, tolak binary korup.
 
 ### Notes
 - Auth masih memakai flow register/login langsung; belum ada halaman profil/authz berbasis role.

@@ -1,4 +1,4 @@
-.PHONY: setup dev check build run clean migrate-new migrate-up test css
+.PHONY: setup tools tailwind basecoat dev check build run clean migrate-new migrate-up test css
 
 # Tool CLI (sqlc/goose/air) di-install ke GOPATH/bin, yang belum tentu di PATH
 # saat `make` jalan. GNU Make 3.81 (bawaan macOS) meng-exec recipe tanpa
@@ -19,12 +19,27 @@ BASECOAT_VERSION := 1.0.2
 TAILWIND_TARGET := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shell uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
 
 ## setup: install tools + download aset vendored (sekali saja)
-setup:
+setup: tools tailwind basecoat
+
+## tools: install CLI Go ke GOPATH/bin
+tools:
 	go install github.com/air-verse/air@latest
 	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 	go install github.com/pressly/goose/v3/cmd/goose@latest
-	curl -sL -o tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_TARGET)" && chmod +x tailwindcss
-	curl -sL -o static/basecoat.css "https://cdn.jsdelivr.net/npm/basecoat-css@$(BASECOAT_VERSION)/dist/basecoat.cdn.min.css"
+
+## tailwind: download binary + VERIFIKASI utuh (unduh parsial = SIGKILL di arm64).
+## -f gagal saat HTTP error, --retry tahan jaringan labil, exec-test buktikan
+## binary lengkap; kalau korup: hapus & error, jangan biarkan file separuh lolos.
+tailwind:
+	curl -fL --retry 3 --retry-delay 2 -o tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_TARGET)"
+	chmod +x tailwindcss
+	@./tailwindcss --help >/dev/null 2>&1 || { rm -f tailwindcss; echo "ERROR: tailwindcss korup/terpotong — unduh ulang gagal"; exit 1; }
+	@echo "tailwindcss OK ($$(./tailwindcss --help 2>&1 | head -1))"
+
+## basecoat: download CSS bundle (verifikasi bukan halaman error)
+basecoat:
+	curl -fL --retry 3 --retry-delay 2 -o static/basecoat.css "https://cdn.jsdelivr.net/npm/basecoat-css@$(BASECOAT_VERSION)/dist/basecoat.cdn.min.css"
+	@head -c 200 static/basecoat.css | grep -qi '<!doctype\|<html' && { rm -f static/basecoat.css; echo "ERROR: basecoat.css = halaman HTML, bukan CSS"; exit 1; } || echo "basecoat.css OK"
 
 ## css: generate app.css dari class di file .go (Tailwind v4 scan otomatis)
 css:
