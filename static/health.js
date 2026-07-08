@@ -25,6 +25,7 @@
     var pageInfo = root.querySelector("#health-page-info");
     var prevBtn = root.querySelector("#health-prev");
     var nextBtn = root.querySelector("#health-next");
+    var pagesEl = root.querySelector("#health-pages");
     var selAll = root.querySelector("#health-select-all");
     var copySel = root.querySelector("#health-copy-selected");
     var copyBad = root.querySelector("#health-copy-unhealthy");
@@ -64,6 +65,52 @@
         : (start + 1) + "–" + shown + " dari " + filtered.length + " file";
       prevBtn.disabled = page === 0;
       nextBtn.disabled = page >= totalPages - 1;
+      renderPageButtons(totalPages);
+    }
+
+    // pageWindow menghasilkan daftar nomor halaman + ellipsis (null) di sekitar
+    // halaman aktif. Selalu tampilkan halaman pertama, terakhir, dan ±1 dari aktif.
+    function pageWindow(total, cur) {
+      if (total <= 7) {
+        var all = [];
+        for (var i = 0; i < total; i++) all.push(i);
+        return all;
+      }
+      var out = [0];
+      var lo = Math.max(1, cur - 1);
+      var hi = Math.min(total - 2, cur + 1);
+      if (lo > 1) out.push(null); // ellipsis kiri
+      for (var p = lo; p <= hi; p++) out.push(p);
+      if (hi < total - 2) out.push(null); // ellipsis kanan
+      out.push(total - 1);
+      return out;
+    }
+
+    function renderPageButtons(total) {
+      pagesEl.innerHTML = "";
+      pageWindow(total, page).forEach(function (p) {
+        if (p === null) {
+          var dots = document.createElement("span");
+          dots.className = "px-1 text-muted-foreground";
+          dots.textContent = "…";
+          pagesEl.appendChild(dots);
+          return;
+        }
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn";
+        b.setAttribute("data-size", "sm");
+        // Halaman aktif = solid (default), lainnya = outline.
+        if (p !== page) b.setAttribute("data-variant", "outline");
+        b.setAttribute("aria-label", "Halaman " + (p + 1));
+        if (p === page) b.setAttribute("aria-current", "page");
+        b.textContent = String(p + 1);
+        b.addEventListener("click", function () {
+          page = p;
+          render();
+        });
+        pagesEl.appendChild(b);
+      });
     }
 
     function flash(msg) {

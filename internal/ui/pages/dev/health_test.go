@@ -33,7 +33,8 @@ func TestHealthPage_ToolbarAndControls(t *testing.T) {
 		`id="health-select-all"`,               // pilih semua
 		`id="health-copy-selected"`,            // copy terpilih
 		`id="health-copy-unhealthy"`,           // copy bermasalah
-		`id="health-prev"`, `id="health-next"`, // pagination
+		`id="health-prev"`, `id="health-next"`, // pagination prev/next
+		`id="health-pages"`, // wadah tombol angka halaman (diisi JS)
 		`data-health-row`,   // baris terfilter JS
 		`data-health-check`, // checkbox per baris
 		`/static/health.js`, // logika JS dimuat

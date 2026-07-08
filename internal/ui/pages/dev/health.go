@@ -123,13 +123,16 @@ func kindSelect(res health.Result) g.Node {
 
 func healthPagination() g.Node {
 	return h.Div(
-		h.Class("mt-3 flex items-center justify-between text-sm"),
+		h.Class("mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"),
 		h.Span(h.ID("health-page-info"), h.Class("text-muted-foreground")),
 		h.Div(
-			h.Class("flex gap-2"),
+			h.Class("flex items-center gap-1"),
 			h.Button(h.Type("button"), h.ID("health-prev"),
 				h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
 				g.Text("Sebelumnya")),
+			// Tombol angka halaman — diisi client-side (jumlah halaman berubah
+			// saat filter aktif, jadi tak bisa di-render server).
+			h.Div(h.ID("health-pages"), h.Class("flex items-center gap-1")),
 			h.Button(h.Type("button"), h.ID("health-next"),
 				h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
 				g.Text("Berikutnya")),
