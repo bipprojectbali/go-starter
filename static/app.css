@@ -1,0 +1,55 @@
+/* app.css — SPIKE: CSS minimal untuk membuktikan render.
+   Di produksi ini OUTPUT Tailwind v4 + @import basecoat.css (§8).
+   Class di sini meniru root-class API Basecoat (btn, card, input, alert). */
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --destructive: #dc2626;
+  --border: #e5e5e5;
+  --accent: #f5f5f5;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, sans-serif; line-height: 1.5; }
+.min-h-screen { min-height: 100vh; }
+.bg-background { background: var(--background); }
+.text-foreground { color: var(--foreground); }
+.mx-auto { margin-left: auto; margin-right: auto; }
+.max-w-2xl { max-width: 42rem; }
+.p-6 { padding: 1.5rem; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 2.25rem; padding: 0 1rem; border-radius: 0.375rem;
+  font-size: 0.875rem; font-weight: 500; border: 1px solid transparent;
+  background: var(--primary); color: var(--primary-foreground);
+  cursor: pointer; transition: opacity 0.15s;
+}
+.btn:hover { opacity: 0.9; }
+.btn-destructive { background: var(--destructive); color: #fff; }
+.btn-outline { background: transparent; color: var(--foreground); border-color: var(--border); }
+.btn-ghost { background: transparent; color: var(--foreground); }
+
+.card { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; }
+.input {
+  width: 100%; height: 2.25rem; padding: 0 0.75rem; border-radius: 0.375rem;
+  border: 1px solid var(--border); font-size: 0.875rem;
+}
+.label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.25rem; }
+
+.alert { padding: 0.75rem 1rem; border-radius: 0.375rem; border: 1px solid var(--border); }
+.alert-destructive { border-color: var(--destructive); color: var(--destructive); }
+.alert:empty { display: none; }
+
+/* util spike */
+.flex { display: flex; }
+.gap-2 { gap: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+.mb-4 { margin-bottom: 1rem; }
+.text-xl { font-size: 1.25rem; }
+.font-semibold { font-weight: 600; }
+.list-none { list-style: none; padding: 0; }
+.todo-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }

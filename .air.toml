@@ -1,0 +1,16 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+# Regenerate sqlc + build. CSS (make css) di-hook di sini bila Tailwind aktif.
+cmd = "sqlc generate && go build -o ./tmp/app ."
+bin = "./tmp/app"
+include_ext = ["go", "sql"]
+exclude_dir = ["tmp", "static", "internal/db"]
+# CATATAN: sengaja TIDAK menjalankan `go test` di loop reload (lambat).
+# Jalankan `make check` manual setelah perubahan (§6).
+delay = 300
+stop_on_error = true
+
+[misc]
+clean_on_exit = true

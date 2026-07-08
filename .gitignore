@@ -1,0 +1,21 @@
+# Binary output
+/app
+/tmp/
+*-check
+
+# Tailwind standalone CLI (di-download via make setup)
+/tailwindcss
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Go
+*.test
+*.out
