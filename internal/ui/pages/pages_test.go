@@ -86,15 +86,17 @@ func TestTodoItem_DeleteAction(t *testing.T) {
 }
 
 func TestLanding(t *testing.T) {
-	in := render(t, Landing(true))
-	if !strings.Contains(in, `href="/todos"`) || !strings.Contains(in, "Buka Todos") {
-		t.Errorf("landing login harus CTA /todos:\n%s", in)
+	// Login → CTA ke home per-role (homePath yang dioper), teks "Buka aplikasi".
+	in := render(t, Landing(true, "/dev"))
+	if !strings.Contains(in, `href="/dev"`) || !strings.Contains(in, "Buka aplikasi") {
+		t.Errorf("landing login harus CTA ke homePath:\n%s", in)
 	}
-	anon := render(t, Landing(false))
+	// Anonim → CTA /login, homePath diabaikan.
+	anon := render(t, Landing(false, "/dev"))
 	if !strings.Contains(anon, `href="/login"`) {
 		t.Errorf("landing anonim harus CTA /login:\n%s", anon)
 	}
-	if strings.Contains(anon, `href="/todos"`) {
-		t.Errorf("landing anonim tak boleh link /todos:\n%s", anon)
+	if strings.Contains(anon, `href="/dev"`) {
+		t.Errorf("landing anonim tak boleh link ke home:\n%s", anon)
 	}
 }

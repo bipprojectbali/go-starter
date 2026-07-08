@@ -74,6 +74,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Use(mw.RequireAuth)
 		r.Use(h.RefreshIdentity)
 		r.Use(mw.RequireEnforce("dev:users", "read"))
+		// /dev telanjang → arahkan ke halaman default panel (/dev/users). Tanpa
+		// ini, /dev 404 (dan HomePath super_admin menuju /dev).
+		r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/dev/users", http.StatusSeeOther)
+		})
 		r.Get("/users", h.DevUsersList)
 		r.Post("/users/{id}/role", h.DevUserSetRole)
 		r.Post("/users/{id}/status", h.DevUserSetStatus)

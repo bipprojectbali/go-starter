@@ -31,18 +31,19 @@ func TestHome_Anonymous(t *testing.T) {
 	}
 }
 
-// TestHome_LoggedIn: user yang SUDAH login tak melihat landing — diarahkan ke
-// home per-role (di sini role default → /user).
+// TestHome_LoggedIn: user login TETAP melihat landing (200, tak redirect) —
+// dengan CTA "Buka aplikasi" ke home per-role. Landing dapat diakses semua.
 func TestHome_LoggedIn(t *testing.T) {
 	env, uid := setupTest(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := env.doAuthed(uid, req, env.h.Home)
 
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("user login di / harus redirect 303, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("user login di / harus 200 (tak redirect), got %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/user" {
-		t.Errorf("role default harus ke /user, got %q", loc)
+	body := rec.Body.String()
+	if !strings.Contains(body, "Buka aplikasi") {
+		t.Errorf("landing user login harus tampil CTA 'Buka aplikasi':\n%s", body)
 	}
 }
