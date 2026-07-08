@@ -34,8 +34,9 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
 	})
 
-	// Publik: landing page (TIDAK redirect ke /login).
-	r.Get("/", h.Home)
+	// Publik: landing page (TIDAK redirect ke /login). RefreshIdentity agar
+	// redirect per-role pakai role SEGAR dari DB (self-heal session lama).
+	r.With(h.RefreshIdentity).Get("/", h.Home)
 
 	// Login Google — SELALU aktif (jalur login utama di produksi). Path pakai
 	// prefix /api/auth/ agar exact-match dengan redirect URI di Google Console.
@@ -55,18 +56,23 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/register", h.Register)
 	}
 
+	// Semua route terproteksi memakai urutan middleware sama:
+	// RequireAuth (authn) → RefreshIdentity (role/status SEGAR dari DB, self-heal
+	// session lama + enforcement real-time) → RequireEnforce (authz per resource).
+
 	// Protected: butuh session user
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.RefreshIdentity)
 		r.Get("/todos", h.TodoList)
 		r.Post("/todos", h.TodoCreate)
 		r.Delete("/todos/{id}", h.TodoDelete)
 	})
 
-	// Panel /dev — owner/developer. RequireAuth (authn) lalu RequireEnforce
-	// (authz Casbin: hanya super_admin/root lolos "dev:users").
+	// Panel /dev — owner/developer. Hanya super_admin/root lolos "dev:users".
 	r.Route("/dev", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.RefreshIdentity)
 		r.Use(mw.RequireEnforce("dev:users", "read"))
 		r.Get("/users", h.DevUsersList)
 		r.Post("/users/{id}/role", h.DevUserSetRole)
@@ -77,6 +83,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Panel /admin — admin+ (super_admin mewarisi). Konten menyusul.
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.RefreshIdentity)
 		r.Use(mw.RequireEnforce("admin:home", "read"))
 		r.Get("/", h.AdminHome)
 	})
@@ -84,6 +91,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Beranda /user — semua user login (admin/super mewarisi user:home).
 	r.Route("/user", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.RefreshIdentity)
 		r.Use(mw.RequireEnforce("user:home", "read"))
 		r.Get("/", h.UserHome)
 	})
