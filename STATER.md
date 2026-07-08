@@ -477,6 +477,22 @@ func (s *Store) Delete(token string) error { /* DEL */ }
 
 > Ini pengecualian sah dari "jangan tulis sendiri yang sudah ada lib-nya": alternatifnya = dua klien Redis di satu binary (bentrok prinsip minimal-deps). Store 3-method jauh lebih murah daripada dependency ganda.
 
+> 🐞 **GOTCHA KRITIS (terverifikasi spike): scs + Datastar SSE → cookie tak terkirim.**
+> `scs.LoadAndSave` menyisipkan `Set-Cookie` lewat pembungkus `ResponseWriter` yang commit saat `Write`/`WriteHeader` pertama. Tapi `datastar.NewSSE()` langsung `Flush()` header via `http.ResponseController`, yang meng-`Unwrap()` pembungkus scs → header 200 terkirim **sebelum** scs sempat menulis cookie. Akibat: login "sukses" tapi user tetap dianggap belum login (session di store, cookie tak pernah sampai browser). **Test unit lolos** (body benar) — hanya ketahuan saat run nyata.
+>
+> **Fix wajib:** commit + tulis cookie **manual SEBELUM `NewSSE`**, di setiap handler yang mengubah session lalu membalas via Datastar (login, register, logout):
+> ```go
+> // internal/session/session.go
+> func WriteCookie(ctx context.Context, w http.ResponseWriter) error {
+>     token, expiry, err := mgr.Commit(ctx) // commit ke store
+>     if err != nil { return err }
+>     mgr.WriteSessionCookie(ctx, w, token, expiry) // tulis Set-Cookie manual
+>     return nil
+> }
+> // handler: startSession(...) → session.WriteCookie(ctx, w) → datastar.NewSSE(w, r)
+> ```
+> Test WAJIB assert `rec.Header().Get("Set-Cookie")` memuat `session=` — bukan cuma cek body.
+
 ---
 
 ## 5. Background Job — River (add-on, Postgres-based)
