@@ -10,10 +10,13 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - Anti user-enumeration (pesan login generik) & anti session-fixation (`RenewToken`).
 - Migrasi goose dengan Postgres advisory lock (aman multi-instance).
 - Health check terpisah: `/healthz` (liveness) & `/readyz` (readiness).
+- Middleware produksi: recover (log stack + request-id), security headers (CSP/nosniff/frame-deny), request-id, request logging (skip health probe).
+- Cache-busting aset: `app.css` disajikan lewat path ber-hash konten (`app.<hash>.css`) dengan `Cache-Control: immutable`.
+- Pipeline CSS no-Node: Tailwind v4 standalone CLI scan file `.go` → utility layer, plus Basecoat v1.0.2 vendored (checksum di `VENDOR.md`).
+- Graceful shutdown (drain 20s via `signal.NotifyContext`).
 
 ### Fixed
 - Bug integrasi scs + Datastar SSE: `Set-Cookie` tak terkirim karena `NewSSE` flush header sebelum scs menulis cookie. Fix: `session.WriteCookie` manual sebelum `NewSSE`.
 
 ### Notes
-- Auth masih memakai user seed di spike; belum ada halaman profil/authz berbasis role.
-- CSS masih placeholder minimal (belum Tailwind + Basecoat asli).
+- Auth masih memakai flow register/login langsung; belum ada halaman profil/authz berbasis role.
