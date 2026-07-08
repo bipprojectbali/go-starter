@@ -49,7 +49,7 @@ func (s *stubProvider) VerifyIDToken(ctx context.Context, rawIDToken, wantNonce 
 func (e *testEnv) doCallback(t *testing.T, storedState, queryState string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/auth/google/callback?code=abc&state="+queryState, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/callback/google?code=abc&state="+queryState, nil)
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulasikan state yang tadi disimpan GoogleLogin.
 		session.PutOAuthFlow(r.Context(), storedState, "the-nonce", "the-verifier")

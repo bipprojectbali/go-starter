@@ -51,7 +51,7 @@ func authPage(title, action string, showPassword bool, switchText, switchHref, s
 // Basecoat .btn sudah flex + gap, jadi logo & teks otomatis berjajar rapi.
 func googleButton() g.Node {
 	return h.A(
-		h.Href("/auth/google"),
+		h.Href("/api/auth/google"),
 		h.Class("btn w-full"),
 		g.Attr("data-variant", "outline"),
 		ui.GoogleG(h.Class("size-[18px]")), // 18px = spesifikasi Google

@@ -30,7 +30,7 @@ var googleOAuth googleProvider
 // tersedia). Bila tak dipanggil, handler membalas 503 (Google nonaktif).
 func SetGoogleOAuth(p googleProvider) { googleOAuth = p }
 
-// GoogleLogin — GET /auth/google. Mulai authorization-code flow: generate
+// GoogleLogin — GET /api/auth/google. Mulai authorization-code flow: generate
 // state/nonce/verifier, simpan di session, redirect ke consent Google.
 func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	if googleOAuth == nil {
@@ -62,7 +62,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, googleOAuth.AuthURL(state, nonce, verifier), http.StatusFound)
 }
 
-// GoogleCallback — GET /auth/google/callback. Verifikasi state (anti-CSRF),
+// GoogleCallback — GET /api/auth/callback/google. Verifikasi state (anti-CSRF),
 // tukar code (PKCE), verifikasi id_token (+nonce, +email_verified), lalu
 // find-or-link user dalam satu transaksi dan mulai session.
 func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {

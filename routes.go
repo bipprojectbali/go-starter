@@ -37,9 +37,10 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Publik: landing page (TIDAK redirect ke /login).
 	r.Get("/", h.Home)
 
-	// Login Google — SELALU aktif (jalur login utama di produksi).
-	r.Get("/auth/google", h.GoogleLogin)
-	r.Get("/auth/google/callback", h.GoogleCallback)
+	// Login Google — SELALU aktif (jalur login utama di produksi). Path pakai
+	// prefix /api/auth/ agar exact-match dengan redirect URI di Google Console.
+	r.Get("/api/auth/google", h.GoogleLogin)
+	r.Get("/api/auth/callback/google", h.GoogleCallback)
 
 	// GET /login selalu ada (target redirect RequireAuth); rendernya adaptif
 	// (form password hanya muncul di dev — lihat handler.SetDevMode).
