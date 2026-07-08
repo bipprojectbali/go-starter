@@ -28,4 +28,10 @@ func TestERDPage(t *testing.T) {
 	if !strings.Contains(out, "2 tabel") {
 		t.Errorf("jumlah tabel harus tampil:\n%s", out)
 	}
+	// Kontrol zoom.
+	for _, id := range []string{"erd-zoom-out", "erd-zoom-in", "erd-zoom-reset", "erd-zoom-level"} {
+		if !strings.Contains(out, id) {
+			t.Errorf("kontrol zoom %q harus ada:\n%s", id, out)
+		}
+	}
 }
