@@ -23,6 +23,13 @@ UPDATE users SET avatar_url = $2 WHERE id = $1;
 -- name: UpdateUserRole :exec
 UPDATE users SET role = $2 WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: PromoteSuperAdmins :exec
+-- Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
+-- ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
+-- lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
+UPDATE users SET role = 'super_admin'
+WHERE email = ANY(@emails::text[]) AND role <> 'super_admin' AND deleted_at IS NULL;
+
 -- name: UpdateUserStatus :exec
 UPDATE users SET status = $2 WHERE id = $1 AND deleted_at IS NULL;
 

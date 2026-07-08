@@ -33,6 +33,10 @@ type Querier interface {
 	ListTodos(ctx context.Context, arg ListTodosParams) ([]Todo, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	// Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
+	// ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
+	// lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
+	PromoteSuperAdmins(ctx context.Context, emails []string) error
 	SoftDeleteUser(ctx context.Context, id int64) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error

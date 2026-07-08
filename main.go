@@ -17,6 +17,7 @@ import (
 	"go_stater/internal/authz"
 	"go_stater/internal/config"
 	"go_stater/internal/database"
+	"go_stater/internal/db"
 	"go_stater/internal/handler"
 	"go_stater/internal/oauth"
 	"go_stater/internal/session"
@@ -77,6 +78,16 @@ func run() error {
 			return err
 		}
 		log.Info("migrations applied")
+	}
+
+	// Reconcile super-admin env → DB (promote-only). Email di SUPER_ADMIN_EMAILS
+	// yang sudah terdaftar dinaikkan ke super_admin agar role DB "jujur". Tak
+	// menurunkan siapa pun (super-admin tier-2 & email yang dicabut env aman).
+	if len(cfg.SuperAdminEmails) > 0 {
+		if err := db.New(pool).PromoteSuperAdmins(ctx, cfg.SuperAdminEmails); err != nil {
+			return err
+		}
+		log.Info("super-admin reconcile applied", "count", len(cfg.SuperAdminEmails))
 	}
 
 	// Static server dengan cache-busting untuk app.css (berubah tiap `make css`).

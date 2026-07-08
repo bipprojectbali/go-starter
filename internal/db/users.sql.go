@@ -156,6 +156,19 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const promoteSuperAdmins = `-- name: PromoteSuperAdmins :exec
+UPDATE users SET role = 'super_admin'
+WHERE email = ANY($1::text[]) AND role <> 'super_admin' AND deleted_at IS NULL
+`
+
+// Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
+// ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
+// lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
+func (q *Queries) PromoteSuperAdmins(ctx context.Context, emails []string) error {
+	_, err := q.db.Exec(ctx, promoteSuperAdmins, emails)
+	return err
+}
+
 const softDeleteUser = `-- name: SoftDeleteUser :exec
 UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
 `

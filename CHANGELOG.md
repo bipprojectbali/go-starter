@@ -25,6 +25,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - Graceful shutdown (drain 20s via `signal.NotifyContext`).
 
 ### Added
+- Reconcile super-admin saat boot: email di `SUPER_ADMIN_EMAILS` yang terdaftar dinaikkan ke `super_admin` di DB (promote-only — tak pernah menurunkan super-admin lain, dan email yang dicabut dari env tak otomatis turun). Membuat kolom `role` "jujur" untuk root env.
 - Sidebar: pintasan cepat lintas-panel sesuai role (Developer → `/dev/users`, Admin → `/admin`), di-precompute dari izin Casbin, muncul di footer sidebar hanya bagi yang berhak.
 
 ### Changed
