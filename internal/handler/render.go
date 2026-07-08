@@ -70,9 +70,10 @@ func devNav() []ui.NavItem {
 		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
 	}
 	if devMode {
-		items = append(items, ui.NavItem{
-			Label: "File Health", Href: "/dev/health", Icon: lucide.Activity(html.Class("size-4")),
-		})
+		items = append(items,
+			ui.NavItem{Label: "File Health", Href: "/dev/health", Icon: lucide.Activity(html.Class("size-4"))},
+			ui.NavItem{Label: "Database ERD", Href: "/dev/erd", Icon: lucide.Database(html.Class("size-4"))},
+		)
 	}
 	return items
 }

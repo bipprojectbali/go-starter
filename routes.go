@@ -88,6 +88,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		// single-binary produksi). Tak didaftarkan di prod → menu pun tak muncul.
 		if devMode {
 			r.Get("/health", h.DevHealth)
+			r.Get("/erd", h.DevERD)
 		}
 	})
 
