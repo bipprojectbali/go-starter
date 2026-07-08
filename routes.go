@@ -26,7 +26,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Static (embedded, tanpa auth)
 	r.Handle("/static/*", staticFS)
 
-	// Publik: halaman & aksi auth
+	// Publik: landing page (TIDAK redirect ke /login) + halaman & aksi auth
+	r.Get("/", h.Home)
 	r.Get("/login", h.LoginPage)
 	r.Post("/login", h.Login)
 	r.Get("/register", h.RegisterPage)
@@ -36,7 +37,6 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Protected: butuh session user
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
-		r.Get("/", h.TodoList)
 		r.Get("/todos", h.TodoList)
 		r.Post("/todos", h.TodoCreate)
 		r.Delete("/todos/{id}", h.TodoDelete)

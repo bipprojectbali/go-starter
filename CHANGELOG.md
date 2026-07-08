@@ -5,6 +5,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 ## [Unreleased]
 
 ### Added
+- Landing page publik di `/` (tidak lagi redirect ke `/login`); CTA menyesuaikan status login. Route protected pindah ke `/todos`.
 - **Fase 1-2 (spike):** fondasi Go + Chi + gomponents + Datastar + Postgres (pgx/sqlc) + goose. Vertical slice `todos` end-to-end (list keyset-paginated, create via `@post` SSE, delete via `@delete`).
 - **Fase 4 (auth):** register/login/logout dengan argon2id (OWASP 2026), session scs + rueidis Store kustom (satu klien Redis), `RequireAuth` middleware sadar Datastar, CSRF via `http.CrossOriginProtection` (stdlib).
 - Anti user-enumeration (pesan login generik) & anti session-fixation (`RenewToken`).
