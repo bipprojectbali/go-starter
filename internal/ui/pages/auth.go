@@ -47,11 +47,14 @@ func authPage(title, action string, showPassword bool, switchText, switchHref, s
 }
 
 // googleButton — tautan penuh (bukan @post) ke flow OAuth. Navigasi biasa 302.
+// Logo "super G" 4-warna resmi + teks (lokalisasi diizinkan pedoman Google).
+// Basecoat .btn sudah flex + gap, jadi logo & teks otomatis berjajar rapi.
 func googleButton() g.Node {
 	return h.A(
 		h.Href("/auth/google"),
 		h.Class("btn w-full"),
 		g.Attr("data-variant", "outline"),
+		ui.GoogleG(h.Class("size-[18px]")), // 18px = spesifikasi Google
 		g.Text("Masuk dengan Google"),
 	)
 }

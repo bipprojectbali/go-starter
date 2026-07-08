@@ -5,6 +5,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 ## [Unreleased]
 
 ### Added
+- Ikon: logo "super G" 4-warna resmi Google di tombol login (patuh pedoman merek, test regresi kepatuhan warna). Library ikon umum `gomponents-lucide` (zero-dep, tree-shaken linker, selaras Basecoat) — dipakai di todos (Plus/Trash2).
 - **Login with Google (OAuth 2.0 / OIDC):** `golang.org/x/oauth2` + `coreos/go-oidc/v3`, dengan state (anti-CSRF), PKCE S256, nonce (anti-replay id_token), dan verifikasi `email_verified`. Identitas disimpan di tabel `oauth_accounts` (tautan via OIDC `sub`, bukan email). Auto-link ke akun email yang sudah ada. Padanan idiomatik Go untuk Better Auth — komposisi library, bukan framework.
 - Password auth kini **dev-only**: `POST /login`, `/register` hanya terdaftar saat `ENV != production`; di produksi hanya tombol Google. `GET /login` adaptif (form password muncul hanya di dev).
 - Landing page publik di `/` (tidak lagi redirect ke `/login`); CTA menyesuaikan status login. Route protected pindah ke `/todos`.

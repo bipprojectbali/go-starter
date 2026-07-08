@@ -7,6 +7,7 @@ import (
 	"go_stater/internal/db"
 	"go_stater/internal/ui"
 
+	lucide "github.com/eduardolat/gomponents-lucide"
 	g "maragu.dev/gomponents"
 	data "maragu.dev/gomponents-datastar"
 	h "maragu.dev/gomponents/html"
@@ -31,6 +32,7 @@ func TodoList(todos []db.Todo) g.Node {
 				ui.Button(
 					ui.VariantDefault,
 					[]g.Node{data.On("click", "@post('/todos')")},
+					lucide.Plus(h.Class("size-4")),
 					g.Text("Tambah"),
 				),
 			),
@@ -57,8 +59,11 @@ func TodoItem(t db.Todo) g.Node {
 		h.Span(g.Text(t.Title)),
 		ui.Button(
 			ui.VariantGhost,
-			[]g.Node{data.On("click", "@delete('/todos/"+strconv.FormatInt(t.ID, 10)+"')")},
-			g.Text("✕"),
+			[]g.Node{
+				data.On("click", "@delete('/todos/"+strconv.FormatInt(t.ID, 10)+"')"),
+				g.Attr("aria-label", "Hapus"),
+			},
+			lucide.Trash2(h.Class("size-4")),
 		),
 	)
 }
