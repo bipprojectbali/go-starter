@@ -27,7 +27,12 @@ func NewManager(client rueidis.Client) *scs.SessionManager {
 	sm.Store = NewRueidisStore(client)
 	sm.Lifetime = 24 * time.Hour
 	sm.Cookie.HttpOnly = true
-	sm.Cookie.SameSite = 3 // http.SameSiteStrictMode
+	// Lax (BUKAN Strict): callback OAuth adalah navigasi top-level dari
+	// accounts.google.com kembali ke sini = cross-site. Strict menahan cookie
+	// pada request itu → state flow OAuth hilang → "state tidak valid". Lax
+	// mengirim cookie pada top-level GET (kasus callback) tapi tetap anti-CSRF
+	// untuk POST cross-site.
+	sm.Cookie.SameSite = http.SameSiteLaxMode
 	return sm
 }
 
