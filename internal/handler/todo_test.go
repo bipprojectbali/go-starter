@@ -85,7 +85,7 @@ func TestTodoDelete_OwnershipEnforced(t *testing.T) {
 	ctx := t.Context()
 
 	// User kedua + todo miliknya.
-	other, err := env.h.DB.CreateUser(ctx, db.CreateUserParams{Email: "other@local", PassHash: "x"})
+	other, err := env.h.DB.CreateUser(ctx, db.CreateUserParams{Email: "other@local", PassHash: ptr("x")})
 	if err != nil {
 		t.Fatalf("create other user: %v", err)
 	}

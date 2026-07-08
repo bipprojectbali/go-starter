@@ -8,6 +8,14 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type OauthAccount struct {
+	ID          int64              `json:"id"`
+	UserID      int64              `json:"user_id"`
+	Provider    string             `json:"provider"`
+	ProviderUid string             `json:"provider_uid"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type Todo struct {
 	ID        int64              `json:"id"`
 	UserID    int64              `json:"user_id"`
@@ -17,8 +25,9 @@ type Todo struct {
 }
 
 type User struct {
-	ID        int64              `json:"id"`
-	Email     string             `json:"email"`
-	PassHash  string             `json:"pass_hash"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID            int64              `json:"id"`
+	Email         string             `json:"email"`
+	PassHash      *string            `json:"pass_hash"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	EmailVerified bool               `json:"email_verified"`
 }

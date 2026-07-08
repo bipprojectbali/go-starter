@@ -17,6 +17,17 @@ type Config struct {
 	Env         string // ENV: "dev" | "production"
 	AutoMigrate bool   // AUTO_MIGRATE, default true
 	SessionKey  string // SESSION_KEY (wajib di production)
+
+	// Google OAuth. Opsional di dev (tombol Google nonaktif bila kosong),
+	// WAJIB di production (Google = jalur login utama).
+	GoogleClientID     string // GOOGLE_CLIENT_ID
+	GoogleClientSecret string // GOOGLE_CLIENT_SECRET
+	GoogleRedirectURL  string // GOOGLE_REDIRECT_URL (exact-match Google Console)
+}
+
+// GoogleEnabled melaporkan apakah OAuth Google terkonfigurasi (kredensial ada).
+func (c *Config) GoogleEnabled() bool {
+	return c.GoogleClientID != "" && c.GoogleClientSecret != "" && c.GoogleRedirectURL != ""
 }
 
 // IsProduction melaporkan apakah aplikasi berjalan di mode production.
@@ -26,14 +37,21 @@ func (c *Config) IsProduction() bool { return c.Env == "production" }
 // menyebabkan panic saat startup, bukan error senyap di request pertama.
 func MustLoad() *Config {
 	c := &Config{
-		Port:        getEnv("PORT", "8080"),
-		DatabaseURL: mustEnv("DATABASE_URL"),
-		RedisAddr:   mustEnv("REDIS_ADDR"),
-		Env:         getEnv("ENV", "dev"),
-		AutoMigrate: getEnv("AUTO_MIGRATE", "true") == "true",
+		Port:               getEnv("PORT", "8080"),
+		DatabaseURL:        mustEnv("DATABASE_URL"),
+		RedisAddr:          mustEnv("REDIS_ADDR"),
+		Env:                getEnv("ENV", "dev"),
+		AutoMigrate:        getEnv("AUTO_MIGRATE", "true") == "true",
+		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
 	}
 	if c.IsProduction() {
 		c.SessionKey = mustEnv("SESSION_KEY")
+		// Di production Google adalah jalur login utama — wajib ada.
+		c.GoogleClientID = mustEnv("GOOGLE_CLIENT_ID")
+		c.GoogleClientSecret = mustEnv("GOOGLE_CLIENT_SECRET")
+		c.GoogleRedirectURL = mustEnv("GOOGLE_REDIRECT_URL")
 	}
 	return c
 }

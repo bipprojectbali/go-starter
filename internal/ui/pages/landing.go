@@ -30,14 +30,9 @@ func landingCTA(loggedIn bool) g.Node {
 			h.A(h.Href("/todos"), h.Class("btn"), g.Text("Buka Todos")),
 		)
 	}
+	// Anonim: arahkan ke /login (adaptif — Google + form password bila dev).
 	return h.Div(
 		h.Class("flex items-center justify-center gap-3"),
-		h.A(h.Href("/register"), h.Class("btn"), g.Text("Mulai")),
-		h.A(
-			h.Href("/login"),
-			h.Class("btn"),
-			g.Attr("data-variant", "outline"),
-			g.Text("Masuk"),
-		),
+		h.A(h.Href("/login"), h.Class("btn"), g.Text("Masuk")),
 	)
 }

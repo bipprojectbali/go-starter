@@ -22,9 +22,9 @@ type credentials struct {
 	Password string `json:"password"`
 }
 
-// LoginPage — GET /login (full page).
+// LoginPage — GET /login (full page). Form password hanya di dev (devMode).
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Masuk", pages.Login())
+	h.renderPage(w, r, "Masuk", pages.Login(devMode))
 }
 
 // RegisterPage — GET /register (full page).
@@ -61,7 +61,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.DB.CreateUser(r.Context(), db.CreateUserParams{Email: email, PassHash: hash})
+	user, err := h.DB.CreateUser(r.Context(), db.CreateUserParams{Email: email, PassHash: &hash})
 	if err != nil {
 		// Email unik: pelanggaran constraint = email sudah terpakai.
 		h.Log.Warn("register: create user", "err", err)
@@ -109,7 +109,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ok, err := auth.VerifyPassword(in.Password, user.PassHash)
+	// Akun Google-only (pass_hash NULL) tak bisa login password. Pesan generik
+	// yang sama (anti user-enumeration) — jangan ungkap bahwa akun ini OAuth.
+	if user.PassHash == nil {
+		h.authError(w, r, "Email atau password salah")
+		return
+	}
+
+	ok, err := auth.VerifyPassword(in.Password, *user.PassHash)
 	if err != nil {
 		h.Log.Error("login: verify", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

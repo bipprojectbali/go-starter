@@ -11,7 +11,9 @@ import (
 )
 
 // registerRoutes mendaftarkan SEMUA route — single source of truth (§4.1).
-func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log *slog.Logger) {
+// devMode (=!production) menentukan apakah auth password diaktifkan; di produksi
+// hanya Google yang jadi jalur login.
+func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log *slog.Logger, devMode bool) {
 	// Urutan middleware penting: request-id dulu (dipakai log/recover),
 	// lalu recover (tangkap panic downstream), log, security headers.
 	r.Use(mw.RequestID)
@@ -32,13 +34,25 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
 	})
 
-	// Publik: landing page (TIDAK redirect ke /login) + halaman & aksi auth
+	// Publik: landing page (TIDAK redirect ke /login).
 	r.Get("/", h.Home)
+
+	// Login Google — SELALU aktif (jalur login utama di produksi).
+	r.Get("/auth/google", h.GoogleLogin)
+	r.Get("/auth/google/callback", h.GoogleCallback)
+
+	// GET /login selalu ada (target redirect RequireAuth); rendernya adaptif
+	// (form password hanya muncul di dev — lihat handler.SetDevMode).
 	r.Get("/login", h.LoginPage)
-	r.Post("/login", h.Login)
-	r.Get("/register", h.RegisterPage)
-	r.Post("/register", h.Register)
 	r.Post("/logout", h.Logout)
+
+	// Auth password — DEV-ONLY. Di produksi permukaan serang ini tidak ada;
+	// hanya untuk mempermudah agen/dev masuk ke runtime.
+	if devMode {
+		r.Post("/login", h.Login)
+		r.Get("/register", h.RegisterPage)
+		r.Post("/register", h.Register)
+	}
 
 	// Protected: butuh session user
 	r.Group(func(r chi.Router) {

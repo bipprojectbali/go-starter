@@ -35,8 +35,8 @@ func TestRegister_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("user tidak tersimpan: %v", err)
 	}
-	if !strings.HasPrefix(u.PassHash, "$argon2id$") {
-		t.Errorf("password tidak di-hash argon2id: %q", u.PassHash)
+	if u.PassHash == nil || !strings.HasPrefix(*u.PassHash, "$argon2id$") {
+		t.Errorf("password tidak di-hash argon2id: %v", u.PassHash)
 	}
 }
 
@@ -69,7 +69,7 @@ func TestLogin_Success(t *testing.T) {
 	env, _ := setupTest(t)
 	// Buat user dengan password ter-hash.
 	hash, _ := auth.HashPassword("rahasia123")
-	if _, err := env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: hash}); err != nil {
+	if _, err := env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -92,7 +92,7 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	env, _ := setupTest(t)
 	hash, _ := auth.HashPassword("benar")
-	env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: hash})
+	env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash})
 
 	req := httptest.NewRequest(http.MethodPost, "/login",
 		strings.NewReader(`{"email":"u@local","password":"salah"}`))

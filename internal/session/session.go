@@ -9,8 +9,13 @@ import (
 	"github.com/redis/rueidis"
 )
 
-// keyUserID adalah satu-satunya tempat string key ini ada — typo jadi mustahil (§4.9).
-const keyUserID = "userID"
+// Key session — satu-satunya tempat string ini ada, typo jadi mustahil (§4.9).
+const (
+	keyUserID        = "userID"
+	keyOAuthState    = "oauthState"    // anti-CSRF token flow OAuth
+	keyOAuthNonce    = "oauthNonce"    // anti-replay id_token
+	keyOAuthVerifier = "oauthVerifier" // PKCE code verifier
+)
 
 // mgr di-inject saat startup via Init. Accessor di bawah membungkusnya agar
 // handler/middleware tidak pernah menyentuh string key langsung.
@@ -41,6 +46,30 @@ func Clear(ctx context.Context) error { return mgr.Destroy(ctx) }
 
 // Renew memutar token session (panggil setelah login sukses — anti fixation).
 func Renew(ctx context.Context) error { return mgr.RenewToken(ctx) }
+
+// PutOAuthFlow menyimpan state/nonce/verifier transient flow OAuth ke session
+// (server-side via store scs), dipanggil sebelum redirect ke Google.
+func PutOAuthFlow(ctx context.Context, state, nonce, verifier string) {
+	mgr.Put(ctx, keyOAuthState, state)
+	mgr.Put(ctx, keyOAuthNonce, nonce)
+	mgr.Put(ctx, keyOAuthVerifier, verifier)
+}
+
+// OAuthFlow mengambil state/nonce/verifier yang tersimpan (mis. saat callback).
+// Nilai kosong bila tak ada.
+func OAuthFlow(ctx context.Context) (state, nonce, verifier string) {
+	return mgr.GetString(ctx, keyOAuthState),
+		mgr.GetString(ctx, keyOAuthNonce),
+		mgr.GetString(ctx, keyOAuthVerifier)
+}
+
+// ClearOAuthFlow menghapus token flow OAuth (one-time use — panggil setelah
+// callback membacanya, sukses maupun gagal).
+func ClearOAuthFlow(ctx context.Context) {
+	mgr.Remove(ctx, keyOAuthState)
+	mgr.Remove(ctx, keyOAuthNonce)
+	mgr.Remove(ctx, keyOAuthVerifier)
+}
 
 // WriteCookie meng-commit session ke store dan menulis Set-Cookie ke response
 // SECARA MANUAL. WAJIB dipanggil SEBELUM membuka stream Datastar (NewSSE),

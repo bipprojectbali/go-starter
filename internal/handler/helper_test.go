@@ -45,7 +45,7 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	if _, err := pool.Exec(ctx, "TRUNCATE todos, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
-	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: "test@local", PassHash: "x"})
+	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: "test@local", PassHash: ptr("x")})
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -88,3 +88,6 @@ func withChiParam(r *http.Request, key, val string) *http.Request {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+// ptr mengembalikan pointer ke nilai — untuk field nullable sqlc (mis. PassHash *string).
+func ptr[T any](v T) *T { return &v }

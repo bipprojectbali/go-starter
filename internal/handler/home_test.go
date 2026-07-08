@@ -22,9 +22,9 @@ func TestHome_Anonymous(t *testing.T) {
 		t.Errorf("landing tidak boleh redirect, tapi Location=%q", loc)
 	}
 	body := rec.Body.String()
-	// CTA anonim mengarah ke daftar & masuk.
-	if !strings.Contains(body, `href="/register"`) || !strings.Contains(body, `href="/login"`) {
-		t.Errorf("landing anonim harus tampil CTA daftar/masuk:\n%s", body)
+	// CTA anonim mengarah ke /login (adaptif: Google + password bila dev).
+	if !strings.Contains(body, `href="/login"`) {
+		t.Errorf("landing anonim harus tampil CTA Masuk (/login):\n%s", body)
 	}
 	if strings.Contains(body, `href="/todos"`) {
 		t.Errorf("landing anonim tidak boleh tampil link /todos:\n%s", body)

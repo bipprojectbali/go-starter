@@ -19,6 +19,13 @@ var cssPath = "/static/app.css"
 // SetCSSPath menetapkan path CSS ber-hash (dipanggil dari main saat startup).
 func SetCSSPath(p string) { cssPath = p }
 
+// devMode menandai environment non-production. Menentukan apakah form login
+// password ditampilkan (password auth = dev-only; produksi hanya Google).
+var devMode bool
+
+// SetDevMode menetapkan flag dev (dipanggil dari main: !cfg.IsProduction()).
+func SetDevMode(v bool) { devMode = v }
+
 // renderPage mengirim halaman penuh (navigasi biasa, §4.4 jalur 1).
 // Judul + email user (untuk nav) diambil dari konteks. Error di-log, tak ditelan.
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title string, body g.Node) {

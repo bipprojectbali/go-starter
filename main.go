@@ -17,6 +17,7 @@ import (
 	"go_stater/internal/config"
 	"go_stater/internal/database"
 	"go_stater/internal/handler"
+	"go_stater/internal/oauth"
 	"go_stater/internal/session"
 
 	"github.com/go-chi/chi/v5"
@@ -87,11 +88,25 @@ func run() error {
 		return err
 	}
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
+	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
+
+	// Google OAuth — di-wire bila kredensial tersedia. Di dev tanpa kredensial,
+	// app tetap start (tombol Google membalas 503 saat diklik).
+	if cfg.GoogleEnabled() {
+		gp, err := oauth.New(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
+		if err != nil {
+			return err
+		}
+		handler.SetGoogleOAuth(gp)
+		log.Info("google oauth enabled")
+	} else {
+		log.Warn("google oauth disabled: kredensial GOOGLE_* tidak lengkap")
+	}
 
 	// Wiring handler + router.
 	h := handler.New(pool, log)
 	r := chi.NewRouter()
-	registerRoutes(r, h, assetSrv.Handler(), log)
+	registerRoutes(r, h, assetSrv.Handler(), log, !cfg.IsProduction())
 
 	// Bungkus: CSRF (terluar) → session LoadAndSave → router.
 	// CrossOriginProtection butuh Go ≥1.25.1 (CVE-2025-47910 di 1.25.0).

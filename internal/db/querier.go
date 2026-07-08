@@ -9,13 +9,18 @@ import (
 )
 
 type Querier interface {
+	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
+	// User baru dari OAuth: tanpa password, email sudah diverifikasi provider.
+	CreateOAuthUser(ctx context.Context, email string) (User, error)
 	CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	// Authz ownership: filter user_id, bukan cuma id.
 	DeleteTodo(ctx context.Context, arg DeleteTodoParams) error
+	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
 	GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
 	// Keyset pagination. Halaman pertama: kirim cursor (created_at, id) = nilai maksimum
 	// ('infinity'::timestamptz, maxint) agar seluruh baris memenuhi syarat.
 	// Halaman berikutnya: kirim (created_at, id) baris TERAKHIR yang tampil.
