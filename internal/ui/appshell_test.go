@@ -39,6 +39,11 @@ func TestAppShell_ActiveLink(t *testing.T) {
 			t.Errorf("shell kurang %q", want)
 		}
 	}
+	// REGRESI: data-class key ber-hyphen HARUS ter-quote (kalau tidak, ekspresi
+	// JS invalid → Datastar mati: "Unexpected token '-'").
+	if !strings.Contains(out, `{&#39;translate-x-0&#39;: $sidebarOpen}`) {
+		t.Errorf("data-class key harus ter-quote (hyphen tak valid tanpa kutip):\n%s", out)
+	}
 }
 
 func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {

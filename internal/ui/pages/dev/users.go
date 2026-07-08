@@ -82,13 +82,16 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 	if canManageSuper {
 		opts = append(opts, roleOption("super_admin", u.Role))
 	}
-	// @post dgn contentType form → kirim <select name=role> sbg FormData.
+	// @post {contentType:'form'} mencari FORM TERDEKAT lalu kirim nilainya, jadi
+	// select WAJIB dibungkus <form> (kalau tidak, tak ada value terkirim).
 	// Balasan SSE me-render ulang baris + toast (tanpa reload).
-	return h.Select(
-		h.Class("input"),
-		h.Name("role"),
-		data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role', {contentType: 'form'})"),
-		g.Group(opts),
+	return h.FormEl(
+		h.Select(
+			h.Class("input"),
+			h.Name("role"),
+			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role', {contentType: 'form'})"),
+			g.Group(opts),
+		),
 	)
 }
 
@@ -105,13 +108,15 @@ func statusControl(u UserRow) g.Node {
 	if u.IsRoot {
 		return badge(u.Status, "")
 	}
-	return h.Select(
-		h.Class("input"),
-		h.Name("status"),
-		data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status', {contentType: 'form'})"),
-		statusOption("active", u.Status),
-		statusOption("disabled", u.Status),
-		statusOption("blocked", u.Status),
+	return h.FormEl(
+		h.Select(
+			h.Class("input"),
+			h.Name("status"),
+			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status', {contentType: 'form'})"),
+			statusOption("active", u.Status),
+			statusOption("disabled", u.Status),
+			statusOption("blocked", u.Status),
+		),
 	)
 }
 

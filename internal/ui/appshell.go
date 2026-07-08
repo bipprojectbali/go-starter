@@ -89,7 +89,9 @@ func shellSidebar(d ShellData) g.Node {
 	return h.Aside(
 		h.Class("app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r "+
 			"bg-sidebar text-sidebar-foreground -translate-x-full transition-transform md:translate-x-0"),
-		data.Class("translate-x-0", "$sidebarOpen"),
+		// Key di-quote: nama class ber-hyphen tak valid sbg key objek JS tanpa
+		// kutip (data.Class gomponents tak meng-quote otomatis).
+		data.Class("'translate-x-0'", "$sidebarOpen"),
 
 		// Header sidebar: brand + tombol collapse (desktop).
 		h.Div(
