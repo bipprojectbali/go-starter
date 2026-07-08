@@ -24,12 +24,12 @@ type credentials struct {
 
 // LoginPage — GET /login (full page).
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, r, h.Log, "Masuk", pages.Login())
+	h.renderPage(w, r, "Masuk", pages.Login())
 }
 
 // RegisterPage — GET /register (full page).
 func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	renderPage(w, r, h.Log, "Daftar", pages.Register())
+	h.renderPage(w, r, "Daftar", pages.Register())
 }
 
 // authError mem-patch alert error auth via Datastar (id "auth-error").

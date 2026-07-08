@@ -37,7 +37,7 @@ func (h *Handler) TodoList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	renderPage(w, r, h.Log, "Todos", pages.TodoList(todos))
+	h.renderPage(w, r, "Todos", pages.TodoList(todos))
 }
 
 // TodoCreate — POST /todos. Aksi Datastar: balas fragment via SSE.

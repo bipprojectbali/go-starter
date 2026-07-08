@@ -16,22 +16,24 @@ const (
 	VariantGhost
 )
 
-// btnVariant memetakan varian ke modifier Basecoat. Array indeks enum, bukan
-// map string: menambah Variant tanpa entri di sini = compile error (array
-// literal wajib lengkap bila diindeks konstanta).
+// btnVariant memetakan varian ke nilai data-variant Basecoat v1.x.
+// Basecoat memakai class root "btn" + atribut data-variant (BUKAN class
+// "btn-destructive"). Array indeks enum: menambah Variant tanpa entri = compile error.
 var btnVariant = [...]string{
-	VariantDefault:     "",
-	VariantDestructive: "btn-destructive",
-	VariantOutline:     "btn-outline",
-	VariantGhost:       "btn-ghost",
+	VariantDefault:     "", // default = primary, tanpa data-variant
+	VariantDestructive: "destructive",
+	VariantOutline:     "outline",
+	VariantGhost:       "ghost",
 }
 
-// Button merender tombol dengan class Basecoat "btn" + modifier varian.
+// Button merender tombol Basecoat: class "btn" + data-variant sesuai varian.
 // Atribut tambahan (mis. data-on Datastar) dilewatkan lewat attrs.
 func Button(variant Variant, attrs []g.Node, children ...g.Node) g.Node {
-	return h.Button(
-		append([]g.Node{h.Class("btn " + btnVariant[variant])}, append(attrs, g.Group(children))...)...,
-	)
+	base := []g.Node{h.Class("btn")}
+	if v := btnVariant[variant]; v != "" {
+		base = append(base, g.Attr("data-variant", v))
+	}
+	return h.Button(append(base, append(attrs, g.Group(children))...)...)
 }
 
 // Card membungkus konten dalam kartu Basecoat.
@@ -49,21 +51,13 @@ func Label(text string, attrs ...g.Node) g.Node {
 	return h.Label(append([]g.Node{h.Class("label")}, append(attrs, g.Text(text))...)...)
 }
 
-// alertVariant memetakan varian ke modifier alert Basecoat.
-var alertVariant = [...]string{
-	VariantDefault:     "",
-	VariantDestructive: "alert-destructive",
-	VariantOutline:     "",
-	VariantGhost:       "",
-}
-
-// Alert menampilkan pesan (mis. error validasi). Punya id agar bisa di-patch
-// via Datastar (mode default outer butuh id).
+// Alert menampilkan pesan (mis. error validasi). Basecoat: class "alert" +
+// data-variant="destructive". Punya id agar bisa di-patch via Datastar (mode
+// default outer butuh id).
 func Alert(variant Variant, id string, children ...g.Node) g.Node {
-	return h.Div(
-		h.ID(id),
-		h.Class("alert "+alertVariant[variant]),
-		h.Role("alert"),
-		g.Group(children),
-	)
+	attrs := []g.Node{h.ID(id), h.Class("alert"), h.Role("alert")}
+	if variant == VariantDestructive {
+		attrs = append(attrs, g.Attr("data-variant", "destructive"))
+	}
+	return h.Div(append(attrs, g.Group(children))...)
 }
