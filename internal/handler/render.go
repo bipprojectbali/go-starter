@@ -54,9 +54,6 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 
 // Menu sidebar per panel.
 var (
-	devNav = []ui.NavItem{
-		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
-	}
 	adminNav = []ui.NavItem{
 		{Label: "Dashboard", Href: "/admin", Icon: lucide.LayoutDashboard(html.Class("size-4"))},
 	}
@@ -65,6 +62,20 @@ var (
 		{Label: "Todos", Href: "/todos", Icon: lucide.ListChecks(html.Class("size-4"))},
 	}
 )
+
+// devNav membangun menu panel /dev. "File Health" hanya di dev (route-nya tak
+// terdaftar di produksi — source .go tak ada di single-binary).
+func devNav() []ui.NavItem {
+	items := []ui.NavItem{
+		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
+	}
+	if devMode {
+		items = append(items, ui.NavItem{
+			Label: "File Health", Href: "/dev/health", Icon: lucide.Activity(html.Class("size-4")),
+		})
+	}
+	return items
+}
 
 // quickLinksFor membangun pintasan lintas-panel sesuai IZIN user (Casbin,
 // di-precompute di sini — bukan dari dalam gomponents). Pintasan /dev menuju

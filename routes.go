@@ -83,6 +83,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/users/{id}/role", h.DevUserSetRole)
 		r.Post("/users/{id}/status", h.DevUserSetStatus)
 		r.Post("/users/{id}/delete", h.DevUserDelete)
+
+		// File Health — DEV-ONLY. Butuh source .go di disk (tak ada di
+		// single-binary produksi). Tak didaftarkan di prod → menu pun tak muncul.
+		if devMode {
+			r.Get("/health", h.DevHealth)
+		}
 	})
 
 	// Panel /admin — admin+ (super_admin mewarisi). Konten menyusul.
