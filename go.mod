@@ -8,6 +8,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/eduardolat/gomponents-lucide v1.5.0
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/redis/rueidis v1.0.76
@@ -24,7 +25,6 @@ require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
 	github.com/casbin/govaluate v1.3.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
