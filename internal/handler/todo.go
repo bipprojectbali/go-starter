@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go_stater/internal/db"
+	"go_stater/internal/session"
 	"go_stater/internal/ui"
 	"go_stater/internal/ui/pages"
 
@@ -26,7 +27,7 @@ func firstPageCursor() (pgtype.Timestamptz, int64) {
 func (h *Handler) TodoList(w http.ResponseWriter, r *http.Request) {
 	cursorAt, cursorID := firstPageCursor()
 	todos, err := h.DB.ListTodos(r.Context(), db.ListTodosParams{
-		UserID:          spikeUserID, // SPIKE: ganti session.UserID(ctx) di Fase 4
+		UserID:          session.UserID(r.Context()),
 		CursorCreatedAt: cursorAt,
 		CursorID:        cursorID,
 		PageSize:        pageSize,
@@ -55,7 +56,7 @@ func (h *Handler) TodoCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	todo, err := h.DB.CreateTodo(r.Context(), db.CreateTodoParams{
-		UserID: spikeUserID,
+		UserID: session.UserID(r.Context()),
 		Title:  strings.TrimSpace(in.Title),
 	})
 	if err != nil {
@@ -87,7 +88,7 @@ func (h *Handler) TodoDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.DB.DeleteTodo(r.Context(), db.DeleteTodoParams{
 		ID:     id,
-		UserID: spikeUserID, // ownership: hanya hapus milik user ini
+		UserID: session.UserID(r.Context()), // ownership: hanya hapus milik user ini
 	}); err != nil {
 		h.Log.Error("delete todo", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)

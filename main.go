@@ -13,9 +13,11 @@ import (
 	"go_stater/internal/config"
 	"go_stater/internal/database"
 	"go_stater/internal/handler"
+	"go_stater/internal/session"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/rueidis"
 )
 
 //go:embed static
@@ -48,6 +50,19 @@ func run() error {
 	}
 	defer pool.Close()
 
+	// Redis (rueidis) — satu klien untuk session store.
+	rc, err := rueidis.NewClient(rueidis.ClientOption{
+		InitAddress: []string{cfg.RedisAddr},
+	})
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+
+	// Session manager (scs + rueidis store).
+	sm := session.NewManager(rc)
+	session.Init(sm)
+
 	// Auto-migrate dengan advisory lock (aman multi-instance).
 	if cfg.AutoMigrate {
 		if err := database.MigrateWithLock(ctx, pool, migrationsEmbed); err != nil {
@@ -68,9 +83,14 @@ func run() error {
 	r := chi.NewRouter()
 	registerRoutes(r, h, staticFS)
 
+	// Bungkus: CSRF (terluar) → session LoadAndSave → router.
+	// CrossOriginProtection butuh Go ≥1.25.1 (CVE-2025-47910 di 1.25.0).
+	csrf := http.NewCrossOriginProtection()
+	handlerChain := csrf.Handler(sm.LoadAndSave(r))
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           r,
+		Handler:           handlerChain,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      0, // 0 = tanpa batas; SSE butuh koneksi panjang

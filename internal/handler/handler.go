@@ -28,7 +28,3 @@ func New(pool *pgxpool.Pool, log *slog.Logger) *Handler {
 // pageSize adalah batas default item per halaman (keyset pagination).
 // Konstanta bernama, bukan angka telanjang (§rule 15).
 const pageSize = 20
-
-// spikeUserID — SPIKE ONLY: auth belum diimplementasi (Fase 4). Hardcode ke
-// user seed id=1. Di produksi diganti session.UserID(ctx). JANGAN merge ke main.
-const spikeUserID int64 = 1
