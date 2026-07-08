@@ -74,7 +74,8 @@
     }
 
     function copyPaths(paths) {
-      if (paths.length === 0) { flash("Tidak ada file terpilih"); return; }
+      // Tak ada pilihan → diam (jangan ganggu dgn toast noise).
+      if (paths.length === 0) return;
       var text = paths.join("\n");
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(

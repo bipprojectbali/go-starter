@@ -27,7 +27,9 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text("Users")),
 		// Slot toast (kanan-bawah), diisi via SSE patch (id "flash").
-		h.Div(h.ID("flash"), h.Class("fixed bottom-4 right-4 z-50")),
+		// pointer-events:none agar toast tak memblokir klik elemen di bawahnya.
+		h.Div(h.ID("flash"), h.Class("fixed bottom-4 right-4 z-50"),
+			g.Attr("style", "pointer-events:none")),
 		h.Div(
 			h.Class("card"),
 			h.Section(
@@ -158,6 +160,7 @@ func Flash(ok bool, msg string) g.Node {
 	return h.Div(
 		h.ID("flash"),
 		h.Class("fixed bottom-4 right-4 z-50"),
+		g.Attr("style", "pointer-events:none"), // toast tak boleh blokir klik
 		h.Div(inner...),
 	)
 }

@@ -50,10 +50,12 @@ func HealthPage(res health.Result) g.Node {
 		),
 		healthPagination(),
 		// Toast copy (client-side, fade via inline style transition).
+		// pointer-events:none — notifikasi tak boleh menangkap klik (opacity:0
+		// pun tetap memblokir elemen di bawahnya, mis. tombol pagination).
 		h.Div(
 			h.ID("health-toast"),
 			h.Class("fixed bottom-4 right-4 z-50 alert shadow-lg"),
-			g.Attr("style", "opacity:0; transition:opacity .2s"),
+			g.Attr("style", "opacity:0; transition:opacity .2s; pointer-events:none"),
 			h.Role("status"),
 		),
 		// Logika filter/pagination/copy (same-origin, patuh CSP script-src 'self').
