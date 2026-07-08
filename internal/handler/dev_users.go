@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"go_stater/internal/authz"
 	"go_stater/internal/db"
@@ -12,6 +13,7 @@ import (
 	"go_stater/internal/ui/pages/dev"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/starfederation/datastar-go/datastar"
 )
 
 // DevUsersList — GET /dev/users. Daftar user (keyset) untuk panel developer.
@@ -42,25 +44,25 @@ func (h *Handler) DevUserSetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	newRole := r.FormValue("role")
 	if !authz.ValidRoleName(newRole) {
-		http.Error(w, "role tidak valid", http.StatusBadRequest)
+		h.devFlash(w, r, false, "Role tidak valid")
 		return
 	}
 	actor, target, err := h.loadActorTarget(r.Context(), targetID)
 	if err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := authz.GuardSetRole(actor, target, authz.ParseRole(newRole)); err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := h.DB.UpdateUserRole(r.Context(), db.UpdateUserRoleParams{ID: targetID, Role: newRole}); err != nil {
 		h.Log.Error("dev users: update role", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.devFlash(w, r, false, "Gagal menyimpan perubahan")
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.role.update", targetID, map[string]string{"to": newRole})
-	http.Redirect(w, r, "/dev/users", http.StatusSeeOther)
+	h.devRowUpdated(w, r, targetID, "Role diubah ke "+newRole)
 }
 
 // DevUserSetStatus — POST /dev/users/{id}/status. Disable/block/aktifkan.
@@ -73,28 +75,28 @@ func (h *Handler) DevUserSetStatus(w http.ResponseWriter, r *http.Request) {
 	switch newStatus {
 	case "active", "disabled", "blocked":
 	default:
-		http.Error(w, "status tidak valid", http.StatusBadRequest)
+		h.devFlash(w, r, false, "Status tidak valid")
 		return
 	}
 	actor, target, err := h.loadActorTarget(r.Context(), targetID)
 	if err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := authz.GuardMutateStatus(actor, target, newStatus); err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := h.DB.UpdateUserStatus(r.Context(), db.UpdateUserStatusParams{ID: targetID, Status: newStatus}); err != nil {
 		h.Log.Error("dev users: update status", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.devFlash(w, r, false, "Gagal menyimpan perubahan")
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.status.update", targetID, map[string]string{"to": newStatus})
-	http.Redirect(w, r, "/dev/users", http.StatusSeeOther)
+	h.devRowUpdated(w, r, targetID, "Status diubah ke "+newStatus)
 }
 
-// DevUserDelete — DELETE /dev/users/{id}. Soft-delete (di-guard + audit).
+// DevUserDelete — POST /dev/users/{id}/delete. Soft-delete (di-guard + audit).
 func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 	targetID, ok := h.parseTargetID(w, r)
 	if !ok {
@@ -102,23 +104,84 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	actor, target, err := h.loadActorTarget(r.Context(), targetID)
 	if err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := authz.GuardDelete(actor, target); err != nil {
-		h.devUserError(w, err)
+		h.devFlashErr(w, r, err)
 		return
 	}
 	if err := h.DB.SoftDeleteUser(r.Context(), targetID); err != nil {
 		h.Log.Error("dev users: delete", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		h.devFlash(w, r, false, "Gagal menghapus user")
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.delete", targetID, nil)
-	http.Redirect(w, r, "/dev/users", http.StatusSeeOther)
+	// Hapus baris dari tabel + flash sukses.
+	sse := datastar.NewSSE(w, r)
+	_ = sse.RemoveElement("#user-" + strconv.FormatInt(targetID, 10))
+	patchFlash(sse, true, "User dihapus")
 }
 
-// --- helper ---
+// --- helper flash / SSE ---
+
+// devRowUpdated me-render ulang baris user (kontrol menampilkan nilai baru) +
+// flash sukses. Ini yang menggantikan reload penuh: perubahan langsung terlihat.
+func (h *Handler) devRowUpdated(w http.ResponseWriter, r *http.Request, targetID int64, msg string) {
+	u, err := h.DB.GetUser(r.Context(), targetID)
+	if err != nil {
+		h.Log.Error("dev users: reload row", "err", err)
+		h.devFlash(w, r, false, "Tersimpan, tapi gagal memuat ulang baris")
+		return
+	}
+	canManageSuper := session.IsRoot(r.Context()) ||
+		authz.ParseRole(session.Role(r.Context())) >= authz.RoleSuperAdmin
+	row := toUserRows([]db.User{u})[0]
+
+	sse := datastar.NewSSE(w, r)
+	var sb strings.Builder
+	if err := dev.UserRowNode(row, canManageSuper).Render(&sb); err != nil {
+		h.Log.Error("dev users: render row", "err", err)
+		return
+	}
+	// Ganti baris berdasarkan id (mode default outer, morph by id).
+	_ = sse.PatchElements(sb.String())
+	patchFlash(sse, true, msg)
+}
+
+// devFlash mengirim hanya toast (tanpa mengubah baris).
+func (h *Handler) devFlash(w http.ResponseWriter, r *http.Request, ok bool, msg string) {
+	sse := datastar.NewSSE(w, r)
+	patchFlash(sse, ok, msg)
+}
+
+// devFlashErr memetakan error guard ke pesan toast yang ramah.
+func (h *Handler) devFlashErr(w http.ResponseWriter, r *http.Request, err error) {
+	msg := "Aksi ditolak"
+	switch err {
+	case authz.ErrProtectedRoot:
+		msg = "User ini root (env) — tak bisa diubah"
+	case authz.ErrSelfLockout:
+		msg = "Tidak bisa melakukan aksi ini pada akun sendiri"
+	case authz.ErrForbidden:
+		msg = "Anda tidak berwenang untuk aksi ini"
+	default:
+		h.Log.Error("dev users: guard/load", "err", err)
+		msg = "Terjadi kesalahan"
+	}
+	h.devFlash(w, r, false, msg)
+}
+
+// patchFlash mem-patch toast notifikasi (id "flash") via SSE. Toast auto-hilang
+// lewat skrip kecil di komponen. ok=true → hijau, false → merah.
+func patchFlash(sse *datastar.ServerSentEventGenerator, ok bool, msg string) {
+	var sb strings.Builder
+	if err := dev.Flash(ok, msg).Render(&sb); err == nil {
+		_ = sse.PatchElements(sb.String())
+	}
+}
+
+// --- helper umum ---
 
 func (h *Handler) parseTargetID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -146,19 +209,6 @@ func (h *Handler) loadActorTarget(ctx context.Context, targetID int64) (authz.Ac
 		IsEnvSuperA: isSuperAdminEmail(tu.Email),
 	}
 	return actor, target, nil
-}
-
-// devUserError memetakan error guard ke status HTTP yang sesuai.
-func (h *Handler) devUserError(w http.ResponseWriter, err error) {
-	switch err {
-	case authz.ErrProtectedRoot, authz.ErrForbidden, authz.ErrSelfLockout:
-		http.Error(w, err.Error(), http.StatusForbidden)
-	case authz.ErrInvalidRole:
-		http.Error(w, err.Error(), http.StatusBadRequest)
-	default:
-		h.Log.Error("dev users: guard/load", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-	}
 }
 
 // audit menulis jejak aksi admin (metadata TANPA PII — id saja).

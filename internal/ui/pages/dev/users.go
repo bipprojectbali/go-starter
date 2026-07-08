@@ -26,7 +26,8 @@ type UserRow struct {
 func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text("Users")),
-		h.Div(h.ID("flash")), // slot flash untuk error SSE (RequireEnforce/guard)
+		// Slot toast (kanan-bawah), diisi via SSE patch (id "flash").
+		h.Div(h.ID("flash"), h.Class("fixed bottom-4 right-4 z-50")),
 		h.Div(
 			h.Class("card"),
 			h.Section(
@@ -39,14 +40,16 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 							th("User"), th("Role"), th("Status"), th("Aksi"),
 						),
 					),
-					h.TBody(g.Map(rows, func(u UserRow) g.Node { return userRow(u, canManageSuper) })),
+					h.TBody(g.Map(rows, func(u UserRow) g.Node { return UserRowNode(u, canManageSuper) })),
 				),
 			),
 		),
 	)
 }
 
-func userRow(u UserRow, canManageSuper bool) g.Node {
+// UserRowNode merender satu baris user. Di-export agar handler bisa me-render
+// ulang baris ini via SSE setelah mutasi (id "user-<id>" jadi target morph).
+func UserRowNode(u UserRow, canManageSuper bool) g.Node {
 	rowID := "user-" + strconv.FormatInt(u.ID, 10)
 	return h.Tr(
 		h.ID(rowID),
@@ -67,7 +70,7 @@ func userRow(u UserRow, canManageSuper bool) g.Node {
 	)
 }
 
-// roleControl = dropdown ubah role. Dinonaktifkan untuk root env.
+// roleControl = dropdown ubah role via Datastar SSE. Root env → badge (immutable).
 func roleControl(u UserRow, canManageSuper bool) g.Node {
 	if u.IsRoot {
 		return badge(u.Role, "")
@@ -79,15 +82,13 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 	if canManageSuper {
 		opts = append(opts, roleOption("super_admin", u.Role))
 	}
-	return h.Form(
-		h.Method("post"),
-		h.Action("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role"),
-		h.Select(
-			h.Class("input"),
-			h.Name("role"),
-			data.On("change", "el.form.requestSubmit()"),
-			g.Group(opts),
-		),
+	// @post dgn contentType form → kirim <select name=role> sbg FormData.
+	// Balasan SSE me-render ulang baris + toast (tanpa reload).
+	return h.Select(
+		h.Class("input"),
+		h.Name("role"),
+		data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role', {contentType: 'form'})"),
+		g.Group(opts),
 	)
 }
 
@@ -99,22 +100,18 @@ func roleOption(val, current string) g.Node {
 	return h.Option(append(attrs, g.Text(val))...)
 }
 
-// statusControl = tombol aktif/nonaktif/blokir. Root env → badge saja.
+// statusControl = ubah status via Datastar SSE. Root env → badge (immutable).
 func statusControl(u UserRow) g.Node {
 	if u.IsRoot {
 		return badge(u.Status, "")
 	}
-	return h.Form(
-		h.Method("post"),
-		h.Action("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status"),
-		h.Select(
-			h.Class("input"),
-			h.Name("status"),
-			data.On("change", "el.form.requestSubmit()"),
-			statusOption("active", u.Status),
-			statusOption("disabled", u.Status),
-			statusOption("blocked", u.Status),
-		),
+	return h.Select(
+		h.Class("input"),
+		h.Name("status"),
+		data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status', {contentType: 'form'})"),
+		statusOption("active", u.Status),
+		statusOption("disabled", u.Status),
+		statusOption("blocked", u.Status),
 	)
 }
 
@@ -126,21 +123,37 @@ func statusOption(val, current string) g.Node {
 	return h.Option(append(attrs, g.Text(val))...)
 }
 
-// deleteControl = tombol hapus (soft-delete). Root env kebal → tanpa tombol.
+// deleteControl = tombol hapus (soft-delete) via SSE. Root env kebal → tanpa tombol.
 func deleteControl(u UserRow) g.Node {
 	if u.IsRoot {
 		return g.Text("")
 	}
-	return h.Form(
-		h.Method("post"),
-		h.Action("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/delete"),
-		h.Button(
-			h.Type("submit"),
-			h.Class("btn"),
-			g.Attr("data-variant", "destructive"),
-			g.Attr("data-size", "sm"),
-			g.Text("Hapus"),
-		),
+	return h.Button(
+		h.Type("button"),
+		h.Class("btn"),
+		g.Attr("data-variant", "destructive"),
+		g.Attr("data-size", "sm"),
+		data.On("click", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/delete')"),
+		g.Text("Hapus"),
+	)
+}
+
+// Flash merender toast notifikasi (id "flash", target SSE patch). Auto-hilang
+// via animasi CSS (.toast, fade-out) — TANPA inline script (patuh CSP
+// script-src 'self'). ok=true → hijau (default alert), false → merah.
+func Flash(ok bool, msg string) g.Node {
+	inner := []g.Node{
+		h.Class("alert toast shadow-lg"),
+		h.Role("status"),
+		g.Text(msg),
+	}
+	if !ok {
+		inner = append(inner, g.Attr("data-variant", "destructive"))
+	}
+	return h.Div(
+		h.ID("flash"),
+		h.Class("fixed bottom-4 right-4 z-50"),
+		h.Div(inner...),
 	)
 }
 

@@ -34,6 +34,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - Schema `users` += `role`, `status`, `avatar_url`, `deleted_at` (soft-delete). Query login (`GetUser`/`GetUserByEmail`) memfilter `deleted_at IS NULL`. Session menyimpan identitas (role/isRoot/email/avatar) saat login → `renderPage` tak lagi hit DB per render.
 
 ### Fixed
+- Panel Users: ubah role/status/hapus kini pakai Datastar SSE (bukan form POST + full reload). Sebelumnya tak ada notifikasi dan perubahan tampak "revert" saat reload. Kini baris ter-render ulang dgn nilai baru + toast notifikasi (berhasil/gagal), tanpa reload. Guard/error muncul sebagai toast merah.
 - Layout komponen berantakan (card melebar, spacing dobel, kotak error hantu): app.css semula meng-`@import "tailwindcss"` penuh → preflight-nya (dimuat setelah basecoat.css) me-reset border/input/spacing Basecoat. Fix: app.css hanya impor `theme.css`+`utilities.css` (tanpa preflight); satu preflight = milik basecoat.css.
 - Kontrak markup Basecoat: `Card` kini bungkus isi dengan `<section>` (sumber padding & gap kartu), slot error pakai `AlertSlot` (div kosong) agar `.alert` (selalu ber-border) tak tampil sebagai kotak hantu saat kosong.
 - Bug integrasi scs + Datastar SSE: `Set-Cookie` tak terkirim karena `NewSSE` flush header sebelum scs menulis cookie. Fix: `session.WriteCookie` manual sebelum `NewSSE`.

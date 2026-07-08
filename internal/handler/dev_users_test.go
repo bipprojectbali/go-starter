@@ -60,13 +60,15 @@ func (e *testEnv) doDevAction(actorID, targetID int64, form url.Values, fn http.
 
 func TestDevUserSetRole_Success(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
+	// Aksi kini balas SSE (200), bukan redirect. Sukses diverifikasi lewat efek
+	// DB + isi flash, bukan status code.
 	rec := env.doDevAction(superID, targetID, url.Values{"role": {"admin"}}, env.h.DevUserSetRole)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("set role sukses harus 303, got %d: %s", rec.Code, rec.Body.String())
-	}
 	u, _ := env.h.DB.GetUser(t.Context(), targetID)
 	if u.Role != "admin" {
 		t.Errorf("role harus admin, got %q", u.Role)
+	}
+	if !strings.Contains(rec.Body.String(), "Role diubah ke admin") {
+		t.Errorf("flash sukses harus ada:\n%s", rec.Body.String())
 	}
 	// Audit tercatat.
 	logs, _ := env.h.DB.ListAuditLogs(t.Context(), 10)
@@ -79,43 +81,49 @@ func TestDevUserSetRole_ProtectRootEnv(t *testing.T) {
 	env, superID, _ := setupDevUsers(t)
 	// Target = super-admin itu sendiri (root env) → tak bisa diturunkan.
 	rec := env.doDevAction(superID, superID, url.Values{"role": {"user"}}, env.h.DevUserSetRole)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("menurunkan root env harus 403, got %d", rec.Code)
-	}
 	u, _ := env.h.DB.GetUser(t.Context(), superID)
 	if u.Role != "super_admin" {
 		t.Errorf("role root tak boleh berubah, got %q", u.Role)
+	}
+	// Flash menolak (root env).
+	if !strings.Contains(rec.Body.String(), "root") {
+		t.Errorf("flash harus tolak root env:\n%s", rec.Body.String())
 	}
 }
 
 func TestDevUserSetStatus_Block(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
 	rec := env.doDevAction(superID, targetID, url.Values{"status": {"blocked"}}, env.h.DevUserSetStatus)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("block harus 303, got %d: %s", rec.Code, rec.Body.String())
-	}
 	u, _ := env.h.DB.GetUser(t.Context(), targetID)
 	if u.Status != "blocked" {
 		t.Errorf("status harus blocked, got %q", u.Status)
+	}
+	if !strings.Contains(rec.Body.String(), "Status diubah ke blocked") {
+		t.Errorf("flash sukses status harus ada:\n%s", rec.Body.String())
 	}
 }
 
 func TestDevUserDelete_Success(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
 	rec := env.doDevAction(superID, targetID, url.Values{}, env.h.DevUserDelete)
-	if rec.Code != http.StatusSeeOther {
-		t.Fatalf("hapus harus 303, got %d", rec.Code)
-	}
 	// Soft-delete: GetUser (filter deleted_at) tak menemukannya.
 	if _, err := env.h.DB.GetUser(t.Context(), targetID); err == nil {
 		t.Error("user terhapus tak boleh ditemukan GetUser")
+	}
+	// SSE menghapus baris + flash.
+	if !strings.Contains(rec.Body.String(), "user-"+itoa(targetID)) {
+		t.Errorf("SSE harus menargetkan baris user:\n%s", rec.Body.String())
 	}
 }
 
 func TestDevUserDelete_SelfLockout(t *testing.T) {
 	env, superID, _ := setupDevUsers(t)
 	rec := env.doDevAction(superID, superID, url.Values{}, env.h.DevUserDelete)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("hapus diri sendiri harus 403 (self-lockout / root), got %d", rec.Code)
+	// Root/self → tak terhapus + flash menolak.
+	if _, err := env.h.DB.GetUser(t.Context(), superID); err != nil {
+		t.Error("root/self tak boleh terhapus")
+	}
+	if !strings.Contains(rec.Body.String(), "root") {
+		t.Errorf("flash harus tolak (root/self):\n%s", rec.Body.String())
 	}
 }
