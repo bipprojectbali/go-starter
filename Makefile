@@ -1,5 +1,14 @@
 .PHONY: setup dev check build run clean migrate-new migrate-up test css
 
+# Tool CLI (sqlc/goose/air) di-install ke GOPATH/bin, yang belum tentu di PATH
+# saat `make` jalan. GNU Make 3.81 (bawaan macOS) meng-exec recipe tanpa
+# metacharacter langsung via execvp — melewati shell, jadi `export PATH` tak
+# terbaca. Panggil tool via path absolut supaya tak bergantung PATH sama sekali.
+GOBIN := $(shell go env GOPATH)/bin
+SQLC  := $(GOBIN)/sqlc
+GOOSE := $(GOBIN)/goose
+AIR   := $(GOBIN)/air
+
 BINARY := app
 TEST_DATABASE_URL ?= postgres://bip@localhost:5432/go_stater_test?sslmode=disable
 
@@ -23,7 +32,7 @@ css:
 
 ## check: WAJIB hijau setelah tiap perubahan
 check:
-	sqlc generate
+	$(SQLC) generate
 	go vet ./...
 	gofmt -l $$(find . -name '*.go' -not -path './internal/db/*')
 	go build -o /tmp/$(BINARY)-check .
@@ -35,11 +44,11 @@ test:
 
 ## dev: live reload
 dev:
-	air
+	$(AIR)
 
 ## build: single binary (regenerate CSS dulu)
 build: css
-	sqlc generate
+	$(SQLC) generate
 	CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags="-s -w" -o $(BINARY) .
 
 ## run: build lalu jalankan
@@ -48,11 +57,11 @@ run: build
 
 ## migrate-new: buat migration baru (make migrate-new name=add_x)
 migrate-new:
-	goose -dir migrations create $(name) sql
+	$(GOOSE) -dir migrations create $(name) sql
 
 ## migrate-up: jalankan migration ke DB (butuh GOOSE_DBSTRING atau DATABASE_URL)
 migrate-up:
-	GOOSE_DRIVER=postgres GOOSE_DBSTRING="$(DATABASE_URL)" goose -dir migrations up
+	GOOSE_DRIVER=postgres GOOSE_DBSTRING="$(DATABASE_URL)" $(GOOSE) -dir migrations up
 
 clean:
 	rm -f $(BINARY) /tmp/$(BINARY)-check
