@@ -188,13 +188,21 @@ func toUserRows(users []db.User) []dev.UserRow {
 		if u.AvatarUrl != nil {
 			avatar = *u.AvatarUrl
 		}
+		isRoot := isSuperAdminEmail(u.Email)
+		// Tampilkan role EFEKTIF: super-admin env override kolom DB (yang bisa
+		// saja masih "user" karena role env tak pernah ditulis ke DB). Tanpa ini
+		// tabel menyesatkan — root tampak "user".
+		role := u.Role
+		if isRoot {
+			role = authz.RoleNameSuperAdmin
+		}
 		rows = append(rows, dev.UserRow{
 			ID:        u.ID,
 			Email:     u.Email,
-			Role:      u.Role,
+			Role:      role,
 			Status:    u.Status,
 			AvatarURL: avatar,
-			IsRoot:    isSuperAdminEmail(u.Email),
+			IsRoot:    isRoot,
 		})
 	}
 	return rows
