@@ -1,20 +1,23 @@
 package main
 
 import (
+	"log/slog"
 	"net/http"
 
 	"go_stater/internal/handler"
 	"go_stater/internal/mw"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // registerRoutes mendaftarkan SEMUA route — single source of truth (§4.1).
-func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler) {
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
+func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log *slog.Logger) {
+	// Urutan middleware penting: request-id dulu (dipakai log/recover),
+	// lalu recover (tangkap panic downstream), log, security headers.
+	r.Use(mw.RequestID)
+	r.Use(mw.Recover(log))
+	r.Use(mw.RequestLog(log))
+	r.Use(mw.SecurityHeaders)
 
 	// Health (tanpa auth)
 	r.Get("/healthz", h.Liveness)
