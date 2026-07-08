@@ -12,6 +12,10 @@ import (
 // Key session — satu-satunya tempat string ini ada, typo jadi mustahil (§4.9).
 const (
 	keyUserID        = "userID"
+	keyEmail         = "email"         // cache email (hindari GetUser tiap render)
+	keyRole          = "role"          // otoritas (subject Casbin)
+	keyIsRoot        = "isRoot"        // super-admin env (immutable root)
+	keyAvatarURL     = "avatarURL"     // foto Google untuk nav
 	keyOAuthState    = "oauthState"    // anti-CSRF token flow OAuth
 	keyOAuthNonce    = "oauthNonce"    // anti-replay id_token
 	keyOAuthVerifier = "oauthVerifier" // PKCE code verifier
@@ -44,6 +48,29 @@ func UserID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyUserID) }
 
 // SetUserID menandai user login (dipanggil setelah login sukses).
 func SetUserID(ctx context.Context, id int64) { mgr.Put(ctx, keyUserID, id) }
+
+// SetIdentity menyimpan identitas login lengkap ke session sekaligus: id, email,
+// role (subject Casbin), isRoot (super-admin env), dan avatar. Disimpan saat login
+// agar handler/middleware/render tak perlu hit DB per-request untuk data ini.
+func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, avatarURL string) {
+	mgr.Put(ctx, keyUserID, id)
+	mgr.Put(ctx, keyEmail, email)
+	mgr.Put(ctx, keyRole, role)
+	mgr.Put(ctx, keyIsRoot, isRoot)
+	mgr.Put(ctx, keyAvatarURL, avatarURL)
+}
+
+// Email mengembalikan email user login (kosong bila belum login).
+func Email(ctx context.Context) string { return mgr.GetString(ctx, keyEmail) }
+
+// Role mengembalikan role user login (kosong bila belum login) — subject Casbin.
+func Role(ctx context.Context) string { return mgr.GetString(ctx, keyRole) }
+
+// IsRoot melaporkan apakah user login adalah super-admin env (root immutable).
+func IsRoot(ctx context.Context) bool { return mgr.GetBool(ctx, keyIsRoot) }
+
+// AvatarURL mengembalikan URL avatar (base, tanpa suffix ukuran); "" bila tak ada.
+func AvatarURL(ctx context.Context) string { return mgr.GetString(ctx, keyAvatarURL) }
 
 // Clear menghancurkan session (logout). RenewToken juga dipakai saat login
 // untuk mencegah session fixation.

@@ -22,4 +22,40 @@
   /* Referensi variabel runtime Basecoat (di-load lebih dulu di Layout) agar
      utility text-muted-foreground ter-generate & konsisten dengan komponen. */
   --color-muted-foreground: var(--muted-foreground);
+  /* Token sidebar Basecoat → utility bg-sidebar/text-sidebar-* untuk AppShell. */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+}
+
+/* Avatar: inisial (span) di lapisan bawah, <img> menimpa dengan posisi absolut.
+   Bila img gagal (onerror → remove), inisial otomatis terlihat. */
+@layer components {
+  .avatar-wrap {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    border-radius: 9999px;
+    overflow: hidden;
+  }
+  .avatar-initials {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.75rem;
+    line-height: 1;
+    user-select: none;
+  }
+  .avatar-img {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }

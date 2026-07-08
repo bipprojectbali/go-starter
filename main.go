@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"go_stater/internal/assets"
+	"go_stater/internal/authz"
 	"go_stater/internal/config"
 	"go_stater/internal/database"
 	"go_stater/internal/handler"
@@ -89,6 +90,14 @@ func run() error {
 	}
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
+	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)
+
+	// Authz (Casbin) — enforcer in-memory dari model+policy embed.
+	enforcer, err := authz.New(authz.Model, authz.Policy)
+	if err != nil {
+		return err
+	}
+	authz.Init(enforcer)
 
 	// Google OAuth — di-wire bila kredensial tersedia. Di dev tanpa kredensial,
 	// app tetap start (tombol Google membalas 503 saat diklik).

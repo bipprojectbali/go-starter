@@ -112,13 +112,24 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mulai session: putar token (anti-fixation) lalu tandai login.
-	if err := session.Renew(ctx); err != nil {
-		h.Log.Error("google callback: renew", "err", err)
+	// Ambil user (dgn role/status/avatar terkini) lalu mulai identitas.
+	user, err := h.DB.GetUser(ctx, userID)
+	if err != nil {
+		h.Log.Error("google callback: get user", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	session.SetUserID(ctx, userID)
+	if err := h.startIdentity(r, user); err != nil {
+		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
+			// Akun tak aktif — tolak, arahkan ke login dgn pesan.
+			session.ClearOAuthFlow(ctx)
+			http.Redirect(w, r, "/login?err=inactive", http.StatusSeeOther)
+			return
+		}
+		h.Log.Error("google callback: start identity", "err", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
 	if err := session.WriteCookie(ctx, w); err != nil {
 		h.Log.Error("google callback: write cookie", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -144,16 +155,23 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 	defer tx.Rollback(ctx) //nolint — no-op bila sudah Commit
 	q := h.DB.WithTx(tx)
 
-	// 1. Identitas Google sudah tertaut?
+	avatar := oauth.NormalizeAvatarURL(claims.Picture)
+
+	// 1. Identitas Google sudah tertaut? Refresh avatar (URL berubah saat ganti foto).
 	acc, err := q.GetOAuthAccount(ctx, db.GetOAuthAccountParams{Provider: provider, ProviderUid: claims.Sub})
 	switch {
 	case err == nil:
+		if avatar != nil {
+			if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: acc.UserID, AvatarUrl: avatar}); err != nil {
+				return 0, err
+			}
+		}
 		return acc.UserID, tx.Commit(ctx)
 	case !errors.Is(err, pgx.ErrNoRows):
 		return 0, err
 	}
 
-	// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link.
+	// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + avatar.
 	user, err := q.GetUserByEmail(ctx, claims.Email)
 	switch {
 	case err == nil:
@@ -162,13 +180,18 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		}); err != nil {
 			return 0, err
 		}
+		if avatar != nil {
+			if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: user.ID, AvatarUrl: avatar}); err != nil {
+				return 0, err
+			}
+		}
 		return user.ID, tx.Commit(ctx)
 	case !errors.Is(err, pgx.ErrNoRows):
 		return 0, err
 	}
 
 	// 3. User baru sepenuhnya dari Google.
-	newUser, err := q.CreateOAuthUser(ctx, claims.Email)
+	newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{Email: claims.Email, AvatarUrl: avatar})
 	if err != nil {
 		return 0, err
 	}

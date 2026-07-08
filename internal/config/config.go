@@ -23,6 +23,22 @@ type Config struct {
 	GoogleClientID     string // GOOGLE_CLIENT_ID
 	GoogleClientSecret string // GOOGLE_CLIENT_SECRET
 	GoogleRedirectURL  string // GOOGLE_REDIRECT_URL (exact-match Google Console)
+
+	// SuperAdminEmails = super-admin "sejati" (root immutable). Email di sini
+	// selalu super_admin & kebal demote/block/delete lewat app. SUPER_ADMIN_EMAILS
+	// dipisah koma. Disimpan lower-case untuk perbandingan case-insensitive.
+	SuperAdminEmails []string
+}
+
+// IsSuperAdminEmail melaporkan apakah email termasuk root super-admin dari env.
+func (c *Config) IsSuperAdminEmail(email string) bool {
+	e := strings.ToLower(strings.TrimSpace(email))
+	for _, s := range c.SuperAdminEmails {
+		if s == e {
+			return true
+		}
+	}
+	return false
 }
 
 // GoogleEnabled melaporkan apakah OAuth Google terkonfigurasi (kredensial ada).
@@ -45,6 +61,7 @@ func MustLoad() *Config {
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
+		SuperAdminEmails:   parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
 	}
 	if c.IsProduction() {
 		c.SessionKey = mustEnv("SESSION_KEY")
@@ -95,6 +112,19 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// parseEmailList memecah string comma-separated jadi slice email lower-case,
+// membuang entri kosong. Dipakai untuk SUPER_ADMIN_EMAILS.
+func parseEmailList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		e := strings.ToLower(strings.TrimSpace(part))
+		if e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func mustEnv(key string) string {

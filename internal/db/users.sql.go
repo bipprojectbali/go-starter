@@ -7,17 +7,24 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createOAuthUser = `-- name: CreateOAuthUser :one
-INSERT INTO users (email, email_verified)
-VALUES ($1, true)
-RETURNING id, email, pass_hash, created_at, email_verified
+INSERT INTO users (email, email_verified, avatar_url)
+VALUES ($1, true, $2)
+RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at
 `
 
-// User baru dari OAuth: tanpa password, email sudah diverifikasi provider.
-func (q *Queries) CreateOAuthUser(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRow(ctx, createOAuthUser, email)
+type CreateOAuthUserParams struct {
+	Email     string  `json:"email"`
+	AvatarUrl *string `json:"avatar_url"`
+}
+
+// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
+func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createOAuthUser, arg.Email, arg.AvatarUrl)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -25,6 +32,10 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, email string) (User, erro
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
+		&i.Role,
+		&i.Status,
+		&i.AvatarUrl,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -32,7 +43,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, email string) (User, erro
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, pass_hash)
 VALUES ($1, $2)
-RETURNING id, email, pass_hash, created_at, email_verified
+RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at
 `
 
 type CreateUserParams struct {
@@ -49,12 +60,16 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
+		&i.Role,
+		&i.Status,
+		&i.AvatarUrl,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, pass_hash, created_at, email_verified FROM users WHERE id = $1
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -66,14 +81,19 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
+		&i.Role,
+		&i.Status,
+		&i.AvatarUrl,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, pass_hash, created_at, email_verified FROM users WHERE email = $1
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users WHERE email = $1 AND deleted_at IS NULL
 `
 
+// Soft-delete gotcha: user terhapus tak boleh login.
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByEmail, email)
 	var i User
@@ -83,6 +103,107 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
+		&i.Role,
+		&i.Status,
+		&i.AvatarUrl,
+		&i.DeletedAt,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users
+WHERE deleted_at IS NULL
+  AND (created_at, id) < ($1::timestamptz, $2::bigint)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListUsersParams struct {
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        int64              `json:"cursor_id"`
+	PageSize        int32              `json:"page_size"`
+}
+
+// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []User{}
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.PassHash,
+			&i.CreatedAt,
+			&i.EmailVerified,
+			&i.Role,
+			&i.Status,
+			&i.AvatarUrl,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const softDeleteUser = `-- name: SoftDeleteUser :exec
+UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+`
+
+func (q *Queries) SoftDeleteUser(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, softDeleteUser, id)
+	return err
+}
+
+const updateUserAvatar = `-- name: UpdateUserAvatar :exec
+UPDATE users SET avatar_url = $2 WHERE id = $1
+`
+
+type UpdateUserAvatarParams struct {
+	ID        int64   `json:"id"`
+	AvatarUrl *string `json:"avatar_url"`
+}
+
+// URL avatar Google berubah saat user ganti foto → update tiap login.
+func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error {
+	_, err := q.db.Exec(ctx, updateUserAvatar, arg.ID, arg.AvatarUrl)
+	return err
+}
+
+const updateUserRole = `-- name: UpdateUserRole :exec
+UPDATE users SET role = $2 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type UpdateUserRoleParams struct {
+	ID   int64  `json:"id"`
+	Role string `json:"role"`
+}
+
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {
+	_, err := q.db.Exec(ctx, updateUserRole, arg.ID, arg.Role)
+	return err
+}
+
+const updateUserStatus = `-- name: UpdateUserStatus :exec
+UPDATE users SET status = $2 WHERE id = $1 AND deleted_at IS NULL
+`
+
+type UpdateUserStatusParams struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+}
+
+func (q *Queries) UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error {
+	_, err := q.db.Exec(ctx, updateUserStatus, arg.ID, arg.Status)
+	return err
 }

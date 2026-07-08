@@ -69,8 +69,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startSession(r, user.ID); err != nil {
-		h.Log.Error("register: start session", "err", err)
+	if err := h.startIdentity(r, user); err != nil {
+		h.Log.Error("register: start identity", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -127,8 +127,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startSession(r, user.ID); err != nil {
-		h.Log.Error("login: start session", "err", err)
+	if err := h.startIdentity(r, user); err != nil {
+		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
+			h.authError(w, r, "Akun tidak aktif. Hubungi administrator.")
+			return
+		}
+		h.Log.Error("login: start identity", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -159,11 +163,41 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-// startSession memutar token (anti fixation) lalu menandai user login.
-func (h *Handler) startSession(r *http.Request, userID int64) error {
+// errAccountBlocked & errAccountDisabled = status yang menolak login.
+var (
+	errAccountBlocked  = errors.New("akun diblokir")
+	errAccountDisabled = errors.New("akun dinonaktifkan")
+)
+
+// startIdentity memutar token session (anti fixation), lalu menyimpan identitas
+// lengkap: role EFEKTIF (env super-admin override kolom DB) + gate status.
+// Root env kebal gate status (owner tak bisa dikunci). Dipakai password login
+// & Google callback.
+func (h *Handler) startIdentity(r *http.Request, u db.User) error {
+	isRoot := isSuperAdminEmail(u.Email)
+
+	// Gate status — root lolos (tak bisa dikunci lewat status DB).
+	if !isRoot {
+		switch u.Status {
+		case "blocked":
+			return errAccountBlocked
+		case "disabled":
+			return errAccountDisabled
+		}
+	}
+
+	role := u.Role
+	if isRoot {
+		role = "super_admin" // env override apa pun nilai kolom DB
+	}
+
 	if err := session.Renew(r.Context()); err != nil {
 		return err
 	}
-	session.SetUserID(r.Context(), userID)
+	avatar := ""
+	if u.AvatarUrl != nil {
+		avatar = *u.AvatarUrl
+	}
+	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, avatar)
 	return nil
 }

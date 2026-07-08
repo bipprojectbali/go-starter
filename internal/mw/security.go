@@ -12,8 +12,9 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		// CSP: izinkan script/style dari origin sendiri (Datastar & CSS vendored,
 		// bukan CDN). 'unsafe-inline' untuk style karena Datastar men-inject sedikit.
+		// img-src izinkan googleusercontent untuk avatar Google (lh3–lh6).
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.googleusercontent.com")
 		next.ServeHTTP(w, r)
 	})
 }

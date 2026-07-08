@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/alexedwards/scs/v2 v2.9.0
+	github.com/casbin/casbin/v2 v2.135.0
 	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/eduardolat/gomponents-lucide v1.5.0
 	github.com/go-chi/chi/v5 v5.3.1
@@ -21,7 +22,10 @@ require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/CAFxX/httpcompression v0.0.9 // indirect
 	github.com/andybalholm/brotli v1.2.1 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.6.1 // indirect
+	github.com/casbin/govaluate v1.3.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

@@ -8,6 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AuditLog struct {
+	ID          int64              `json:"id"`
+	ActorUserID *int64             `json:"actor_user_id"`
+	Action      string             `json:"action"`
+	TargetType  string             `json:"target_type"`
+	TargetID    *int64             `json:"target_id"`
+	Metadata    []byte             `json:"metadata"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type OauthAccount struct {
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`
@@ -30,4 +40,8 @@ type User struct {
 	PassHash      *string            `json:"pass_hash"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	EmailVerified bool               `json:"email_verified"`
+	Role          string             `json:"role"`
+	Status        string             `json:"status"`
+	AvatarUrl     *string            `json:"avatar_url"`
+	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
 }

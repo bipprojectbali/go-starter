@@ -5,6 +5,17 @@ import (
 	h "maragu.dev/gomponents/html"
 )
 
+// When merender node hanya bila allowed; selainnya node kosong. Untuk render
+// kondisional berbasis izin (mis. tombol admin) — flag di-PRECOMPUTE di handler
+// (authz.Can), bukan dipanggil dari dalam fungsi gomponents. Ini kosmetik UI;
+// pertahanan sebenarnya tetap di middleware/service.
+func When(allowed bool, node g.Node) g.Node {
+	if allowed {
+		return node
+	}
+	return g.Text("")
+}
+
 // Variant adalah tipe typed untuk varian komponen — typo jadi compile error,
 // bukan string kosong senyap (§4.5).
 type Variant int

@@ -62,4 +62,15 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/todos", h.TodoCreate)
 		r.Delete("/todos/{id}", h.TodoDelete)
 	})
+
+	// Panel /dev — owner/developer. RequireAuth (authn) lalu RequireEnforce
+	// (authz Casbin: hanya super_admin/root lolos "dev:users").
+	r.Route("/dev", func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Use(mw.RequireEnforce("dev:users", "read"))
+		r.Get("/users", h.DevUsersList)
+		r.Post("/users/{id}/role", h.DevUserSetRole)
+		r.Post("/users/{id}/status", h.DevUserSetStatus)
+		r.Post("/users/{id}/delete", h.DevUserDelete)
+	})
 }

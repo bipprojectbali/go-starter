@@ -12,6 +12,7 @@ import (
 type LayoutData struct {
 	Title     string // judul <title>
 	UserEmail string // "" bila belum login (nav sembunyi)
+	AvatarURL string // URL avatar Google (base); "" → inisial
 	CSSPath   string // path app.css (dengan cache-bust hash)
 }
 
@@ -25,25 +26,28 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 	return c.HTML5(c.HTML5Props{
 		Title:    d.Title,
 		Language: "id",
-		Head: []g.Node{
-			// Favicon SVG (vendored, di-embed). Browser modern memakai ini;
-			// tak perlu .ico biner untuk single-binary.
-			h.Link(h.Rel("icon"), h.Type("image/svg+xml"), h.Href("/static/favicon.svg")),
-			h.Link(h.Rel("stylesheet"), h.Href("/static/basecoat.css")),
-			h.Link(h.Rel("stylesheet"), h.Href(cssPath)),
-			// Datastar runtime — vendored lokal, bukan CDN (§13).
-			h.Script(h.Src("/static/datastar.js"), h.Type("module"), h.Defer()),
-		},
+		Head:     headNodes(cssPath),
 		Body: []g.Node{
 			h.Class("min-h-screen bg-background text-foreground"),
-			nav(d.UserEmail),
+			nav(d.UserEmail, d.AvatarURL),
 			h.Main(h.Class("mx-auto max-w-2xl p-6"), g.Group(body)),
 		},
 	})
 }
 
-// nav menampilkan bar atas. Tombol logout muncul hanya bila user login.
-func nav(userEmail string) g.Node {
+// headNodes = isi <head> bersama (favicon, CSS, Datastar). Dipakai Layout &
+// AppShell agar tak duplikat (DRY).
+func headNodes(cssPath string) []g.Node {
+	return []g.Node{
+		h.Link(h.Rel("icon"), h.Type("image/svg+xml"), h.Href("/static/favicon.svg")),
+		h.Link(h.Rel("stylesheet"), h.Href("/static/basecoat.css")),
+		h.Link(h.Rel("stylesheet"), h.Href(cssPath)),
+		h.Script(h.Src("/static/datastar.js"), h.Type("module"), h.Defer()),
+	}
+}
+
+// nav menampilkan bar atas. Tombol logout + avatar muncul hanya bila user login.
+func nav(userEmail, avatarURL string) g.Node {
 	if userEmail == "" {
 		return g.Text("") // belum login (mis. halaman login) — tanpa nav
 	}
@@ -53,7 +57,8 @@ func nav(userEmail string) g.Node {
 			h.Class("mx-auto max-w-2xl p-4 flex items-center justify-between"),
 			h.A(h.Href("/todos"), h.Class("font-semibold"), g.Text("go_stater")),
 			h.Div(
-				h.Class("flex items-center gap-4"),
+				h.Class("flex items-center gap-3"),
+				Avatar(avatarURL, "", userEmail, 32),
 				h.Span(h.Class("text-sm"), g.Text(userEmail)),
 				h.Button(
 					h.Class("btn"),

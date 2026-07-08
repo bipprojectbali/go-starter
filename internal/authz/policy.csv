@@ -1,0 +1,15 @@
+# Hierarki role (RBAC1): child mewarisi izin parent.
+g, admin, user
+g, super_admin, admin
+g, super_admin, root
+
+# user: aplikasi umum.
+p, user, app:todos, *
+
+# admin: panel /admin (dibangun nanti — obj sudah dicadangkan).
+p, admin, admin:users, read
+p, admin, admin:users, create
+p, admin, admin:users:btn-delete, delete
+
+# /dev (dev:*): TANPA policy untuk role < super_admin. Hanya super_admin/root
+# lolos lewat cabang bypass `|| g(r.sub,"root")`. Panel developer = owner-only.

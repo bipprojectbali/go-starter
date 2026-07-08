@@ -183,7 +183,7 @@ func TestGoogleCallback_NonceForwarded(t *testing.T) {
 func TestLogin_GoogleOnlyAccountRejected(t *testing.T) {
 	env, _ := setupTest(t)
 	// User Google-only (tanpa pass_hash).
-	if _, err := env.h.DB.CreateOAuthUser(t.Context(), "googleonly@gmail.com"); err != nil {
+	if _, err := env.h.DB.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com"}); err != nil {
 		t.Fatalf("seed google user: %v", err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/login",

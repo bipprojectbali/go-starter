@@ -11,6 +11,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -25,6 +27,8 @@ type Claims struct {
 	Sub           string // OIDC subject — id user Google yang immutable (kunci tautan)
 	Email         string
 	EmailVerified bool
+	Picture       string // URL foto profil Google (claim "picture", scope profile)
+	Name          string // nama tampilan (claim "name")
 }
 
 // Verifier memverifikasi raw id_token dan mengembalikan claim tepercaya.
@@ -101,6 +105,8 @@ func (p *Provider) VerifyIDToken(ctx context.Context, rawIDToken, wantNonce stri
 	var claims struct {
 		Email         string `json:"email"`
 		EmailVerified bool   `json:"email_verified"`
+		Picture       string `json:"picture"` // boleh kosong walau scope diminta
+		Name          string `json:"name"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("oauth: baca claim: %w", err)
@@ -115,6 +121,8 @@ func (p *Provider) VerifyIDToken(ctx context.Context, rawIDToken, wantNonce stri
 		Sub:           idToken.Subject,
 		Email:         claims.Email,
 		EmailVerified: claims.EmailVerified,
+		Picture:       claims.Picture,
+		Name:          claims.Name,
 	}, nil
 }
 
@@ -129,3 +137,18 @@ func NewState() (string, error) {
 
 // NewVerifier menghasilkan PKCE code verifier (native x/oauth2).
 func NewVerifier() string { return oauth2.GenerateVerifier() }
+
+// avatarSizeRe mencocokkan suffix ukuran Google (mis. "=s96-c") agar bisa
+// dinormalisasi ke base — ukuran final ditentukan saat render (sizedAvatar).
+var avatarSizeRe = regexp.MustCompile(`=s\d+(-c)?$`)
+
+// NormalizeAvatarURL membersihkan suffix ukuran dari URL avatar Google dan
+// mengembalikan pointer (nil bila kosong) agar cocok kolom nullable sqlc.
+func NormalizeAvatarURL(raw string) *string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	base := avatarSizeRe.ReplaceAllString(raw, "")
+	return &base
+}
