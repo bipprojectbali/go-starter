@@ -25,6 +25,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - Graceful shutdown (drain 20s via `signal.NotifyContext`).
 
 ### Changed
+- AppShell: header dihilangkan — avatar/email/logout pindah ke footer sidebar. Sidebar bisa di-collapse jadi rail ikon (state persisten via `sidebar.js` + localStorage, tanpa dependency; label jadi tooltip saat rail). Tombol buka drawer mobile jadi floating hamburger.
 - Schema `users`: `pass_hash` kini **nullable** (user Google-only tak punya password) + kolom `email_verified`. Ripple: `User.PassHash` jadi `*string`; login password menolak akun tanpa hash dengan pesan generik.
 - Schema `users` += `role`, `status`, `avatar_url`, `deleted_at` (soft-delete). Query login (`GetUser`/`GetUserByEmail`) memfilter `deleted_at IS NULL`. Session menyimpan identitas (role/isRoot/email/avatar) saat login → `renderPage` tak lagi hit DB per render.
 

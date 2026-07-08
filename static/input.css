@@ -58,4 +58,43 @@
     height: 100%;
     object-fit: cover;
   }
+
+  /* AppShell sidebar — lebar & offset konten diatur di sini (bukan util Tailwind)
+     agar transisi collapse bekerja lewat satu atribut html[data-sidebar]. */
+  .app-sidebar {
+    width: 16rem; /* expanded */
+    transition: width 0.15s ease, transform 0.15s ease;
+  }
+  .app-content {
+    margin-left: 0;
+  }
+  @media (min-width: 768px) {
+    .app-content {
+      margin-left: 16rem; /* menyisakan ruang sidebar expanded */
+      transition: margin-left 0.15s ease;
+    }
+  }
+
+  /* Collapsed rail — hanya ikon. State di html[data-sidebar=collapsed]
+     (di-set sidebar.js sebelum paint, persisten via localStorage). */
+  html[data-sidebar="collapsed"] .app-sidebar {
+    width: 4rem;
+  }
+  @media (min-width: 768px) {
+    html[data-sidebar="collapsed"] .app-content {
+      margin-left: 4rem;
+    }
+  }
+  /* Sembunyikan label/brand/email saat rail; sisakan ikon terpusat. */
+  html[data-sidebar="collapsed"] .app-navlabel,
+  html[data-sidebar="collapsed"] .app-brand {
+    display: none;
+  }
+  html[data-sidebar="collapsed"] .app-navlink {
+    justify-content: center;
+  }
+  /* Tombol logout jadi kotak ikon saat rail. */
+  html[data-sidebar="collapsed"] .app-sidebar .btn {
+    padding-inline: 0;
+  }
 }
