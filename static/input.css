@@ -1,0 +1,15 @@
+/* input.css — SOURCE Tailwind v4. Generate: make css → static/app.css.
+   Basecoat (komponen) di-load terpisah via basecoat.css di Layout.
+   File ini hanya utility layout yang dipakai di kode gomponents (.go). */
+@import "tailwindcss";
+
+/* Scan class di file Go (gomponents). Tailwind v4 auto-detect menghormati
+   .gitignore; @source eksplisit memastikan file .go ikut dipindai. */
+@source "../internal";
+
+/* Token tema minimal — dipakai class bg-background/text-foreground di Layout.
+   Basecoat punya token sendiri; ini hanya untuk utility kustom di luar komponen. */
+@theme {
+  --color-background: #ffffff;
+  --color-foreground: #0a0a0a;
+}
