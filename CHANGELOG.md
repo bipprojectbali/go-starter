@@ -24,6 +24,9 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - Pipeline CSS no-Node: Tailwind v4 standalone CLI scan file `.go` → utility layer, plus Basecoat v1.0.2 vendored (checksum di `VENDOR.md`).
 - Graceful shutdown (drain 20s via `signal.NotifyContext`).
 
+### Added
+- Sidebar: pintasan cepat lintas-panel sesuai role (Developer → `/dev/users`, Admin → `/admin`), di-precompute dari izin Casbin, muncul di footer sidebar hanya bagi yang berhak.
+
 ### Changed
 - AppShell: header dihilangkan — avatar/email/logout pindah ke footer sidebar. Sidebar bisa di-collapse jadi rail ikon (state persisten via `sidebar.js` + localStorage, tanpa dependency; label jadi tooltip saat rail). Tombol buka drawer mobile jadi floating hamburger.
 - Schema `users`: `pass_hash` kini **nullable** (user Google-only tak punya password) + kolom `email_verified`. Ripple: `User.PassHash` jadi `*string`; login password menolak akun tanpa hash dengan pesan generik.

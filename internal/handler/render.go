@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"go_stater/internal/authz"
 	"go_stater/internal/session"
 	"go_stater/internal/ui"
 
@@ -64,6 +66,24 @@ var (
 	}
 )
 
+// quickLinksFor membangun pintasan lintas-panel sesuai IZIN user (Casbin,
+// di-precompute di sini — bukan dari dalam gomponents). Pintasan /dev menuju
+// /dev/users (route "/dev" telanjang tak ada). Hanya muncul untuk yang berhak.
+func quickLinksFor(ctx context.Context) []ui.NavItem {
+	var links []ui.NavItem
+	if authz.Can(ctx, "dev:users", "read") {
+		links = append(links, ui.NavItem{
+			Label: "Developer", Href: "/dev/users", Icon: lucide.Terminal(html.Class("size-4")),
+		})
+	}
+	if authz.Can(ctx, "admin:home", "read") {
+		links = append(links, ui.NavItem{
+			Label: "Admin", Href: "/admin", Icon: lucide.Shield(html.Class("size-4")),
+		})
+	}
+	return links
+}
+
 // renderShell mengirim halaman dengan AppShell (sidebar). brand = label brand
 // di sidebar, currentPath untuk active-state, nav = menu panel.
 func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, brand, currentPath string, nav []ui.NavItem, body g.Node) {
@@ -76,6 +96,7 @@ func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, bra
 		AvatarURL:   session.AvatarURL(r.Context()),
 		CSSPath:     cssPath,
 		Nav:         nav,
+		QuickLinks:  quickLinksFor(r.Context()),
 	}
 	if err := ui.AppShell(d, body).Render(w); err != nil {
 		h.Log.Error("render shell", "path", r.URL.Path, "err", err)

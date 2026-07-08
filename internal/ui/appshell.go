@@ -27,6 +27,7 @@ type ShellData struct {
 	AvatarURL   string
 	CSSPath     string
 	Nav         []NavItem
+	QuickLinks  []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
 }
 
 // AppShell membungkus konten dengan layout dashboard: sidebar (menu + brand +
@@ -111,8 +112,23 @@ func shellSidebar(d ShellData) g.Node {
 			g.Map(d.Nav, func(it NavItem) g.Node { return navLink(it, d.CurrentPath) }),
 		),
 
+		// Pintasan lintas-panel (sesuai role) — di atas blok user.
+		quickLinks(d),
+
 		// Footer user (bawah): avatar + email + logout.
 		sidebarUser(d),
+	)
+}
+
+// quickLinks merender pintasan lintas-panel (mis. ke /dev, /admin) sesuai role.
+// Kosong (nil) → tak render apa pun. Item aktif ditandai seperti navLink.
+func quickLinks(d ShellData) g.Node {
+	if len(d.QuickLinks) == 0 {
+		return g.Text("")
+	}
+	return h.Div(
+		h.Class("border-t border-sidebar-border px-3 py-2 flex flex-col gap-1"),
+		g.Map(d.QuickLinks, func(it NavItem) g.Node { return navLink(it, d.CurrentPath) }),
 	)
 }
 
