@@ -42,8 +42,8 @@ Spesifikasi starter template **`go_stater`** — web base super cepat, super rin
 | 2 | HTTP Server | `net/http` (stdlib) | `http.Server` dengan timeout eksplisit. HTTP/2 aktif di belakang Traefik (wajib untuk SSE Datastar) |
 | 3 | Router | Chi (`go-chi/chi/v5`) | v5.x, aktif. Dipakai untuk `r.Group`/`r.Use`/sub-router mount — celah nyata stdlib. Pure-Go, zero transitive deps, bisa dilepas |
 | 4 | Middleware | Chi middleware + custom | `func(http.Handler) http.Handler` standar |
-| 5 | View/HTML | gomponents (`maragu.dev/gomponents`) | **v1.0.0 (Apr 2026), API beku, zero-dep.** HTML sebagai fungsi Go — satu sumber kebenaran, no codegen, paling agent-friendly |
-| 6 | Interaktivitas + Realtime | **Datastar** (`data-star.dev`, vendored) | **v1.0.2, ~11.8 KiB.** Satu file gantikan HTMX+Alpine+SSE-ext. SDK Go bertipe (`starfederation/datastar-go`) + jembatan gomponents resmi (`maragu.dev/gomponents-datastar`) |
+| 5 | View/HTML | gomponents (`maragu.dev/gomponents`) | **v1.3.0** (terverifikasi spike), zero-dep. HTML sebagai fungsi Go — satu sumber kebenaran, no codegen, paling agent-friendly. ⚠ `g.Attr` panic bila >1 value; `g.If` eager (pakai `g.Iff` untuk lazy) |
+| 6 | Interaktivitas + Realtime | **Datastar** (`data-star.dev`, vendored) | **JS runtime v1.0.2 (~11.8 KiB) + Go SDK `starfederation/datastar-go` v1.2.2** (versioning TERPISAH, kompatibel di jalur API v1). Satu file gantikan HTMX+Alpine+SSE-ext. Jembatan gomponents resmi (`maragu.dev/gomponents-datastar` v0.3.3) |
 | 7 | Styling | Tailwind CSS v4 standalone CLI | **v4.3.2, binary musl** untuk distroless terverifikasi. Auto content-detection baca class di `.go`. Tanpa Node |
 | 8 | Design system | **Basecoat 1.0** (`basecoatui.com`, vendored CSS) | v1.0.1 kini **file CSS matang** (root-class API: `btn`, `card`, `field`). Vendor `basecoat.css`, tulis wrapper gomponents tipis. **Bukan** port manual 20 komponen |
 | 9 | Database | PostgreSQL + `pgx/v5` | Pool via `pgxpool`. **Default sejak awal** (dev = prod) |
@@ -61,7 +61,7 @@ Spesifikasi starter template **`go_stater`** — web base super cepat, super rin
 
 | # | Layer | Teknologi | Kapan dipakai |
 |---|-------|-----------|---------------|
-| A | Background job | **River** (`riverqueue/river`) | Job queue **Postgres-based** (bukan Redis). v1.x stabil, typed (generics), migration di-embed dalam paket. Worker sebagai goroutine di binary sama |
+| A | Background job | **River** (`riverqueue/river`) | Job queue **Postgres-based** (bukan Redis). **v0.40.0** (masih pra-v1, tapi API matang & typed generics), migration di-embed. ⚠ `rivermigrate.New` return `(*Migrator, error)`; `AddWorker` panic pada duplikat (pakai `AddWorkerSafely`) |
 | B | File storage | minio-go | MinIO existing. Upload: `MaxBytesReader` + streaming (jaga RAM), validasi content-type (§12) |
 | C | Passkey / WebAuthn | `go-webauthn/webauthn` | Login tanpa password. Butuh sedikit JS — dokumentasikan, jangan paksakan ke core |
 | D | Obfuscation | garble | `garble -tiny -literals build`. Verifikasi kompat Go 1.26 sebelum pakai |
@@ -245,6 +245,8 @@ DELETE FROM todos WHERE id = $1 AND user_id = $2;
 ```
 
 > **Kenapa keyset, bukan `LIMIT/OFFSET`?** OFFSET memindai lalu membuang N baris — makin dalam makin lambat, dan bisa lompat baris saat data berubah. Keyset (`WHERE (created_at, id) < (...)`) memakai indeks langsung, O(log n) konsisten. Ini pola rujukan agent — **jangan** contohkan OFFSET. Butuh indeks: `CREATE INDEX ON todos (user_id, created_at DESC, id DESC)`.
+>
+> ⚠️ **Gotcha sqlc (terverifikasi spike):** row-value comparison `(created_at, id) < ($2, $3)` membuat sqlc **salah infer** tipe `cursor_id` (mengikuti `created_at` → `pgtype.Timestamptz`, padahal `id` itu `bigint`). Wajib cast eksplisit: `< (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::bigint)`. Cast memaksa `cursor_id` jadi `int64`. Halaman pertama: cursor = `(pgtype.Timestamptz{InfinityModifier: pgtype.Infinity}, math.MaxInt64)`.
 
 Setelah edit file `.sql` apa pun → **wajib** `make check` (yang menjalankan `sqlc generate`).
 
