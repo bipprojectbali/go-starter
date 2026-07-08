@@ -34,8 +34,8 @@ func TodoList(todos []db.Todo) g.Node {
 					g.Text("Tambah"),
 				),
 			),
-			// Slot alert error — di-patch server saat validasi gagal (butuh id).
-			ui.Alert(ui.VariantDestructive, "todo-error"),
+			// Slot alert error kosong — di-patch jadi Alert berisi saat validasi gagal.
+			ui.AlertSlot("todo-error"),
 		),
 
 		// Daftar todo. id "todo-list" jadi target patch untuk item baru.

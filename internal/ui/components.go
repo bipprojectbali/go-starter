@@ -36,9 +36,15 @@ func Button(variant Variant, attrs []g.Node, children ...g.Node) g.Node {
 	return h.Button(append(base, append(attrs, g.Group(children))...)...)
 }
 
-// Card membungkus konten dalam kartu Basecoat.
+// Card membungkus konten dalam kartu Basecoat. Basecoat memberi padding
+// horizontal & spacing lewat `.card > section` (bukan langsung ke `.card`),
+// jadi isi WAJIB dibungkus <section> — kalau anak ditaruh langsung di .card,
+// konten mepet dan tiap anak kena gap 24px kartu (spacing dobel).
 func Card(children ...g.Node) g.Node {
-	return h.Div(append([]g.Node{h.Class("card")}, children...)...)
+	return h.Div(
+		h.Class("card"),
+		h.Section(children...),
+	)
 }
 
 // Input adalah field teks Basecoat. attrs untuk data-bind, placeholder, dll.
@@ -51,9 +57,17 @@ func Label(text string, attrs ...g.Node) g.Node {
 	return h.Label(append([]g.Node{h.Class("label")}, append(attrs, g.Text(text))...)...)
 }
 
+// AlertSlot merender wadah error KOSONG (tanpa class .alert) sebagai target
+// patch Datastar. Penting: `.alert` Basecoat selalu punya border 1px, jadi
+// merender .alert saat kosong menghasilkan kotak border hantu. Slot ini hanya
+// <div id> kosong; isi diganti Alert() lengkap saat server mem-patch error.
+func AlertSlot(id string) g.Node {
+	return h.Div(h.ID(id))
+}
+
 // Alert menampilkan pesan (mis. error validasi). Basecoat: class "alert" +
-// data-variant="destructive". Punya id agar bisa di-patch via Datastar (mode
-// default outer butuh id).
+// data-variant="destructive". Punya id (sama dengan slot) agar patch outer
+// menggantikan slot kosong dengan alert berisi.
 func Alert(variant Variant, id string, children ...g.Node) g.Node {
 	attrs := []g.Node{h.ID(id), h.Class("alert"), h.Role("alert")}
 	if variant == VariantDestructive {

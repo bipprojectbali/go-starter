@@ -1,7 +1,14 @@
 /* input.css — SOURCE Tailwind v4. Generate: make css → static/app.css.
    Basecoat (komponen) di-load terpisah via basecoat.css di Layout.
-   File ini hanya utility layout yang dipakai di kode gomponents (.go). */
-@import "tailwindcss";
+   File ini hanya utility layout yang dipakai di kode gomponents (.go).
+
+   PENTING: impor theme+utilities SAJA, TANPA preflight. basecoat.css sudah
+   membawa preflight Tailwind-nya sendiri; kalau app.css ikut menyertakan
+   preflight (`@import "tailwindcss"` penuh), ia di-load belakangan dan
+   ME-RESET border/input/spacing komponen Basecoat (layout berantakan).
+   Satu preflight saja = milik basecoat.css. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
 
 /* Scan class di file Go (gomponents). Tailwind v4 auto-detect menghormati
    .gitignore; @source eksplisit memastikan file .go ikut dipindai. */

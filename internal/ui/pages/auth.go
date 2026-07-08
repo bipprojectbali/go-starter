@@ -24,8 +24,10 @@ func authForm(title, action, switchText, switchHref, switchLabel string) g.Node 
 		data.Signals(map[string]any{"email": "", "password": ""}),
 		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text(title)),
 		ui.Card(
+			// Grup field: Basecoat .card>section sudah beri gap antar anak,
+			// jadi tiap field cukup grup label+input (grid gap-2 = jarak rapat).
 			h.Div(
-				h.Class("mb-4"),
+				h.Class("grid gap-2"),
 				ui.Label("Email", h.For("email")),
 				ui.Input(
 					h.ID("email"),
@@ -35,7 +37,7 @@ func authForm(title, action, switchText, switchHref, switchLabel string) g.Node 
 				),
 			),
 			h.Div(
-				h.Class("mb-4"),
+				h.Class("grid gap-2"),
 				ui.Label("Password", h.For("password")),
 				ui.Input(
 					h.ID("password"),
@@ -49,8 +51,8 @@ func authForm(title, action, switchText, switchHref, switchLabel string) g.Node 
 				[]g.Node{data.On("click", "@post('"+action+"')")},
 				g.Text(title),
 			),
-			// Slot error — di-patch server saat auth gagal (butuh id, mode outer).
-			ui.Alert(ui.VariantDestructive, "auth-error"),
+			// Slot error kosong — di-patch jadi Alert berisi saat auth gagal.
+			ui.AlertSlot("auth-error"),
 		),
 		h.P(
 			h.Class("mt-4"),
