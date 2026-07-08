@@ -30,7 +30,7 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	// Aktor untuk menentukan kontrol mana yang boleh dirender (precompute).
 	actorRole := authz.ParseRole(session.Role(r.Context()))
 	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
-	h.renderShell(w, r, "Users", "/dev/users",
+	h.renderShell(w, r, "Users", "go_stater /dev", "/dev/users", devNav,
 		dev.UsersPage(toUserRows(users), canManageSuper))
 }
 

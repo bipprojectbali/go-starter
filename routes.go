@@ -73,4 +73,18 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/users/{id}/status", h.DevUserSetStatus)
 		r.Post("/users/{id}/delete", h.DevUserDelete)
 	})
+
+	// Panel /admin — admin+ (super_admin mewarisi). Konten menyusul.
+	r.Route("/admin", func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Use(mw.RequireEnforce("admin:home", "read"))
+		r.Get("/", h.AdminHome)
+	})
+
+	// Beranda /user — semua user login (admin/super mewarisi user:home).
+	r.Route("/user", func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Use(mw.RequireEnforce("user:home", "read"))
+		r.Get("/", h.UserHome)
+	})
 }

@@ -3,10 +3,12 @@ g, admin, user
 g, super_admin, admin
 g, super_admin, root
 
-# user: aplikasi umum.
+# user: aplikasi umum + beranda /user.
 p, user, app:todos, *
+p, user, user:home, read
 
-# admin: panel /admin (dibangun nanti — obj sudah dicadangkan).
+# admin: beranda /admin + panel users (admin mewarisi user:home lewat hierarki).
+p, admin, admin:home, read
 p, admin, admin:users, read
 p, admin, admin:users, create
 p, admin, admin:users:btn-delete, delete

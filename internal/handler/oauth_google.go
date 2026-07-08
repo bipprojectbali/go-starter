@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"go_stater/internal/authz"
 	"go_stater/internal/db"
 	"go_stater/internal/oauth"
 	"go_stater/internal/session"
@@ -135,7 +136,7 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/todos", http.StatusSeeOther)
+	http.Redirect(w, r, authz.HomePathFor(session.Role(ctx)), http.StatusSeeOther)
 }
 
 // findOrLinkGoogleUser memetakan claim Google ke user lokal dalam SATU transaksi:

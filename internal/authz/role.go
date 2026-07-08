@@ -45,3 +45,22 @@ func (r Role) String() string {
 func ValidRoleName(s string) bool {
 	return s == RoleNameUser || s == RoleNameAdmin || s == RoleNameSuperAdmin
 }
+
+// HomePath mengembalikan halaman "rumah" untuk sebuah role — tujuan redirect
+// setelah login & pengalihan landing. Sumber TUNGGAL agar tak ada literal
+// redirect tersebar. super_admin → /dev, admin → /admin, user → /user.
+func HomePath(role Role) string {
+	switch role {
+	case RoleSuperAdmin:
+		return "/dev"
+	case RoleAdmin:
+		return "/admin"
+	default:
+		return "/user"
+	}
+}
+
+// HomePathFor memetakan nama role string (dari session) ke home path.
+func HomePathFor(roleName string) string {
+	return HomePath(ParseRole(roleName))
+}

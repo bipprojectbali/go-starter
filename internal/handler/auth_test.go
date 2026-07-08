@@ -21,9 +21,9 @@ func TestRegister_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	// Sukses → redirect ke /todos via Datastar.
-	if !strings.Contains(rec.Body.String(), "/todos") {
-		t.Errorf("register sukses harus redirect ke /todos:\n%s", rec.Body.String())
+	// Sukses → redirect ke home per-role (user baru → /user) via Datastar.
+	if !strings.Contains(rec.Body.String(), "/user") {
+		t.Errorf("register sukses harus redirect ke /user:\n%s", rec.Body.String())
 	}
 	// REGRESI: cookie WAJIB terkirim meski response via SSE (bug scs+NewSSE).
 	// Tanpa assert ini, bug "session tak login" lolos test.
@@ -81,8 +81,8 @@ func TestLogin_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "/todos") {
-		t.Errorf("login sukses harus redirect ke /todos:\n%s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "/user") {
+		t.Errorf("login sukses harus redirect ke /user (home role):\n%s", rec.Body.String())
 	}
 	if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "session=") {
 		t.Errorf("Set-Cookie session harus ada di response login, got %q", c)

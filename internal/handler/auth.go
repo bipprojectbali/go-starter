@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go_stater/internal/auth"
+	"go_stater/internal/authz"
 	"go_stater/internal/db"
 	"go_stater/internal/session"
 	"go_stater/internal/ui"
@@ -81,7 +82,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sse := datastar.NewSSE(w, r)
-	_ = sse.Redirect("/todos")
+	_ = sse.Redirect(authz.HomePathFor(session.Role(r.Context())))
 }
 
 // Login — POST /login. Verifikasi argon2id, mulai session.
@@ -142,7 +143,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sse := datastar.NewSSE(w, r)
-	_ = sse.Redirect("/todos")
+	_ = sse.Redirect(authz.HomePathFor(session.Role(r.Context())))
 }
 
 // Logout — POST /logout. Hancurkan session.

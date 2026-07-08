@@ -31,22 +31,18 @@ func TestHome_Anonymous(t *testing.T) {
 	}
 }
 
-// TestHome_LoggedIn: user login melihat CTA menuju aplikasi (/todos), bukan
-// tombol daftar.
+// TestHome_LoggedIn: user yang SUDAH login tak melihat landing — diarahkan ke
+// home per-role (di sini role default → /user).
 func TestHome_LoggedIn(t *testing.T) {
 	env, uid := setupTest(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := env.doAuthed(uid, req, env.h.Home)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("landing login harus 200, got %d", rec.Code)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("user login di / harus redirect 303, got %d", rec.Code)
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, `href="/todos"`) {
-		t.Errorf("landing user login harus tampil link ke /todos:\n%s", body)
-	}
-	if strings.Contains(body, `href="/register"`) {
-		t.Errorf("landing user login tidak perlu tombol daftar:\n%s", body)
+	if loc := rec.Header().Get("Location"); loc != "/user" {
+		t.Errorf("role default harus ke /user, got %q", loc)
 	}
 }

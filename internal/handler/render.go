@@ -50,22 +50,32 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 	}
 }
 
-// devNav = menu sidebar panel /dev.
-var devNav = []ui.NavItem{
-	{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
-}
+// Menu sidebar per panel.
+var (
+	devNav = []ui.NavItem{
+		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
+	}
+	adminNav = []ui.NavItem{
+		{Label: "Dashboard", Href: "/admin", Icon: lucide.LayoutDashboard(html.Class("size-4"))},
+	}
+	userNav = []ui.NavItem{
+		{Label: "Beranda", Href: "/user", Icon: lucide.House(html.Class("size-4"))},
+		{Label: "Todos", Href: "/todos", Icon: lucide.ListChecks(html.Class("size-4"))},
+	}
+)
 
-// renderShell mengirim halaman dengan AppShell (sidebar) untuk panel /dev.
-func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, currentPath string, body g.Node) {
+// renderShell mengirim halaman dengan AppShell (sidebar). brand = label brand
+// di sidebar, currentPath untuk active-state, nav = menu panel.
+func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, brand, currentPath string, nav []ui.NavItem, body g.Node) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	d := ui.ShellData{
 		Title:       title,
-		BrandLabel:  "go_stater /dev",
+		BrandLabel:  brand,
 		CurrentPath: currentPath,
 		UserEmail:   session.Email(r.Context()),
 		AvatarURL:   session.AvatarURL(r.Context()),
 		CSSPath:     cssPath,
-		Nav:         devNav,
+		Nav:         nav,
 	}
 	if err := ui.AppShell(d, body).Render(w); err != nil {
 		h.Log.Error("render shell", "path", r.URL.Path, "err", err)

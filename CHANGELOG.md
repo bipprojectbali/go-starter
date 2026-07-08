@@ -5,6 +5,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 ## [Unreleased]
 
 ### Added
+- **Redirect per-role + panel `/admin` & `/user`:** setelah login user diarahkan ke home sesuai role (super_admin→`/dev`, admin→`/admin`, user→`/user`) via `authz.HomePathFor` (sumber tunggal). Landing `/` mengalihkan user yang sudah login ke home mereka. `/admin` & `/user` = AppShell stub, terproteksi Casbin (`admin:home`, `user:home`).
 - **RBAC (Casbin) + panel `/dev`:** role hierarkis `user < admin < super_admin` via Casbin (subject=role, policy embed in-memory). Super-admin "sejati" dari `SUPER_ADMIN_EMAILS` (root immutable, kebal demote/block/delete). Panel `/dev/users`: kelola role, status (active/disabled/blocked), soft-delete — semua di-guard di service layer + audit trail (`audit_logs`). Enforcement 3 lapis: route (`RequireEnforce`) + UI (`When`) + service (`Guard*`). Keputusan arsitektur di `docs/decisions/0001`.
 - **Avatar Google:** claim `picture` disimpan (`users.avatar_url`, di-refresh tiap login), tampil di nav + panel dengan fallback inisial lokal (`referrerpolicy=no-referrer`, CSP `img-src` +googleusercontent).
 - **AppShell** (`/dev`): layout sidebar + header responsif (drawer mobile via Datastar signal), navigasi full-page, active-link server-side.
