@@ -26,6 +26,9 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 		Title:    d.Title,
 		Language: "id",
 		Head: []g.Node{
+			// Favicon SVG (vendored, di-embed). Browser modern memakai ini;
+			// tak perlu .ico biner untuk single-binary.
+			h.Link(h.Rel("icon"), h.Type("image/svg+xml"), h.Href("/static/favicon.svg")),
 			h.Link(h.Rel("stylesheet"), h.Href("/static/basecoat.css")),
 			h.Link(h.Rel("stylesheet"), h.Href(cssPath)),
 			// Datastar runtime — vendored lokal, bukan CDN (§13).

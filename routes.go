@@ -26,6 +26,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Static (embedded, tanpa auth)
 	r.Handle("/static/*", staticFS)
 
+	// Browser tetap auto-minta /favicon.ico di root (bookmark, tab lama) walau
+	// <head> menunjuk favicon.svg — redirect permanen agar tak jadi 404 di log.
+	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
+	})
+
 	// Publik: landing page (TIDAK redirect ke /login) + halaman & aksi auth
 	r.Get("/", h.Home)
 	r.Get("/login", h.LoginPage)
