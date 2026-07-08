@@ -36,14 +36,15 @@ func Button(variant Variant, attrs []g.Node, children ...g.Node) g.Node {
 	return h.Button(append(base, append(attrs, g.Group(children))...)...)
 }
 
-// Card membungkus konten dalam kartu Basecoat. Basecoat memberi padding
-// horizontal & spacing lewat `.card > section` (bukan langsung ke `.card`),
-// jadi isi WAJIB dibungkus <section> — kalau anak ditaruh langsung di .card,
-// konten mepet dan tiap anak kena gap 24px kartu (spacing dobel).
+// Card membungkus konten dalam kartu Basecoat. `.card` memberi gap 24px hanya
+// antar ANAK LANGSUNGnya; padding horizontal datang dari `.card > section`.
+// Karena semua isi dibungkus SATU <section>, gap `.card` tak berlaku (cuma 1
+// anak) — jadi <section> sendiri harus jadi grid ber-gap agar field/tombol di
+// dalamnya tidak menempel. gap-6 (24px) menyamai spacing kartu Basecoat.
 func Card(children ...g.Node) g.Node {
 	return h.Div(
 		h.Class("card"),
-		h.Section(children...),
+		h.Section(append([]g.Node{h.Class("grid gap-6")}, children...)...),
 	)
 }
 
