@@ -106,6 +106,11 @@ func quickLinksFor(ctx context.Context) []ui.NavItem {
 			Label: "Admin", Href: "/admin", Icon: lucide.Shield(html.Class("size-4")),
 		})
 	}
+	if authz.Can(ctx, "user:home", "read") {
+		links = append(links, ui.NavItem{
+			Label: "User", Href: "/user", Icon: lucide.House(html.Class("size-4")),
+		})
+	}
 	return links
 }
 

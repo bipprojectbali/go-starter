@@ -35,9 +35,9 @@ func TestQuickLinksFor(t *testing.T) {
 		role      string
 		wantHrefs []string
 	}{
-		{"user", nil},                 // user biasa: tak ada pintasan
-		{"admin", []string{"/admin"}}, // admin: hanya Admin
-		{"super_admin", []string{"/dev/users", "/admin"}}, // super: keduanya, /dev/users (bukan /dev)
+		{"user", []string{"/user"}},                                // user biasa: hanya beranda User
+		{"admin", []string{"/admin", "/user"}},                     // admin: Admin + User (mewarisi user:home)
+		{"super_admin", []string{"/dev/users", "/admin", "/user"}}, // super: ketiganya, /dev/users (bukan /dev)
 	}
 	for _, c := range cases {
 		links := quickLinksFor(ctxWithRole(t, c.role))
