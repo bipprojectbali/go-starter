@@ -2,6 +2,7 @@ package ui
 
 import (
 	g "maragu.dev/gomponents"
+	data "maragu.dev/gomponents-datastar"
 	h "maragu.dev/gomponents/html"
 )
 
@@ -14,6 +15,55 @@ func When(allowed bool, node g.Node) g.Node {
 		return node
 	}
 	return g.Text("")
+}
+
+// ConfirmModal = dialog konfirmasi reusable via Datastar signal. Tampil saat
+// signal $<sig> true. Tombol "Ya" menjalankan confirmAction (ekspresi Datastar,
+// mis. "@post('/logout')") lalu menutup; "Batal"/backdrop menutup.
+//
+// Pasangkan dengan tombol pemicu yang men-set signal true (lihat ConfirmTrigger).
+// signal harus unik per halaman. Sertakan modal ini SEKALI di halaman.
+func ConfirmModal(sig, title, message, confirmLabel, confirmAction string) g.Node {
+	openExpr := "$" + sig
+	return h.Div(
+		// Overlay + backdrop. Inline display:none agar tak FOUC sebelum Datastar.
+		h.Class("fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"),
+		g.Attr("style", "display:none"),
+		data.Show(openExpr),
+		data.On("click", openExpr+" = false"), // klik backdrop → tutup
+		// Kartu dialog. stop-propagation agar klik di dalam tak menutup.
+		h.Div(
+			h.Class("card w-full max-w-sm"),
+			data.On("click", "evt.stopPropagation()"),
+			h.Section(
+				h.Class("flex flex-col gap-4"),
+				h.H2(h.Class("text-lg font-semibold"), g.Text(title)),
+				h.P(h.Class("text-sm text-muted-foreground"), g.Text(message)),
+				h.Div(
+					h.Class("flex justify-end gap-2"),
+					h.Button(
+						h.Type("button"), h.Class("btn"),
+						g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+						data.On("click", openExpr+" = false"),
+						g.Text("Batal"),
+					),
+					h.Button(
+						h.Type("button"), h.Class("btn"),
+						g.Attr("data-variant", "destructive"), g.Attr("data-size", "sm"),
+						// Jalankan aksi lalu tutup.
+						data.On("click", confirmAction+"; "+openExpr+" = false"),
+						g.Text(confirmLabel),
+					),
+				),
+			),
+		),
+	)
+}
+
+// ConfirmTrigger membungkus atribut untuk tombol yang MEMBUKA ConfirmModal:
+// klik → set signal true. Sisipkan hasilnya sebagai atribut tombol.
+func ConfirmTrigger(sig string) g.Node {
+	return data.On("click", "$"+sig+" = true")
 }
 
 // Variant adalah tipe typed untuk varian komponen — typo jadi compile error,

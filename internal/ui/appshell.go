@@ -50,7 +50,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 		Head:     head,
 		Body: []g.Node{
 			h.Class("min-h-screen bg-background text-foreground"),
-			data.Signals(map[string]any{"sidebarOpen": false}),
+			data.Signals(map[string]any{"sidebarOpen": false, "logoutConfirm": false}),
 
 			// Backdrop mobile — inline display:none agar tak FOUC sebelum Datastar aktif.
 			h.Div(
@@ -79,6 +79,10 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 				h.Class("app-content flex min-h-screen flex-col"),
 				h.Main(h.Class("flex-1 p-6"), g.Group(content)),
 			),
+
+			// Modal konfirmasi logout (dipicu tombol Keluar).
+			ConfirmModal("logoutConfirm", "Keluar?",
+				"Anda akan keluar dari sesi ini.", "Keluar", "@post('/logout')"),
 		},
 	})
 }
@@ -166,7 +170,7 @@ func sidebarUser(d ShellData) g.Node {
 			g.Attr("data-variant", "outline"),
 			g.Attr("data-size", "sm"),
 			g.Attr("title", "Keluar"),
-			data.On("click", "@post('/logout')"),
+			ConfirmTrigger("logoutConfirm"), // buka modal, bukan langsung logout
 			lucide.LogOut(h.Class("size-4")),
 			h.Span(h.Class("app-navlabel"), g.Text("Keluar")),
 		),

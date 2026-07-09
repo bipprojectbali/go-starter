@@ -31,6 +31,8 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 			h.Class("min-h-screen bg-background text-foreground"),
 			nav(d.UserEmail, d.AvatarURL),
 			h.Main(h.Class("mx-auto max-w-2xl p-6"), g.Group(body)),
+			// Modal konfirmasi logout — hanya relevan bila ada nav (user login).
+			logoutModal(d.UserEmail),
 		},
 	})
 }
@@ -53,6 +55,7 @@ func nav(userEmail, avatarURL string) g.Node {
 	}
 	return h.Header(
 		h.Class("border-b"),
+		data.Signals(map[string]any{"logoutConfirm": false}),
 		h.Div(
 			h.Class("mx-auto max-w-2xl p-4 flex items-center justify-between"),
 			h.A(h.Href("/todos"), h.Class("font-semibold"), g.Text("go_stater")),
@@ -64,10 +67,19 @@ func nav(userEmail, avatarURL string) g.Node {
 					h.Class("btn"),
 					g.Attr("data-variant", "outline"),
 					g.Attr("data-size", "sm"),
-					data.On("click", "@post('/logout')"),
+					ConfirmTrigger("logoutConfirm"), // buka modal, bukan langsung logout
 					g.Text("Keluar"),
 				),
 			),
 		),
 	)
+}
+
+// logoutModal merender modal konfirmasi logout untuk Layout; kosong bila anonim.
+func logoutModal(userEmail string) g.Node {
+	if userEmail == "" {
+		return g.Text("")
+	}
+	return ConfirmModal("logoutConfirm", "Keluar?",
+		"Anda akan keluar dari sesi ini.", "Keluar", "@post('/logout')")
 }
