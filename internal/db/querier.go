@@ -14,12 +14,8 @@ type Querier interface {
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
 	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
-	CreateTodo(ctx context.Context, arg CreateTodoParams) (Todo, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	// Authz ownership: filter user_id, bukan cuma id.
-	DeleteTodo(ctx context.Context, arg DeleteTodoParams) error
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
-	GetTodo(ctx context.Context, arg GetTodoParams) (Todo, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	// Soft-delete gotcha: user terhapus tak boleh login.
 	GetUserByEmail(ctx context.Context, email string) (User, error)
@@ -27,12 +23,6 @@ type Querier interface {
 	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
 	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
-	// Keyset pagination. Halaman pertama: kirim cursor (created_at, id) = nilai maksimum
-	// ('infinity'::timestamptz, maxint) agar seluruh baris memenuhi syarat.
-	// Halaman berikutnya: kirim (created_at, id) baris TERAKHIR yang tampil.
-	// Cast eksplisit ::bigint pada cursor_id: tanpa ini sqlc salah infer tipe cursor_id
-	// (mengikuti created_at) dari row-value comparison. Cast memaksa int64.
-	ListTodos(ctx context.Context, arg ListTodosParams) ([]Todo, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	// Tren per HARI-LOKAL untuk rentang mingguan/bulanan (line chart).

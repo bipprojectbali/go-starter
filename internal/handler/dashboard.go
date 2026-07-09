@@ -17,5 +17,5 @@ func (h *Handler) AdminHome(w http.ResponseWriter, r *http.Request) {
 // RequireEnforce("user:home","read") di routes.
 func (h *Handler) UserHome(w http.ResponseWriter, r *http.Request) {
 	h.renderShell(w, r, "Beranda", "go_stater", "/user", userNav,
-		panel.Placeholder("Beranda", "Selamat datang. Buka Todos dari menu untuk mulai."))
+		panel.Placeholder("Beranda", "Selamat datang di go_stater."))
 }

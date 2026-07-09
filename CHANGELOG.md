@@ -4,6 +4,9 @@ Semua perubahan penting pada go_stater dicatat di sini.
 
 ## [Unreleased]
 
+### Removed
+- **Fitur Todos dihapus total:** route (`/todos`, POST/DELETE), handler (`todo.go`), view (`ui/pages/todo.go`), query (`queries/todos.sql`), dan tabel DB (`todos`, via migrasi `00006_drop_todos.sql`) — fitur contoh starter dari fase spike yang tak lagi dipakai. Policy Casbin `app:todos` dihapus. Beranda `/user` kini placeholder bersih (tanpa menu/teks Todos); brand `go_stater` menuju landing `/`. Helper `firstPageCursor` direlokasi ke `dev_users.go` (satu-satunya pemakai keyset pagination tersisa).
+
 ### Added
 - **Panel User Activity (`/dev/logs`):** dashboard pemantauan aktivitas user dengan filter **harian/mingguan/bulanan**. Menjawab "user aktif jam berapa s/d jam berapa" via **presence tracking**: middleware `TrackPresence` merekam jejak tiap request terautentikasi ke tabel `activity_presence` (bucket 15-menit, UPSERT `hits+1` — agregasi di level baris, BUKAN insert-per-request) + throttle in-process 60 dtk/user. Fail-soft (error rekam tak menggagalkan request user). Dashboard: KPI stat cards (user aktif, total aktivitas, jam tersibuk), bar chart aktivitas per-jam (harian) / line chart tren (mingguan-bulanan), tabel rentang aktivitas user, tabel event login/logout. Grafik pakai **ECharts vendored** (`static/echarts.min.js` 6.1.0) + init eksternal (`static/charts.js`) — option chart dirakit di Go, ditanam via `<script type="application/json">` (CSP-safe, TIDAK dieksekusi). Tersedia di produksi (super_admin). Timezone agregasi via `APP_TIMEZONE` (default `Asia/Jakarta`).
 - **Event autentikasi di audit trail:** login (`auth.login` + metode password/google) & logout (`auth.logout`) kini tercatat di `audit_logs` (actor=user, target_type=`session`) — tampil di tabel panel aktivitas.

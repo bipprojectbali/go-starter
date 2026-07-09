@@ -26,8 +26,9 @@ func TestHome_Anonymous(t *testing.T) {
 	if !strings.Contains(body, `href="/login"`) {
 		t.Errorf("landing anonim harus tampil CTA Masuk (/login):\n%s", body)
 	}
-	if strings.Contains(body, `href="/todos"`) {
-		t.Errorf("landing anonim tidak boleh tampil link /todos:\n%s", body)
+	// Landing anonim tak boleh bocorkan link ke rute app terproteksi.
+	if strings.Contains(body, `href="/user"`) || strings.Contains(body, `href="/dev"`) {
+		t.Errorf("landing anonim tidak boleh tampil link ke rute app:\n%s", body)
 	}
 }
 

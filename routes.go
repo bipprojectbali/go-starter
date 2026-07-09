@@ -61,16 +61,6 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// RequireAuth (authn) → RefreshIdentity (role/status SEGAR dari DB, self-heal
 	// session lama + enforcement real-time) → RequireEnforce (authz per resource).
 
-	// Protected: butuh session user
-	r.Group(func(r chi.Router) {
-		r.Use(mw.RequireAuth)
-		r.Use(h.RefreshIdentity)
-		r.Use(h.TrackPresence)
-		r.Get("/todos", h.TodoList)
-		r.Post("/todos", h.TodoCreate)
-		r.Delete("/todos/{id}", h.TodoDelete)
-	})
-
 	// Panel /dev — owner/developer. Hanya super_admin/root lolos "dev:users".
 	r.Route("/dev", func(r chi.Router) {
 		r.Use(mw.RequireAuth)

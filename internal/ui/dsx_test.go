@@ -41,7 +41,7 @@ func TestPostAction_DeleteAction(t *testing.T) {
 	if got := PostAction("/logout"); got != "@post('/logout')" {
 		t.Errorf("PostAction salah: %q", got)
 	}
-	if got := DeleteAction("/todos/42"); got != "@delete('/todos/42')" {
+	if got := DeleteAction("/items/42"); got != "@delete('/items/42')" {
 		t.Errorf("DeleteAction salah: %q", got)
 	}
 }

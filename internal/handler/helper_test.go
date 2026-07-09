@@ -44,7 +44,7 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	q := db.New(pool)
 	// audit_logs (actor SET NULL) & activity_presence (FK CASCADE dari users, tapi
 	// eksplisit agar isolasi test pasti) ikut dibersihkan.
-	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, todos, users RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: "test@local", PassHash: ptr("x")})

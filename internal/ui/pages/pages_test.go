@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"go_stater/internal/db"
-
 	g "maragu.dev/gomponents"
 )
 
@@ -42,45 +40,6 @@ func TestRegister(t *testing.T) {
 	for _, want := range []string{"@post(&#39;/register&#39;)", `type="password"`, "/login"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("register kurang %q:\n%s", want, out)
-		}
-	}
-}
-
-func TestTodoList_EscapesHTML(t *testing.T) {
-	// XSS guard: judul jahat harus di-escape (gomponents auto-escape).
-	out := render(t, TodoList([]db.Todo{
-		{ID: 1, Title: "Beli susu"},
-		{ID: 2, Title: "<script>alert(1)</script>"},
-	}))
-	if !strings.Contains(out, "Beli susu") {
-		t.Error("judul normal harus tampil")
-	}
-	if strings.Contains(out, "<script>alert(1)</script>") {
-		t.Errorf("XSS: <script> tak boleh mentah:\n%s", out)
-	}
-	if !strings.Contains(out, "&lt;script&gt;") {
-		t.Errorf("XSS: <script> harus ter-escape:\n%s", out)
-	}
-	if !strings.Contains(out, `id="todo-list"`) {
-		t.Error("container todo-list harus ada")
-	}
-}
-
-func TestTodoList_Empty(t *testing.T) {
-	out := render(t, TodoList(nil))
-	if !strings.Contains(out, `id="todo-list"`) {
-		t.Error("todo-list <ul> harus ada walau kosong")
-	}
-	if strings.Contains(out, "<li") {
-		t.Error("tak boleh ada <li> untuk list kosong")
-	}
-}
-
-func TestTodoItem_DeleteAction(t *testing.T) {
-	out := render(t, TodoItem(db.Todo{ID: 42, Title: "x"}))
-	for _, want := range []string{`id="todo-42"`, "/todos/42", "Hapus"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("todo item kurang %q:\n%s", want, out)
 		}
 	}
 }

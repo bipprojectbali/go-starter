@@ -35,10 +35,10 @@ func TestPolicy_Enforcement(t *testing.T) {
 		want           bool
 		why            string
 	}{
-		// Hierarki: admin mewarisi user.
-		{"user", "app:todos", "read", true, "user boleh todos"},
-		{"admin", "app:todos", "read", true, "admin warisi user"},
-		{"super_admin", "app:todos", "read", true, "super_admin warisi semua"},
+		// Hierarki: admin mewarisi user (user:home).
+		{"user", "user:home", "read", true, "user boleh beranda"},
+		{"admin", "user:home", "read", true, "admin warisi user:home"},
+		{"super_admin", "user:home", "read", true, "super_admin warisi semua"},
 
 		// admin panel.
 		{"admin", "admin:users", "read", true, "admin baca users"},
@@ -53,7 +53,7 @@ func TestPolicy_Enforcement(t *testing.T) {
 
 		// Default deny: role tak dikenal / obj tak ada policy.
 		{"user", "dev:secret", "manage", false, "deny default"},
-		{"stranger", "app:todos", "read", false, "role tak dikenal ditolak"},
+		{"stranger", "user:home", "read", false, "role tak dikenal ditolak"},
 	}
 	for _, c := range cases {
 		if got := e.can(t, c.role, c.obj, c.act); got != c.want {

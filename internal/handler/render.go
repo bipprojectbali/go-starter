@@ -71,7 +71,6 @@ var (
 	}
 	userNav = []ui.NavItem{
 		{Label: "Beranda", Href: "/user", Icon: lucide.House(html.Class("size-4"))},
-		{Label: "Todos", Href: "/todos", Icon: lucide.ListChecks(html.Class("size-4"))},
 	}
 )
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,8 +14,15 @@ import (
 	"go_stater/internal/ui/pages/dev"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/starfederation/datastar-go/datastar"
 )
+
+// firstPageCursor mengembalikan cursor keyset untuk halaman pertama:
+// (created_at, id) = maksimum, sehingga semua baris lolos syarat < cursor.
+func firstPageCursor() (pgtype.Timestamptz, int64) {
+	return pgtype.Timestamptz{Valid: true, InfinityModifier: pgtype.Infinity}, math.MaxInt64
+}
 
 // DevUsersList — GET /dev/users. Daftar user (keyset) untuk panel developer.
 func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {

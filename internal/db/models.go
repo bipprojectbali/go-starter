@@ -33,14 +33,6 @@ type OauthAccount struct {
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
-type Todo struct {
-	ID        int64              `json:"id"`
-	UserID    int64              `json:"user_id"`
-	Title     string             `json:"title"`
-	Done      bool               `json:"done"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-}
-
 type User struct {
 	ID            int64              `json:"id"`
 	Email         string             `json:"email"`

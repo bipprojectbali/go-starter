@@ -43,8 +43,8 @@ func TestUserHome_Renders(t *testing.T) {
 		t.Fatalf("UserHome harus 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	// Menu user punya Beranda + Todos.
-	for _, want := range []string{"Beranda", "/todos"} {
+	// Menu user punya Beranda (/user).
+	for _, want := range []string{"Beranda", "/user"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("user shell kurang %q", want)
 		}

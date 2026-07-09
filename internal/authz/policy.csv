@@ -3,8 +3,7 @@ g, admin, user
 g, super_admin, admin
 g, super_admin, root
 
-# user: aplikasi umum + beranda /user.
-p, user, app:todos, *
+# user: beranda /user.
 p, user, user:home, read
 
 # admin: beranda /admin + panel users (admin mewarisi user:home lewat hierarki).

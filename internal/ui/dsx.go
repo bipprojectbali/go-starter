@@ -38,7 +38,7 @@ func Classes(rules ...ClassRule) g.Node {
 }
 
 // PostAction / DeleteAction membangun ekspresi aksi Datastar bertipe. Menghapus
-// juggle-kutip manual di call site (auth.go/todo.go/components.go). Catatan jujur:
+// juggle-kutip manual di call site (auth.go/components.go). Catatan jujur:
 // ini MEMPERBAIKI (bukan mustahilkan) site string — hasilnya tetap string, tapi
 // bentuknya dijamin benar. Untuk form-valued post, pakai FormPostSelect.
 func PostAction(url string) string   { return "@post('" + url + "')" }

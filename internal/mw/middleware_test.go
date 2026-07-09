@@ -151,7 +151,7 @@ func TestRequireAuth_Anonymous_HTTPRedirect(t *testing.T) {
 	reached := false
 	guarded := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
 	rec := httptest.NewRecorder()
-	sm.LoadAndSave(guarded).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/todos", nil))
+	sm.LoadAndSave(guarded).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/user", nil))
 
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("anonim harus 303, got %d", rec.Code)
@@ -167,7 +167,7 @@ func TestRequireAuth_Anonymous_HTTPRedirect(t *testing.T) {
 func TestRequireAuth_Anonymous_Datastar(t *testing.T) {
 	sm := authHarness(t)
 	guarded := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
-	req := httptest.NewRequest(http.MethodGet, "/todos", nil)
+	req := httptest.NewRequest(http.MethodGet, "/user", nil)
 	req.Header.Set("Datastar-Request", "true")
 	rec := httptest.NewRecorder()
 	sm.LoadAndSave(guarded).ServeHTTP(rec, req)
@@ -190,7 +190,7 @@ func TestRequireAuth_Authenticated(t *testing.T) {
 		guarded.ServeHTTP(w, r)
 	}))
 	rec := httptest.NewRecorder()
-	wrapped.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/todos", nil))
+	wrapped.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/user", nil))
 
 	if !reached || rec.Code != http.StatusOK {
 		t.Errorf("user login harus lolos, reached=%v code=%d", reached, rec.Code)
