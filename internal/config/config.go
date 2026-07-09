@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Config menampung seluruh konfigurasi runtime aplikasi.
@@ -28,6 +29,21 @@ type Config struct {
 	// selalu super_admin & kebal demote/block/delete lewat app. SUPER_ADMIN_EMAILS
 	// dipisah koma. Disimpan lower-case untuk perbandingan case-insensitive.
 	SuperAdminEmails []string
+
+	// AppTimezone = zona waktu untuk agregasi tampilan (mis. "jam berapa user
+	// aktif" di panel logs). Data disimpan UTC; TZ ini hanya untuk konversi saat
+	// baca. APP_TIMEZONE (IANA, mis. "Asia/Jakarta"). Divalidasi saat load.
+	AppTimezone string
+}
+
+// Location mem-parse AppTimezone jadi *time.Location. Sudah divalidasi di
+// MustLoad, jadi aman; fallback UTC bila entah bagaimana gagal.
+func (c *Config) Location() *time.Location {
+	loc, err := time.LoadLocation(c.AppTimezone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // IsSuperAdminEmail melaporkan apakah email termasuk root super-admin dari env.
@@ -62,6 +78,12 @@ func MustLoad() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
 		SuperAdminEmails:   parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
+		AppTimezone:        getEnv("APP_TIMEZONE", "Asia/Jakarta"),
+	}
+	// Validasi TZ fail-fast: nama IANA salah → panic saat startup, bukan error
+	// senyap saat render panel logs. (tzdata di-embed via import di main.)
+	if _, err := time.LoadLocation(c.AppTimezone); err != nil {
+		panic(fmt.Sprintf("config: APP_TIMEZONE %q tidak valid: %v", c.AppTimezone, err))
 	}
 	if c.IsProduction() {
 		c.SessionKey = mustEnv("SESSION_KEY")

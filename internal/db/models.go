@@ -8,6 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActivityPresence struct {
+	UserID     int64              `json:"user_id"`
+	BucketAt   pgtype.Timestamptz `json:"bucket_at"`
+	Hits       int32              `json:"hits"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+}
+
 type AuditLog struct {
 	ID          int64              `json:"id"`
 	ActorUserID *int64             `json:"actor_user_id"`

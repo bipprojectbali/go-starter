@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"go_stater/internal/authz"
 	"go_stater/internal/session"
@@ -35,6 +36,17 @@ var isSuperAdminEmail = func(string) bool { return false }
 
 // SetSuperAdminChecker menyuntik fungsi cek super-admin env dari config.
 func SetSuperAdminChecker(fn func(string) bool) { isSuperAdminEmail = fn }
+
+// appTZ = zona waktu untuk agregasi tampilan panel logs (tampilan jam lokal).
+// Default UTC bila belum di-set; di-inject dari main via SetAppTimezone.
+var appTZ = time.UTC
+
+// SetAppTimezone menetapkan zona waktu aplikasi (dipanggil dari main saat startup).
+func SetAppTimezone(loc *time.Location) {
+	if loc != nil {
+		appTZ = loc
+	}
+}
 
 // renderPage mengirim halaman penuh (navigasi biasa, §4.4 jalur 1). Email &
 // avatar untuk nav dibaca dari SESSION (di-set saat login) — tanpa hit DB tiap
@@ -68,6 +80,7 @@ var (
 func devNav() []ui.NavItem {
 	items := []ui.NavItem{
 		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
+		{Label: "User Logs", Href: "/dev/logs", Icon: lucide.ChartColumn(html.Class("size-4"))},
 	}
 	if devMode {
 		items = append(items,

@@ -70,7 +70,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startIdentity(r, user); err != nil {
+	if err := h.startIdentity(r, user, "password"); err != nil {
 		h.Log.Error("register: start identity", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -128,7 +128,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startIdentity(r, user); err != nil {
+	if err := h.startIdentity(r, user, "password"); err != nil {
 		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
 			h.authError(w, r, "Akun tidak aktif. Hubungi administrator.")
 			return
@@ -148,6 +148,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout — POST /logout. Hancurkan session.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	// Jejak logout SEBELUM Clear (uid hilang setelahnya). Fail-soft.
+	if uid := session.UserID(r.Context()); uid != 0 {
+		h.auditAuth(r.Context(), uid, "auth.logout", "")
+	}
 	if err := session.Clear(r.Context()); err != nil {
 		h.Log.Error("logout", "err", err)
 	}
@@ -173,8 +177,8 @@ var (
 // startIdentity memutar token session (anti fixation), lalu menyimpan identitas
 // lengkap: role EFEKTIF (env super-admin override kolom DB) + gate status.
 // Root env kebal gate status (owner tak bisa dikunci). Dipakai password login
-// & Google callback.
-func (h *Handler) startIdentity(r *http.Request, u db.User) error {
+// & Google callback. method ("password"/"google") dicatat di audit auth.login.
+func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error {
 	isRoot := isSuperAdminEmail(u.Email)
 
 	// Gate status — root lolos (tak bisa dikunci lewat status DB).
@@ -200,5 +204,7 @@ func (h *Handler) startIdentity(r *http.Request, u db.User) error {
 		avatar = *u.AvatarUrl
 	}
 	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, avatar)
+	// Jejak login (fail-soft) — untuk panel aktivitas. actor = user sendiri.
+	h.auditAuth(r.Context(), u.ID, "auth.login", method)
 	return nil
 }

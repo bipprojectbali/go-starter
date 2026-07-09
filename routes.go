@@ -36,7 +36,8 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 
 	// Publik: landing page (TIDAK redirect ke /login). RefreshIdentity agar
 	// redirect per-role pakai role SEGAR dari DB (self-heal session lama).
-	r.With(h.RefreshIdentity).Get("/", h.Home)
+	// TrackPresence: rekam kehadiran bila user login (no-op utk anonim).
+	r.With(h.RefreshIdentity, h.TrackPresence).Get("/", h.Home)
 
 	// Login Google — SELALU aktif (jalur login utama di produksi). Path pakai
 	// prefix /api/auth/ agar exact-match dengan redirect URI di Google Console.
@@ -64,6 +65,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Use(h.RefreshIdentity)
+		r.Use(h.TrackPresence)
 		r.Get("/todos", h.TodoList)
 		r.Post("/todos", h.TodoCreate)
 		r.Delete("/todos/{id}", h.TodoDelete)
@@ -73,6 +75,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.Route("/dev", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Use(h.RefreshIdentity)
+		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("dev:users", "read"))
 		// /dev telanjang → arahkan ke halaman default panel (/dev/users). Tanpa
 		// ini, /dev 404 (dan HomePath super_admin menuju /dev).
@@ -83,6 +86,10 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/users/{id}/role", h.DevUserSetRole)
 		r.Post("/users/{id}/status", h.DevUserSetStatus)
 		r.Post("/users/{id}/delete", h.DevUserDelete)
+
+		// Panel aktivitas user — TERSEDIA di produksi (data-driven, super_admin
+		// butuh pantau aktivitas nyata). Beda dari /health & /erd yang dev-only.
+		r.Get("/logs", h.DevLogs)
 
 		// File Health — DEV-ONLY. Butuh source .go di disk (tak ada di
 		// single-binary produksi). Tak didaftarkan di prod → menu pun tak muncul.
@@ -96,6 +103,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Use(h.RefreshIdentity)
+		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("admin:home", "read"))
 		r.Get("/", h.AdminHome)
 	})
@@ -104,6 +112,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.Route("/user", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Use(h.RefreshIdentity)
+		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("user:home", "read"))
 		r.Get("/", h.UserHome)
 	})

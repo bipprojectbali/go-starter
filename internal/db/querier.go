@@ -24,6 +24,8 @@ type Querier interface {
 	// Soft-delete gotcha: user terhapus tak boleh login.
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog, error)
+	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
+	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
 	// Keyset pagination. Halaman pertama: kirim cursor (created_at, id) = nilai maksimum
 	// ('infinity'::timestamptz, maxint) agar seluruh baris memenuhi syarat.
@@ -33,10 +35,29 @@ type Querier interface {
 	ListTodos(ctx context.Context, arg ListTodosParams) ([]Todo, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	// Tren per HARI-LOKAL untuk rentang mingguan/bulanan (line chart).
+	PresenceByDay(ctx context.Context, arg PresenceByDayParams) ([]PresenceByDayRow, error)
+	// Distribusi aktivitas per JAM-LOKAL untuk satu rentang (bar "aktivitas per jam").
+	// AT TIME ZONE mengonversi bucket UTC ke jam lokal. Handler mengisi jam kosong
+	// jadi 0 (sumbu X ECharts butuh 0..23 lengkap). COALESCE+cast: SUM/COUNT nullable
+	// → paksa int64 (bukan pgtype.Numeric).
+	PresenceByHour(ctx context.Context, arg PresenceByHourParams) ([]PresenceByHourRow, error)
+	// KPI ringkas untuk stat cards pada rentang aktif.
+	PresenceKPIs(ctx context.Context, arg PresenceKPIsParams) (PresenceKPIsRow, error)
+	// "User aktif jam berapa s/d jam berapa" untuk rentang: first/last seen per user +
+	// total hit. JOIN users untuk email TAMPILAN panel (dev-only UI, bukan log — tabel
+	// activity_presence sendiri hanya simpan user_id). first/last dikembalikan sebagai
+	// timestamptz UTC; handler memformatnya ke jam lokal (appTZ) — lebih bersih dari
+	// AT TIME ZONE di SQL (yang bikin sqlc emit interface{}).
+	PresenceUserSpans(ctx context.Context, arg PresenceUserSpansParams) ([]PresenceUserSpansRow, error)
 	// Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
 	// ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
 	// lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
 	PromoteSuperAdmins(ctx context.Context, emails []string) error
+	// Presence bucket 15-menit. bucket_at di-floor SERVER-SIDE ke kelipatan 900 dtk
+	// (jangan hitung di Go — hindari drift clock). Agregasi di level baris: request
+	// berulang dalam bucket sama hanya menaikkan hits, bukan insert baris baru.
+	RecordPresence(ctx context.Context, userID int64) error
 	SoftDeleteUser(ctx context.Context, id int64) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error

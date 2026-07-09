@@ -1,0 +1,40 @@
+package handler
+
+import (
+	"net/http"
+	"time"
+
+	"go_stater/internal/activity"
+	"go_stater/internal/db"
+	"go_stater/internal/ui/pages/dev"
+
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+// DevLogs — GET /dev/logs?range=day|week|month. Dashboard aktivitas user:
+// presence (jam berapa aktif), KPI, chart, event login/logout. Owner-only.
+// Builder view-model (buildChart/buildSpans/buildAuthEvents) di dev_logs_build.go.
+func (h *Handler) DevLogs(w http.ResponseWriter, r *http.Request) {
+	rng := activity.ParseRange(r.URL.Query().Get("range"))
+	from, to := rng.Window(time.Now(), appTZ)
+	fromTS := pgtype.Timestamptz{Time: from, Valid: true}
+	toTS := pgtype.Timestamptz{Time: to, Valid: true}
+	ctx := r.Context()
+
+	vm := dev.LogsData{
+		Range:      string(rng),
+		RangeLabel: rng.Label(),
+		IsDaily:    rng.IsDaily(),
+	}
+	if kpi, err := h.DB.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: fromTS, ToAt: toTS}); err != nil {
+		h.Log.Error("dev logs: kpi", "err", err)
+	} else {
+		vm.ActiveUsers, vm.TotalHits = kpi.ActiveUsers, kpi.TotalHits
+	}
+	vm.ChartJSON, vm.PeakHour = h.buildChart(ctx, rng, fromTS, toTS, from, to)
+	vm.Spans = h.buildSpans(ctx, fromTS, toTS)
+	vm.AuthEvents = h.buildAuthEvents(ctx)
+
+	h.renderShell(w, r, "User Activity", "go_stater /dev", "/dev/logs", devNav(),
+		dev.LogsPage(vm))
+}

@@ -14,7 +14,8 @@ assets, migrations, dan template di-embed via `embed.FS`).
 | Router | `net/http` + [chi](https://github.com/go-chi/chi) |
 | View | [gomponents](https://maragu.dev/gomponents) (HTML sebagai fungsi Go) |
 | Interaktivitas | [Datastar](https://data-star.dev) (hypermedia, SSE-native) |
-| CSS | Tailwind v4 (standalone CLI, no-Node) + [Basecoat](https://basecoatui.com) |
+| CSS | Tailwind v4 (standalone CLI, no-Node) + [daisyUI](https://daisyui.com) (plugin, zero-JS komponen, multi-tema light/dark) |
+| Chart | [ECharts](https://echarts.apache.org) vendored (panel aktivitas, init CSP-safe eksternal) |
 | DB | PostgreSQL via [pgx](https://github.com/jackc/pgx) + [sqlc](https://sqlc.dev) (type-safe) |
 | Migrasi | [goose](https://github.com/pressly/goose) (advisory-lock, aman multi-instance) |
 | Session | [scs](https://github.com/alexedwards/scs) + [rueidis](https://github.com/redis/rueidis) (Redis store) |
@@ -58,6 +59,7 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `SESSION_KEY` | prod | kunci sesi (wajib di production) |
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | prod | OAuth Google (wajib di production) |
 | `SUPER_ADMIN_EMAILS` | — | email super-admin "root", dipisah koma |
+| `APP_TIMEZONE` | — | zona waktu (IANA) agregasi panel aktivitas, default `Asia/Jakarta` |
 
 ## Autentikasi & role
 
@@ -73,6 +75,7 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | Rute | Akses | Isi |
 |------|-------|-----|
 | `/dev/users` | super_admin | kelola role/status/hapus user + audit trail |
+| `/dev/logs` | super_admin | aktivitas user (presence "aktif jam berapa"), KPI + chart (harian/mingguan/bulanan) + event login/logout |
 | `/dev/health` | super_admin, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
 | `/dev/erd` | super_admin, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
 | `/admin` | admin+ | dashboard admin (stub) |
@@ -111,7 +114,8 @@ internal/
   authz/           # Casbin RBAC (model.conf + policy.csv embed) + guard
   mw/              # middleware (request-id, recover, log, security, auth, authz)
   handler/         # HTTP handler, satu file per fitur
-  ui/              # gomponents: layout, komponen, halaman
+  ui/              # gomponents: layout, komponen, halaman, helper Datastar bertipe (dsx)
+  activity/        # agregasi presence + option ECharts (panel /dev/logs)
   health/          # scanner file-health (dev)
   erd/             # introspeksi katalog → teks Mermaid (dev)
   assets/          # cache-busting aset ber-hash

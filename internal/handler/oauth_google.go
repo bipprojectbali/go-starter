@@ -120,7 +120,7 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := h.startIdentity(r, user); err != nil {
+	if err := h.startIdentity(r, user, "google"); err != nil {
 		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
 			// Akun tak aktif — tolak, arahkan ke login dgn pesan.
 			session.ClearOAuthFlow(ctx)

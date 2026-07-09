@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed database tzdata: LoadLocation gagal di container minimal (CGO_ENABLED=0) tanpa ini
 
 	"go_stater/internal/assets"
 	"go_stater/internal/authz"
@@ -102,6 +103,7 @@ func run() error {
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)
+	handler.SetAppTimezone(cfg.Location()) // TZ agregasi panel logs (tampilan jam lokal)
 
 	// Authz (Casbin) — enforcer in-memory dari model+policy embed.
 	enforcer, err := authz.New(authz.Model, authz.Policy)

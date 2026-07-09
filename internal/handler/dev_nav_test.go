@@ -27,5 +27,20 @@ func TestDevNav_FileHealthDevOnly(t *testing.T) {
 	if hasFileHealth() {
 		t.Error("di produksi, menu File Health TIDAK boleh ada")
 	}
+	// User Logs harus SELALU ada (produksi & dev — data-driven, bukan dev-only).
+	hasLogs := func() bool {
+		for _, it := range devNav() {
+			if it.Href == "/dev/logs" {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasLogs() {
+		t.Error("menu User Logs harus ada di produksi")
+	}
 	SetDevMode(true) // pulihkan default test
+	if !hasLogs() {
+		t.Error("menu User Logs harus ada di dev")
+	}
 }

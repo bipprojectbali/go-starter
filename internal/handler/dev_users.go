@@ -211,8 +211,15 @@ func (h *Handler) loadActorTarget(ctx context.Context, targetID int64) (authz.Ac
 	return actor, target, nil
 }
 
-// audit menulis jejak aksi admin (metadata TANPA PII — id saja).
+// audit menulis jejak aksi admin atas USER lain (metadata TANPA PII — id saja).
 func (h *Handler) audit(ctx context.Context, actorID int64, action string, targetID int64, meta map[string]string) {
+	h.auditLog(ctx, actorID, action, "user", targetID, meta)
+}
+
+// auditLog menulis satu baris audit dengan target_type eksplisit. Dasar untuk
+// audit() (target_type="user") & event auth (target_type="session"). Error
+// di-log, TAK menggagalkan aksi utama. metadata TANPA PII (id/method saja).
+func (h *Handler) auditLog(ctx context.Context, actorID int64, action, targetType string, targetID int64, meta map[string]string) {
 	raw := []byte("{}")
 	if meta != nil {
 		if b, err := json.Marshal(meta); err == nil {
@@ -222,12 +229,22 @@ func (h *Handler) audit(ctx context.Context, actorID int64, action string, targe
 	if _, err := h.DB.CreateAuditLog(ctx, db.CreateAuditLogParams{
 		ActorUserID: &actorID,
 		Action:      action,
-		TargetType:  "user",
+		TargetType:  targetType,
 		TargetID:    &targetID,
 		Metadata:    raw,
 	}); err != nil {
 		h.Log.Error("audit log", "action", action, "err", err) // jangan gagalkan aksi utama
 	}
+}
+
+// auditAuth mencatat event autentikasi (login/logout) — actor = user sendiri,
+// target_type = "session". Fail-soft (via auditLog).
+func (h *Handler) auditAuth(ctx context.Context, userID int64, action, method string) {
+	var meta map[string]string
+	if method != "" {
+		meta = map[string]string{"method": method}
+	}
+	h.auditLog(ctx, userID, action, "session", userID, meta)
 }
 
 // toUserRows memetakan db.User → dev.UserRow (view), menandai root env.
