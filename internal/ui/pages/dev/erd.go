@@ -17,16 +17,16 @@ func ERDPage(mermaidSrc string, tableCount int) g.Node {
 			h.Class("flex flex-wrap items-center justify-between gap-2 mb-2"),
 			h.Div(
 				h.H1(h.Class("text-xl font-semibold"), g.Text("Database ERD")),
-				h.P(h.Class("text-sm text-muted-foreground"),
+				h.P(h.Class("text-sm text-base-content/70"),
 					g.Text(strconv.Itoa(tableCount)+" tabel — relasi & kolom dari katalog live Postgres. Hanya dev.")),
 			),
 			erdZoomControls(),
 		),
 		h.Div(
-			h.Class("card"),
+			h.Class("card bg-base-100 border border-base-300"),
 			// overflow-auto: saat zoom-in melebihi kontainer, bisa di-scroll.
-			h.Section(
-				h.Class("overflow-auto"),
+			h.Div(
+				h.Class("card-body overflow-auto"),
 				h.ID("erd-viewport"),
 				// Sumber diagram: <pre class="mermaid"> berisi teks erDiagram.
 				// Mermaid mengganti isinya dengan SVG saat init. g.Text meng-escape
@@ -47,7 +47,7 @@ func erdZoomControls() g.Node {
 	btn := func(id, label, title string) g.Node {
 		return h.Button(
 			h.Type("button"), h.ID(id),
-			h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+			h.Class("btn btn-outline btn-sm"),
 			g.Attr("title", title),
 			g.Text(label),
 		)
@@ -55,7 +55,7 @@ func erdZoomControls() g.Node {
 	return h.Div(
 		h.Class("flex items-center gap-1"),
 		btn("erd-zoom-out", "−", "Perkecil"),
-		h.Span(h.ID("erd-zoom-level"), h.Class("text-sm text-muted-foreground w-12 text-center"), g.Text("100%")),
+		h.Span(h.ID("erd-zoom-level"), h.Class("text-sm text-base-content/70 w-12 text-center"), g.Text("100%")),
 		btn("erd-zoom-in", "+", "Perbesar"),
 		btn("erd-zoom-reset", "Reset", "Kembalikan 100%"),
 	)

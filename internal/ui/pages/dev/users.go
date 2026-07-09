@@ -31,14 +31,14 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 		h.Div(h.ID("flash"), h.Class("fixed bottom-4 right-4 z-50"),
 			g.Attr("style", "pointer-events:none")),
 		h.Div(
-			h.Class("card"),
-			h.Section(
-				h.Class("overflow-x-auto"),
+			h.Class("card bg-base-100 border border-base-300"),
+			h.Div(
+				h.Class("card-body overflow-x-auto"),
 				h.Table(
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
-							h.Class("border-b text-left text-muted-foreground"),
+							h.Class("border-b border-base-300 text-left text-base-content/70"),
 							th("User"), th("Role"), th("Status"), th("Aksi"),
 						),
 					),
@@ -55,7 +55,7 @@ func UserRowNode(u UserRow, canManageSuper bool) g.Node {
 	rowID := "user-" + strconv.FormatInt(u.ID, 10)
 	return h.Tr(
 		h.ID(rowID),
-		h.Class("border-b"),
+		h.Class("border-b border-base-300"),
 		// Kolom user: avatar + email (+ badge root).
 		h.Td(
 			h.Class("py-2 pr-4"),
@@ -89,7 +89,7 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 	// Balasan SSE me-render ulang baris + toast (tanpa reload).
 	return h.FormEl(
 		h.Select(
-			h.Class("input"),
+			h.Class("select select-sm"),
 			h.Name("role"),
 			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role', {contentType: 'form'})"),
 			g.Group(opts),
@@ -112,7 +112,7 @@ func statusControl(u UserRow) g.Node {
 	}
 	return h.FormEl(
 		h.Select(
-			h.Class("input"),
+			h.Class("select select-sm"),
 			h.Name("status"),
 			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status', {contentType: 'form'})"),
 			statusOption("active", u.Status),
@@ -137,31 +137,31 @@ func deleteControl(u UserRow) g.Node {
 	}
 	return h.Button(
 		h.Type("button"),
-		h.Class("btn"),
-		g.Attr("data-variant", "destructive"),
-		g.Attr("data-size", "sm"),
+		h.Class("btn btn-error btn-sm"),
 		data.On("click", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/delete')"),
 		g.Text("Hapus"),
 	)
 }
 
 // Flash merender toast notifikasi (id "flash", target SSE patch). Auto-hilang
-// via animasi CSS (.toast, fade-out) — TANPA inline script (patuh CSP
-// script-src 'self'). ok=true → hijau (default alert), false → merah.
+// via animasi CSS (.toast-flash, fade-out) — TANPA inline script (patuh CSP
+// script-src 'self'). ok=true → hijau (alert-success), false → merah (alert-error).
+// Catatan: class fade kustom bernama .toast-flash (BUKAN .toast) — daisyUI punya
+// .toast sendiri (kontainer posisi) yang akan bentrok.
 func Flash(ok bool, msg string) g.Node {
-	inner := []g.Node{
-		h.Class("alert toast shadow-lg"),
-		h.Role("status"),
-		g.Text(msg),
-	}
+	cls := "alert alert-success toast-flash shadow-lg"
 	if !ok {
-		inner = append(inner, g.Attr("data-variant", "destructive"))
+		cls = "alert alert-error toast-flash shadow-lg"
 	}
 	return h.Div(
 		h.ID("flash"),
 		h.Class("fixed bottom-4 right-4 z-50"),
 		g.Attr("style", "pointer-events:none"), // toast tak boleh blokir klik
-		h.Div(inner...),
+		h.Div(
+			h.Class(cls),
+			h.Role("status"),
+			g.Text(msg),
+		),
 	)
 }
 
@@ -169,10 +169,12 @@ func th(label string) g.Node {
 	return h.Th(h.Class("py-2 pr-4 font-medium"), g.Text(label))
 }
 
+// badge merender lencana daisyUI. variant "outline" → badge-outline; selain itu
+// (kosong) → badge-neutral (abu solid) untuk role/status immutable root.
 func badge(text, variant string) g.Node {
-	attrs := []g.Node{h.Class("badge")}
-	if variant != "" {
-		attrs = append(attrs, g.Attr("data-variant", variant))
+	cls := "badge badge-neutral"
+	if variant == "outline" {
+		cls = "badge badge-outline"
 	}
-	return h.Span(append(attrs, g.Text(text))...)
+	return h.Span(h.Class(cls), g.Text(text))
 }

@@ -11,6 +11,6 @@ import (
 func Placeholder(title, desc string) g.Node {
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text(title)),
-		h.P(h.Class("text-muted-foreground"), g.Text(desc)),
+		h.P(h.Class("text-base-content/70"), g.Text(desc)),
 	)
 }

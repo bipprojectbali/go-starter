@@ -21,7 +21,7 @@ func RequireEnforce(obj, act string) func(http.Handler) http.Handler {
 			if r.Header.Get("Datastar-Request") == "true" {
 				sse := datastar.NewSSE(w, r)
 				_ = sse.PatchElements(
-					`<div id="flash" class="alert" data-variant="destructive" role="alert">Akses ditolak</div>`)
+					`<div id="flash" class="alert alert-error" role="alert">Akses ditolak</div>`)
 				return
 			}
 			http.Error(w, "forbidden", http.StatusForbidden)

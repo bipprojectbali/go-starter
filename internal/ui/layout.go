@@ -28,7 +28,9 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 		Language: "id",
 		Head:     headNodes(cssPath),
 		Body: []g.Node{
-			h.Class("min-h-screen bg-background text-foreground"),
+			// Latar = base-200; permukaan (card) = base-100 → kartu menonjol.
+			// Token relatif daisyUI: hierarki ini benar otomatis di semua tema.
+			h.Class("min-h-screen bg-base-200 text-base-content"),
 			nav(d.UserEmail, d.AvatarURL),
 			h.Main(h.Class("mx-auto max-w-2xl p-6"), g.Group(body)),
 			// Modal konfirmasi logout — hanya relevan bila ada nav (user login).
@@ -42,8 +44,10 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 func headNodes(cssPath string) []g.Node {
 	return []g.Node{
 		h.Link(h.Rel("icon"), h.Type("image/svg+xml"), h.Href("/static/favicon.svg")),
-		h.Link(h.Rel("stylesheet"), h.Href("/static/basecoat.css")),
+		// app.css sudah berisi daisyUI (plugin Tailwind) — satu file, satu preflight.
 		h.Link(h.Rel("stylesheet"), h.Href(cssPath)),
+		// theme.js SINKRON (bukan defer): set data-theme sebelum paint → no-FOUC.
+		h.Script(h.Src("/static/theme.js")),
 		h.Script(h.Src("/static/datastar.js"), h.Type("module"), h.Defer()),
 	}
 }
@@ -51,22 +55,23 @@ func headNodes(cssPath string) []g.Node {
 // nav menampilkan bar atas. Tombol logout + avatar muncul hanya bila user login.
 func nav(userEmail, avatarURL string) g.Node {
 	if userEmail == "" {
-		return g.Text("") // belum login (mis. halaman login) — tanpa nav
+		// Belum login (mis. halaman login) — tanpa nav, tapi tetap sediakan
+		// pemilih tema mengambang di pojok agar tema bisa diganti sebelum login.
+		return h.Div(h.Class("fixed top-4 right-4 z-20"), ThemeToggle())
 	}
 	return h.Header(
-		h.Class("border-b"),
+		h.Class("border-b border-base-300"),
 		data.Signals(map[string]any{"logoutConfirm": false}),
 		h.Div(
 			h.Class("mx-auto max-w-2xl p-4 flex items-center justify-between"),
 			h.A(h.Href("/todos"), h.Class("font-semibold"), g.Text("go_stater")),
 			h.Div(
 				h.Class("flex items-center gap-3"),
+				ThemeToggle(),
 				Avatar(avatarURL, "", userEmail, 32),
 				h.Span(h.Class("text-sm"), g.Text(userEmail)),
 				h.Button(
-					h.Class("btn"),
-					g.Attr("data-variant", "outline"),
-					g.Attr("data-size", "sm"),
+					h.Class("btn btn-outline btn-sm"),
 					ConfirmTrigger("logoutConfirm"), // buka modal, bukan langsung logout
 					g.Text("Keluar"),
 				),

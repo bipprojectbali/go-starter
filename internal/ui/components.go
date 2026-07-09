@@ -33,23 +33,21 @@ func ConfirmModal(sig, title, message, confirmLabel, confirmAction string) g.Nod
 		data.On("click", openExpr+" = false"), // klik backdrop → tutup
 		// Kartu dialog. stop-propagation agar klik di dalam tak menutup.
 		h.Div(
-			h.Class("card w-full max-w-sm"),
+			h.Class("card bg-base-100 shadow-lg w-full max-w-sm"),
 			data.On("click", "evt.stopPropagation()"),
-			h.Section(
-				h.Class("flex flex-col gap-4"),
+			h.Div(
+				h.Class("card-body gap-4"),
 				h.H2(h.Class("text-lg font-semibold"), g.Text(title)),
-				h.P(h.Class("text-sm text-muted-foreground"), g.Text(message)),
+				h.P(h.Class("text-sm text-base-content/70"), g.Text(message)),
 				h.Div(
 					h.Class("flex justify-end gap-2"),
 					h.Button(
-						h.Type("button"), h.Class("btn"),
-						g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+						h.Type("button"), h.Class("btn btn-outline btn-sm"),
 						data.On("click", openExpr+" = false"),
 						g.Text("Batal"),
 					),
 					h.Button(
-						h.Type("button"), h.Class("btn"),
-						g.Attr("data-variant", "destructive"), g.Attr("data-size", "sm"),
+						h.Type("button"), h.Class("btn btn-error btn-sm"),
 						// Jalankan aksi lalu tutup.
 						data.On("click", confirmAction+"; "+openExpr+" = false"),
 						g.Text(confirmLabel),
@@ -77,63 +75,64 @@ const (
 	VariantGhost
 )
 
-// btnVariant memetakan varian ke nilai data-variant Basecoat v1.x.
-// Basecoat memakai class root "btn" + atribut data-variant (BUKAN class
-// "btn-destructive"). Array indeks enum: menambah Variant tanpa entri = compile error.
+// btnVariant memetakan varian ke class modifier daisyUI. daisyUI memakai class
+// tambahan (btn-primary, btn-error, ...) di samping "btn" — BUKAN atribut
+// data-variant Basecoat. Array indeks enum: menambah Variant tanpa entri =
+// compile error. Default = btn-primary (daisyUI: "btn" polos = netral, jadi
+// kita eksplisitkan primary agar setara "default" Basecoat lama).
 var btnVariant = [...]string{
-	VariantDefault:     "", // default = primary, tanpa data-variant
-	VariantDestructive: "destructive",
-	VariantOutline:     "outline",
-	VariantGhost:       "ghost",
+	VariantDefault:     "btn-primary",
+	VariantDestructive: "btn-error",
+	VariantOutline:     "btn-outline",
+	VariantGhost:       "btn-ghost",
 }
 
-// Button merender tombol Basecoat: class "btn" + data-variant sesuai varian.
-// Atribut tambahan (mis. data-on Datastar) dilewatkan lewat attrs.
+// Button merender tombol daisyUI: class "btn" + modifier varian. Atribut
+// tambahan (mis. data-on Datastar) dilewatkan lewat attrs.
 func Button(variant Variant, attrs []g.Node, children ...g.Node) g.Node {
-	base := []g.Node{h.Class("btn")}
-	if v := btnVariant[variant]; v != "" {
-		base = append(base, g.Attr("data-variant", v))
-	}
+	base := []g.Node{h.Class("btn " + btnVariant[variant])}
 	return h.Button(append(base, append(attrs, g.Group(children))...)...)
 }
 
-// Card membungkus konten dalam kartu Basecoat. `.card` memberi gap 24px hanya
-// antar ANAK LANGSUNGnya; padding horizontal datang dari `.card > section`.
-// Karena semua isi dibungkus SATU <section>, gap `.card` tak berlaku (cuma 1
-// anak) — jadi <section> sendiri harus jadi grid ber-gap agar field/tombol di
-// dalamnya tidak menempel. gap-6 (24px) menyamai spacing kartu Basecoat.
+// Card membungkus konten dalam kartu daisyUI. `.card` = kontainer flex; padding
+// & gap antar-anak datang dari `.card-body` (yang WAJIB membungkus isi). bg
+// eksplisit (bg-base-100) + border agar kontras dari latar halaman.
 func Card(children ...g.Node) g.Node {
 	return h.Div(
-		h.Class("card"),
-		h.Section(append([]g.Node{h.Class("grid gap-6")}, children...)...),
+		h.Class("card bg-base-100 border border-base-300"),
+		h.Div(append([]g.Node{h.Class("card-body gap-6")}, children...)...),
 	)
 }
 
-// Input adalah field teks Basecoat. attrs untuk data-bind, placeholder, dll.
+// Input adalah field teks daisyUI. `.input` daisyUI sudah punya border + tinggi;
+// tambahkan w-full agar field mengisi lebar kontainer (default daisyUI = auto).
+// attrs untuk data-bind, placeholder, dll.
 func Input(attrs ...g.Node) g.Node {
-	return h.Input(append([]g.Node{h.Class("input"), h.Type("text")}, attrs...)...)
+	return h.Input(append([]g.Node{h.Class("input w-full"), h.Type("text")}, attrs...)...)
 }
 
-// Label untuk field form.
+// Label untuk field form. daisyUI `.label` = inline-flex wrapper; untuk teks
+// label mandiri cukup class-nya (font & warna diwarisi).
 func Label(text string, attrs ...g.Node) g.Node {
 	return h.Label(append([]g.Node{h.Class("label")}, append(attrs, g.Text(text))...)...)
 }
 
 // AlertSlot merender wadah error KOSONG (tanpa class .alert) sebagai target
-// patch Datastar. Penting: `.alert` Basecoat selalu punya border 1px, jadi
-// merender .alert saat kosong menghasilkan kotak border hantu. Slot ini hanya
-// <div id> kosong; isi diganti Alert() lengkap saat server mem-patch error.
+// patch Datastar. Penting: `.alert` selalu punya padding/warna, jadi merender
+// .alert saat kosong menghasilkan kotak hantu. Slot ini hanya <div id> kosong;
+// isi diganti Alert() lengkap saat server mem-patch error.
 func AlertSlot(id string) g.Node {
 	return h.Div(h.ID(id))
 }
 
-// Alert menampilkan pesan (mis. error validasi). Basecoat: class "alert" +
-// data-variant="destructive". Punya id (sama dengan slot) agar patch outer
-// menggantikan slot kosong dengan alert berisi.
+// Alert menampilkan pesan (mis. error validasi). daisyUI: class "alert" +
+// modifier warna (alert-error untuk destructive). Punya id (sama dengan slot)
+// agar patch outer menggantikan slot kosong dengan alert berisi.
 func Alert(variant Variant, id string, children ...g.Node) g.Node {
-	attrs := []g.Node{h.ID(id), h.Class("alert"), h.Role("alert")}
+	cls := "alert"
 	if variant == VariantDestructive {
-		attrs = append(attrs, g.Attr("data-variant", "destructive"))
+		cls = "alert alert-error"
 	}
+	attrs := []g.Node{h.ID(id), h.Class(cls), h.Role("alert")}
 	return h.Div(append(attrs, g.Group(children))...)
 }

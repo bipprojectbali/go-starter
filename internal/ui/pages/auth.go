@@ -48,12 +48,11 @@ func authPage(title, action string, showPassword bool, switchText, switchHref, s
 
 // googleButton — tautan penuh (bukan @post) ke flow OAuth. Navigasi biasa 302.
 // Logo "super G" 4-warna resmi + teks (lokalisasi diizinkan pedoman Google).
-// Basecoat .btn sudah flex + gap, jadi logo & teks otomatis berjajar rapi.
+// daisyUI .btn sudah flex + gap, jadi logo & teks otomatis berjajar rapi.
 func googleButton() g.Node {
 	return h.A(
 		h.Href("/api/auth/google"),
-		h.Class("btn w-full"),
-		g.Attr("data-variant", "outline"),
+		h.Class("btn btn-outline w-full"),
 		ui.GoogleG(h.Class("size-[18px]")), // 18px = spesifikasi Google
 		g.Text("Masuk dengan Google"),
 	)
@@ -61,7 +60,7 @@ func googleButton() g.Node {
 
 // passwordDivider memberi pemisah visual "atau" antara Google dan form password.
 func passwordDivider() g.Node {
-	return h.P(h.Class("text-center text-sm text-muted-foreground"), g.Text("atau"))
+	return h.P(h.Class("text-center text-sm text-base-content/70"), g.Text("atau"))
 }
 
 // passwordFields adalah form email/password (dev-only).

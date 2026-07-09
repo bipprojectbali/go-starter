@@ -16,7 +16,7 @@ func Landing(loggedIn bool, homePath string) g.Node {
 			g.Text("go_stater"),
 		),
 		h.P(
-			h.Class("text-lg text-muted-foreground mb-8 max-w-md mx-auto"),
+			h.Class("text-lg text-base-content/70 mb-8 max-w-md mx-auto"),
 			g.Text("Starter full-stack Go: cepat, ringan, single binary. Datastar + gomponents + Postgres."),
 		),
 		landingCTA(loggedIn, homePath),
@@ -28,12 +28,12 @@ func landingCTA(loggedIn bool, homePath string) g.Node {
 	if loggedIn {
 		return h.Div(
 			h.Class("flex items-center justify-center gap-3"),
-			h.A(h.Href(homePath), h.Class("btn"), g.Text("Buka aplikasi")),
+			h.A(h.Href(homePath), h.Class("btn btn-primary"), g.Text("Buka aplikasi")),
 		)
 	}
 	// Anonim: arahkan ke /login (adaptif — Google + form password bila dev).
 	return h.Div(
 		h.Class("flex items-center justify-center gap-3"),
-		h.A(h.Href("/login"), h.Class("btn"), g.Text("Masuk")),
+		h.A(h.Href("/login"), h.Class("btn btn-primary"), g.Text("Masuk")),
 	)
 }

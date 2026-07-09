@@ -19,25 +19,25 @@ func HealthPage(res health.Result) g.Node {
 	summaryVariant := ""
 	if res.Unhealthy > 0 {
 		summary = strconv.Itoa(res.Unhealthy) + " dari " + strconv.Itoa(res.Total) + " file perlu perhatian"
-		summaryVariant = "destructive"
+		summaryVariant = "error"
 	}
 
 	return h.Div(
 		h.ID("health-panel"),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("File Health")),
-		h.P(h.Class("text-sm text-muted-foreground mb-4"),
+		h.P(h.Class("text-sm text-base-content/70 mb-4"),
 			g.Text("Ambang: per-tipe (handler 150, service 300, dst) + hard limit 500 baris / 20.000 karakter. Hanya dev.")),
 		healthSummary(summary, summaryVariant),
 		healthToolbar(res),
 		h.Div(
-			h.Class("card mt-4"),
-			h.Section(
-				h.Class("overflow-x-auto"),
+			h.Class("card bg-base-100 border border-base-300 mt-4"),
+			h.Div(
+				h.Class("card-body overflow-x-auto"),
 				h.Table(
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
-							h.Class("border-b text-left text-muted-foreground"),
+							h.Class("border-b border-base-300 text-left text-base-content/70"),
 							h.Th(h.Class("py-2 pr-4 w-8"),
 								h.Input(h.Type("checkbox"), h.ID("health-select-all"), h.Title("Pilih halaman ini")),
 							),
@@ -54,7 +54,7 @@ func HealthPage(res health.Result) g.Node {
 		// pun tetap memblokir elemen di bawahnya, mis. tombol pagination).
 		h.Div(
 			h.ID("health-toast"),
-			h.Class("fixed bottom-4 right-4 z-50 alert shadow-lg"),
+			h.Class("fixed bottom-4 right-4 z-50 alert alert-success shadow-lg"),
 			g.Attr("style", "opacity:0; transition:opacity .2s; pointer-events:none"),
 			h.Role("status"),
 		),
@@ -64,11 +64,11 @@ func HealthPage(res health.Result) g.Node {
 }
 
 func healthSummary(msg, variant string) g.Node {
-	attrs := []g.Node{h.Class("alert"), h.Role("status")}
-	if variant != "" {
-		attrs = append(attrs, g.Attr("data-variant", variant))
+	cls := "alert"
+	if variant == "error" {
+		cls = "alert alert-error"
 	}
-	return h.Div(append(attrs, g.Text(msg))...)
+	return h.Div(h.Class(cls), h.Role("status"), g.Text(msg))
 }
 
 // healthToolbar = kontrol filter (search + status + tipe) & tombol copy.
@@ -78,12 +78,12 @@ func healthToolbar(res health.Result) g.Node {
 		h.Input(
 			h.Type("search"),
 			h.ID("health-q"),
-			h.Class("input max-w-xs"),
+			h.Class("input input-sm max-w-xs"),
 			h.Placeholder("Cari nama/path file…"),
 		),
 		h.Select(
 			h.ID("health-status"),
-			h.Class("input w-auto"),
+			h.Class("select select-sm w-auto"),
 			h.Option(h.Value(""), g.Text("Semua status")),
 			h.Option(h.Value("unhealthy"), g.Text("Perlu perhatian")),
 			h.Option(h.Value("healthy"), g.Text("Sehat")),
@@ -92,12 +92,12 @@ func healthToolbar(res health.Result) g.Node {
 		h.Div(h.Class("flex-1")), // spacer
 		h.Button(
 			h.Type("button"), h.ID("health-copy-selected"),
-			h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+			h.Class("btn btn-outline btn-sm"),
 			g.Text("Copy terpilih"),
 		),
 		h.Button(
 			h.Type("button"), h.ID("health-copy-unhealthy"),
-			h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+			h.Class("btn btn-outline btn-sm"),
 			g.Text("Copy bermasalah"),
 		),
 	)
@@ -118,23 +118,23 @@ func kindSelect(res health.Result) g.Node {
 	for _, k := range kinds {
 		opts = append(opts, h.Option(h.Value(k), g.Text(k)))
 	}
-	return h.Select(append([]g.Node{h.ID("health-kind"), h.Class("input w-auto")}, opts...)...)
+	return h.Select(append([]g.Node{h.ID("health-kind"), h.Class("select select-sm w-auto")}, opts...)...)
 }
 
 func healthPagination() g.Node {
 	return h.Div(
 		h.Class("mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"),
-		h.Span(h.ID("health-page-info"), h.Class("text-muted-foreground")),
+		h.Span(h.ID("health-page-info"), h.Class("text-base-content/70")),
 		h.Div(
 			h.Class("flex items-center gap-1"),
 			h.Button(h.Type("button"), h.ID("health-prev"),
-				h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+				h.Class("btn btn-outline btn-sm"),
 				g.Text("Sebelumnya")),
 			// Tombol angka halaman — diisi client-side (jumlah halaman berubah
 			// saat filter aktif, jadi tak bisa di-render server).
 			h.Div(h.ID("health-pages"), h.Class("flex items-center gap-1")),
 			h.Button(h.Type("button"), h.ID("health-next"),
-				h.Class("btn"), g.Attr("data-variant", "outline"), g.Attr("data-size", "sm"),
+				h.Class("btn btn-outline btn-sm"),
 				g.Text("Berikutnya")),
 		),
 	)
@@ -146,14 +146,14 @@ func healthRow(r health.Report) g.Node {
 		status = "unhealthy"
 	}
 	attrs := []g.Node{
-		h.Class("border-b"),
+		h.Class("border-b border-base-300"),
 		g.Attr("data-health-row", "true"),
 		g.Attr("data-path", r.Path),
 		g.Attr("data-status", status),
 		g.Attr("data-kind", r.Kind),
 	}
 	if !r.Healthy {
-		attrs = append(attrs, g.Attr("style", "box-shadow: inset 3px 0 0 var(--color-destructive, #ef4444)"))
+		attrs = append(attrs, g.Attr("style", "box-shadow: inset 3px 0 0 var(--color-error, #ef4444)"))
 	}
 	lineCell := strconv.Itoa(r.Lines) + " / " + strconv.Itoa(r.Limit)
 	cells := []g.Node{
@@ -161,7 +161,7 @@ func healthRow(r health.Report) g.Node {
 			h.Input(h.Type("checkbox"), g.Attr("data-health-check", "true"), h.Title("Pilih file ini")),
 		),
 		h.Td(h.Class("py-2 pr-4 font-mono text-xs"), g.Text(r.Path)),
-		h.Td(h.Class("py-2 pr-4 text-muted-foreground"), g.Text(r.Kind)),
+		h.Td(h.Class("py-2 pr-4 text-base-content/70"), g.Text(r.Kind)),
 		h.Td(h.Class("py-2 pr-4"), g.Text(lineCell)),
 		h.Td(h.Class("py-2 pr-4"), g.Text(strconv.Itoa(r.Chars))),
 		h.Td(h.Class("py-2"), healthStatus(r)),
@@ -174,8 +174,7 @@ func healthStatus(r health.Report) g.Node {
 		return badge("sehat", "")
 	}
 	return h.Span(
-		h.Class("badge"),
-		g.Attr("data-variant", "destructive"),
+		h.Class("badge badge-error"),
 		h.Title(strings.Join(r.Reasons, "; ")),
 		g.Text("perlu perhatian"),
 	)

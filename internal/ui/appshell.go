@@ -49,7 +49,9 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 		Language: "id",
 		Head:     head,
 		Body: []g.Node{
-			h.Class("min-h-screen bg-background text-foreground"),
+			// Latar dasar = base-200; sidebar & card = base-100 (permukaan
+			// menonjol). Hierarki relatif ini benar otomatis di semua tema.
+			h.Class("min-h-screen bg-base-200 text-base-content"),
 			data.Signals(map[string]any{"sidebarOpen": false, "logoutConfirm": false}),
 
 			// Backdrop mobile — inline display:none agar tak FOUC sebelum Datastar aktif.
@@ -63,9 +65,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 			// Floating hamburger — hanya mobile, hanya saat drawer tertutup.
 			h.Button(
 				h.Type("button"),
-				h.Class("btn fixed top-4 left-4 z-20 md:hidden"),
-				g.Attr("data-variant", "outline"),
-				g.Attr("data-size", "sm"),
+				h.Class("btn btn-outline btn-sm fixed top-4 left-4 z-20 md:hidden"),
 				g.Attr("aria-label", "Buka menu"),
 				data.Show("!$sidebarOpen"),
 				data.On("click", "$sidebarOpen = true"),
@@ -91,21 +91,19 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 // flex-1), footer user (bawah). Class `app-sidebar` dipakai CSS collapse rail.
 func shellSidebar(d ShellData) g.Node {
 	return h.Aside(
-		h.Class("app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r "+
-			"bg-sidebar text-sidebar-foreground -translate-x-full transition-transform md:translate-x-0"),
+		h.Class("app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-base-300 "+
+			"bg-base-100 text-base-content -translate-x-full transition-transform md:translate-x-0"),
 		// Key di-quote: nama class ber-hyphen tak valid sbg key objek JS tanpa
 		// kutip (data.Class gomponents tak meng-quote otomatis).
 		data.Class("'translate-x-0'", "$sidebarOpen"),
 
 		// Header sidebar: brand + tombol collapse (desktop).
 		h.Div(
-			h.Class("h-16 flex items-center gap-2 px-4 border-b border-sidebar-border"),
+			h.Class("h-16 flex items-center gap-2 px-4 border-b border-base-300"),
 			h.Span(h.Class("app-brand flex-1 font-semibold truncate"), g.Text(d.BrandLabel)),
 			h.Button(
 				h.Type("button"),
-				h.Class("btn hidden md:inline-flex"),
-				g.Attr("data-variant", "ghost"),
-				g.Attr("data-size", "sm"),
+				h.Class("btn btn-ghost btn-sm hidden md:inline-flex"),
 				g.Attr("data-sidebar-toggle", "true"),
 				g.Attr("aria-label", "Perkecil sidebar"),
 				lucide.PanelLeft(h.Class("size-5")),
@@ -133,7 +131,7 @@ func quickLinks(d ShellData) g.Node {
 		return g.Text("")
 	}
 	return h.Div(
-		h.Class("border-t border-sidebar-border px-3 py-2 flex flex-col gap-1"),
+		h.Class("border-t border-base-300 px-3 py-2 flex flex-col gap-1"),
 		g.Map(d.QuickLinks, func(it NavItem) g.Node { return navLink(it, d.CurrentPath) }),
 	)
 }
@@ -143,7 +141,12 @@ func quickLinks(d ShellData) g.Node {
 func navLink(it NavItem, currentPath string) g.Node {
 	active := it.Href == currentPath ||
 		(it.Href != "/" && strings.HasPrefix(currentPath, it.Href))
-	cls := "app-navlink flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-sidebar-accent"
+	cls := "app-navlink flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-base-200"
+	if active {
+		// Active = primary solid → menonjol & adaptif di semua tema (kontras
+		// base-300 terlalu lemah di sebagian tema).
+		cls += " bg-primary text-primary-content font-medium"
+	}
 	attrs := []g.Node{h.Href(it.Href), h.Class(cls), h.Title(it.Label)}
 	if active {
 		attrs = append(attrs, g.Attr("aria-current", "page"), g.Attr("data-active", "true"))
@@ -159,16 +162,18 @@ func navLink(it NavItem, currentPath string) g.Node {
 // sidebarUser = blok identitas di bagian bawah sidebar (avatar, email, logout).
 func sidebarUser(d ShellData) g.Node {
 	return h.Div(
-		h.Class("border-t border-sidebar-border p-3 flex flex-col gap-2"),
+		h.Class("border-t border-base-300 p-3 flex flex-col gap-2"),
 		h.Div(
-			h.Class("flex items-center gap-2 min-w-0"),
-			Avatar(d.AvatarURL, "", d.UserEmail, 32),
-			h.Span(h.Class("app-navlabel text-sm truncate"), g.Text(d.UserEmail)),
+			h.Class("flex items-center justify-between gap-2 min-w-0"),
+			h.Div(
+				h.Class("flex items-center gap-2 min-w-0"),
+				Avatar(d.AvatarURL, "", d.UserEmail, 32),
+				h.Span(h.Class("app-navlabel text-sm truncate"), g.Text(d.UserEmail)),
+			),
+			ThemeToggleUp(),
 		),
 		h.Button(
-			h.Class("btn w-full"),
-			g.Attr("data-variant", "outline"),
-			g.Attr("data-size", "sm"),
+			h.Class("btn btn-outline btn-sm w-full"),
 			g.Attr("title", "Keluar"),
 			ConfirmTrigger("logoutConfirm"), // buka modal, bukan langsung logout
 			lucide.LogOut(h.Class("size-4")),

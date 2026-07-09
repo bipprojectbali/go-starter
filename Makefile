@@ -1,4 +1,4 @@
-.PHONY: setup tools tailwind basecoat dev check build run clean migrate-new migrate-up test css
+.PHONY: setup tools tailwind dev check build run clean migrate-new migrate-up test css
 
 # Tool CLI (sqlc/goose/air) di-install ke GOPATH/bin, yang belum tentu di PATH
 # saat `make` jalan. GNU Make 3.81 (bawaan macOS) meng-exec recipe tanpa
@@ -14,12 +14,11 @@ TEST_DATABASE_URL ?= postgres://bip@localhost:5432/go_stater_test?sslmode=disabl
 
 # Versi aset vendored (lihat static/VENDOR.md).
 TAILWIND_VERSION := v4.3.2
-BASECOAT_VERSION := 1.0.2
 # Deteksi OS/arch untuk binary Tailwind (macos-arm64 / linux-x64 / linux-x64-musl).
 TAILWIND_TARGET := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shell uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
 
-## setup: install tools + download aset vendored (sekali saja)
-setup: tools tailwind basecoat
+## setup: install tools + download Tailwind CLI (daisyui.js sudah di-commit)
+setup: tools tailwind
 
 ## tools: install CLI Go ke GOPATH/bin
 tools:
@@ -36,12 +35,7 @@ tailwind:
 	@./tailwindcss --help >/dev/null 2>&1 || { rm -f tailwindcss; echo "ERROR: tailwindcss korup/terpotong — unduh ulang gagal"; exit 1; }
 	@echo "tailwindcss OK ($$(./tailwindcss --help 2>&1 | head -1))"
 
-## basecoat: download CSS bundle (verifikasi bukan halaman error)
-basecoat:
-	curl -fL --retry 3 --retry-delay 2 -o static/basecoat.css "https://cdn.jsdelivr.net/npm/basecoat-css@$(BASECOAT_VERSION)/dist/basecoat.cdn.min.css"
-	@head -c 200 static/basecoat.css | grep -qi '<!doctype\|<html' && { rm -f static/basecoat.css; echo "ERROR: basecoat.css = halaman HTML, bukan CSS"; exit 1; } || echo "basecoat.css OK"
-
-## css: generate app.css dari class di file .go (Tailwind v4 scan otomatis)
+## css: generate app.css dari class di file .go (Tailwind v4 + daisyUI plugin)
 css:
 	./tailwindcss -i static/input.css -o static/app.css --minify
 
