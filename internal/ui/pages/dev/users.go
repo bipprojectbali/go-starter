@@ -84,17 +84,10 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 	if canManageSuper {
 		opts = append(opts, roleOption("super_admin", u.Role))
 	}
-	// @post {contentType:'form'} mencari FORM TERDEKAT lalu kirim nilainya, jadi
-	// select WAJIB dibungkus <form> (kalau tidak, tak ada value terkirim).
-	// Balasan SSE me-render ulang baris + toast (tanpa reload).
-	return h.FormEl(
-		h.Select(
-			h.Class("select select-sm"),
-			h.Name("role"),
-			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role', {contentType: 'form'})"),
-			g.Group(opts),
-		),
-	)
+	// FormPostSelect merender <select> + <form> pembungkusnya sebagai satu node →
+	// @post form-valued tanpa <form> mustahil (gotcha #6). Balasan SSE me-render
+	// ulang baris + toast (tanpa reload).
+	return ui.FormPostSelect("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role", "role", g.Group(opts))
 }
 
 func roleOption(val, current string) g.Node {
@@ -110,15 +103,10 @@ func statusControl(u UserRow) g.Node {
 	if u.IsRoot {
 		return badge(u.Status, "")
 	}
-	return h.FormEl(
-		h.Select(
-			h.Class("select select-sm"),
-			h.Name("status"),
-			data.On("change", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status', {contentType: 'form'})"),
-			statusOption("active", u.Status),
-			statusOption("disabled", u.Status),
-			statusOption("blocked", u.Status),
-		),
+	return ui.FormPostSelect("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/status", "status",
+		statusOption("active", u.Status),
+		statusOption("disabled", u.Status),
+		statusOption("blocked", u.Status),
 	)
 }
 
@@ -138,7 +126,7 @@ func deleteControl(u UserRow) g.Node {
 	return h.Button(
 		h.Type("button"),
 		h.Class("btn btn-error btn-sm"),
-		data.On("click", "@post('/dev/users/"+strconv.FormatInt(u.ID, 10)+"/delete')"),
+		data.On("click", ui.PostAction("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/delete")),
 		g.Text("Hapus"),
 	)
 }

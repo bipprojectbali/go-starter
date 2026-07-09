@@ -31,7 +31,7 @@ func TodoList(todos []db.Todo) g.Node {
 				),
 				ui.Button(
 					ui.VariantDefault,
-					[]g.Node{data.On("click", "@post('/todos')")},
+					[]g.Node{data.On("click", ui.PostAction("/todos"))},
 					lucide.Plus(h.Class("size-4")),
 					g.Text("Tambah"),
 				),
@@ -55,12 +55,12 @@ func TodoItem(t db.Todo) g.Node {
 	id := "todo-" + strconv.FormatInt(t.ID, 10)
 	return h.Li(
 		h.ID(id),
-		h.Class("todo-item"),
+		h.Class("flex items-center justify-between gap-2 py-2 border-b border-base-300"),
 		h.Span(g.Text(t.Title)),
 		ui.Button(
 			ui.VariantGhost,
 			[]g.Node{
-				data.On("click", "@delete('/todos/"+strconv.FormatInt(t.ID, 10)+"')"),
+				data.On("click", ui.DeleteAction("/todos/"+strconv.FormatInt(t.ID, 10))),
 				g.Attr("aria-label", "Hapus"),
 			},
 			lucide.Trash2(h.Class("size-4")),

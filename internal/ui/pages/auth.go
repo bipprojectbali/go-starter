@@ -88,7 +88,7 @@ func passwordFields(action, submitLabel string) g.Node {
 		),
 		ui.Button(
 			ui.VariantDefault,
-			[]g.Node{data.On("click", "@post('"+action+"')")},
+			[]g.Node{data.On("click", ui.PostAction(action))},
 			g.Text(submitLabel),
 		),
 		// Slot error kosong — di-patch jadi Alert berisi saat auth gagal.

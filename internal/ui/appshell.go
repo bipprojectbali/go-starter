@@ -82,7 +82,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 
 			// Modal konfirmasi logout (dipicu tombol Keluar).
 			ConfirmModal("logoutConfirm", "Keluar?",
-				"Anda akan keluar dari sesi ini.", "Keluar", "@post('/logout')"),
+				"Anda akan keluar dari sesi ini.", "Keluar", PostAction("/logout")),
 		},
 	})
 }
@@ -93,9 +93,9 @@ func shellSidebar(d ShellData) g.Node {
 	return h.Aside(
 		h.Class("app-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-base-300 "+
 			"bg-base-100 text-base-content -translate-x-full transition-transform md:translate-x-0"),
-		// Key di-quote: nama class ber-hyphen tak valid sbg key objek JS tanpa
-		// kutip (data.Class gomponents tak meng-quote otomatis).
-		data.Class("'translate-x-0'", "$sidebarOpen"),
+		// ClassOn mengutip nama class otomatis → key ber-hyphen mustahil salah
+		// (gotcha #5). Bandingkan data.Class mentah yang butuh kutip manual.
+		ClassOn("translate-x-0", "$sidebarOpen"),
 
 		// Header sidebar: brand + tombol collapse (desktop).
 		h.Div(
