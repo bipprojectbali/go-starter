@@ -1,0 +1,60 @@
+name: Re-Pull Docker
+on:
+    workflow_dispatch:
+        inputs:
+            stack_name:
+                description: "stack name"
+                required: true
+                type: string
+            stack_env:
+                description: "stack env"
+                required: true
+                type: choice
+                default: "dev"
+                options:
+                    - dev
+                    - stg
+                    - prod
+
+jobs:
+    publish:
+        name: Re-Pull Docker ${{ github.event.inputs.stack_name }}
+        runs-on: ubuntu-latest
+        environment: ${{ vars.PORTAINER_ENV || 'portainer' }}
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - name: Checkout scripts from main
+              uses: actions/checkout@v4
+              with:
+                  ref: main
+                  sparse-checkout: .github/workflows/script
+
+            - name: Deploy ke Portainer
+              run: bash ./.github/workflows/script/re-pull.sh
+              env:
+                  PORTAINER_USERNAME: ${{ secrets.PORTAINER_USERNAME }}
+                  PORTAINER_PASSWORD: ${{ secrets.PORTAINER_PASSWORD }}
+                  PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+                  STACK_NAME: ${{ github.event.inputs.stack_name }}-${{ github.event.inputs.stack_env }}
+
+            - name: Notify success
+              if: success()
+              run: bash ./.github/workflows/script/notify.sh
+              env:
+                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+                  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+                  NOTIFY_STATUS: success
+                  NOTIFY_WORKFLOW: "Re-Pull Docker"
+                  NOTIFY_DETAIL: "Stack: ${{ github.event.inputs.stack_name }}-${{ github.event.inputs.stack_env }}"
+
+            - name: Notify failure
+              if: failure()
+              run: bash ./.github/workflows/script/notify.sh
+              env:
+                  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+                  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+                  NOTIFY_STATUS: failure
+                  NOTIFY_WORKFLOW: "Re-Pull Docker"
+                  NOTIFY_DETAIL: "Stack: ${{ github.event.inputs.stack_name }}-${{ github.event.inputs.stack_env }}"
