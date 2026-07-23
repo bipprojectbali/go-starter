@@ -1,4 +1,8 @@
-.PHONY: setup tools tailwind dev check build run clean migrate-new migrate-up test css
+.PHONY: help setup tools tailwind dev check build run clean migrate-new migrate-up test css
+
+# `make` polos (tanpa target) → tampilkan daftar perintah, BUKAN jalankan setup
+# (yang men-download Tailwind 76MB). Default goal wajib sebelum target apa pun.
+.DEFAULT_GOAL := help
 
 # Tool CLI (sqlc/goose/air) di-install ke GOPATH/bin, yang belum tentu di PATH
 # saat `make` jalan. GNU Make 3.81 (bawaan macOS) meng-exec recipe tanpa
@@ -17,6 +21,13 @@ TAILWIND_VERSION := v4.3.2
 # Deteksi OS/arch untuk binary Tailwind (macos-arm64 / linux-x64 / linux-x64-musl).
 TAILWIND_TARGET := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shell uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/')
 
+## help: tampilkan daftar perintah (default saat `make` tanpa argumen)
+help:
+	@echo "go_stater — perintah tersedia:"
+	@echo ""
+	@grep -E '^## [a-z-]+:' $(MAKEFILE_LIST) | sed 's/## /  /' | awk -F': ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' | sed 's/^  //'
+	@echo ""
+
 ## setup: install tools + download Tailwind CLI (daisyui.js sudah di-commit)
 setup: tools tailwind
 
@@ -26,14 +37,22 @@ tools:
 	go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
 	go install github.com/pressly/goose/v3/cmd/goose@latest
 
-## tailwind: download binary + VERIFIKASI utuh (unduh parsial = SIGKILL di arm64).
-## -f gagal saat HTTP error, --retry tahan jaringan labil, exec-test buktikan
-## binary lengkap; kalau korup: hapus & error, jangan biarkan file separuh lolos.
+## tailwind: unduh Tailwind CLI bila belum ada (idempoten, resume-able, verifikasi utuh)
+## Detail: unduh parsial = SIGKILL di arm64. Kalau tailwindcss sudah ada & valid, skip download (76MB) — hindari
+## unduh ulang tiap `make setup`. Tahan jaringan labil: -C - (resume dari byte
+## terakhir bila putus di tengah, bukan mulai ulang), --retry-all-errors +
+## --retry 5 + --max-time. exec-test buktikan binary lengkap; korup → hapus & error.
 tailwind:
-	curl -fL --retry 3 --retry-delay 2 -o tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_TARGET)"
-	chmod +x tailwindcss
-	@./tailwindcss --help >/dev/null 2>&1 || { rm -f tailwindcss; echo "ERROR: tailwindcss korup/terpotong — unduh ulang gagal"; exit 1; }
-	@echo "tailwindcss OK ($$(./tailwindcss --help 2>&1 | head -1))"
+	@if ./tailwindcss --help >/dev/null 2>&1; then \
+		echo "tailwindcss sudah ada & valid — skip download ($$(./tailwindcss --help 2>&1 | head -1))"; \
+	else \
+		echo "mengunduh tailwindcss (resume-able, tahan koneksi putus)..."; \
+		curl -fL -C - --retry 5 --retry-all-errors --retry-delay 2 --max-time 900 \
+			-o tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_TARGET)" && \
+		chmod +x tailwindcss && \
+		{ ./tailwindcss --help >/dev/null 2>&1 || { rm -f tailwindcss; echo "ERROR: tailwindcss korup/terpotong — unduh ulang gagal"; exit 1; }; } && \
+		echo "tailwindcss OK ($$(./tailwindcss --help 2>&1 | head -1))"; \
+	fi
 
 ## css: generate app.css dari class di file .go (Tailwind v4 + daisyUI plugin)
 css:
