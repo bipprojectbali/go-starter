@@ -86,5 +86,5 @@ func logoutModal(userEmail string) g.Node {
 		return g.Text("")
 	}
 	return ConfirmModal("logoutConfirm", "Keluar?",
-		"Anda akan keluar dari sesi ini.", "Keluar", PostAction("/logout"))
+		"Anda akan keluar dari sesi ini.", "Keluar", "/logout")
 }

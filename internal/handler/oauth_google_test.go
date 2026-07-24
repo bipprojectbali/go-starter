@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
+	"net/url"
 	"testing"
 
 	"go_stater/internal/db"
@@ -186,13 +186,12 @@ func TestLogin_GoogleOnlyAccountRejected(t *testing.T) {
 	if _, err := env.q.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com", TenantID: env.tenantID, Role: "member"}); err != nil {
 		t.Fatalf("seed google user: %v", err)
 	}
-	req := httptest.NewRequest(http.MethodPost, "/login",
-		strings.NewReader(`{"email":"googleonly@gmail.com","password":"apa saja"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Login)
+	rec := env.do(postForm("/login", url.Values{
+		"email": {"googleonly@gmail.com"}, "password": {"apa saja"},
+	}), env.h.Login)
 
-	// Pesan generik anti-enumeration (sama dgn wrong password).
-	if !strings.Contains(rec.Body.String(), "Email atau password salah") {
-		t.Errorf("login password akun Google-only harus ditolak generik:\n%s", rec.Body.String())
+	// Kode generik anti-enumeration (sama dgn wrong password) — native PRG 303.
+	if loc := rec.Header().Get("Location"); loc != "/login?err=invalid" {
+		t.Errorf("login password akun Google-only harus ditolak generik ?err=invalid, got %q", loc)
 	}
 }

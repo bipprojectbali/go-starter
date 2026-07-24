@@ -17,7 +17,7 @@ func renderNode(t *testing.T, n g.Node) string {
 }
 
 func TestConfirmModal(t *testing.T) {
-	out := renderNode(t, ConfirmModal("logoutConfirm", "Keluar?", "Yakin?", "Keluar", "@post('/logout')"))
+	out := renderNode(t, ConfirmModal("logoutConfirm", "Keluar?", "Yakin?", "Keluar", "/logout"))
 
 	// Tampil hanya saat signal true.
 	if !strings.Contains(out, `data-show="$logoutConfirm"`) {
@@ -29,11 +29,17 @@ func TestConfirmModal(t *testing.T) {
 			t.Errorf("modal kurang %q:\n%s", want, out)
 		}
 	}
-	// Tombol Ya: jalankan aksi LALU tutup.
-	if !strings.Contains(out, "@post(&#39;/logout&#39;); $logoutConfirm = false") {
-		t.Errorf("tombol konfirmasi harus jalankan aksi lalu tutup:\n%s", out)
+	// Tombol konfirmasi = NATIVE form POST (bukan @post — redirect SSE diblokir
+	// CSP). Assert form method+action, BUKAN ekspresi Datastar.
+	for _, want := range []string{`method="post"`, `action="/logout"`, `type="submit"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("tombol konfirmasi harus native form submit, kurang %q:\n%s", want, out)
+		}
 	}
-	// Batal & backdrop menutup.
+	if strings.Contains(out, "@post") {
+		t.Errorf("ConfirmModal TAK boleh pakai @post (navigasi = native form):\n%s", out)
+	}
+	// Batal & backdrop menutup via signal.
 	if !strings.Contains(out, "$logoutConfirm = false") {
 		t.Errorf("harus ada aksi tutup:\n%s", out)
 	}

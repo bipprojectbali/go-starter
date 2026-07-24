@@ -4,24 +4,25 @@ import (
 	"go_stater/internal/ui"
 
 	g "maragu.dev/gomponents"
-	data "maragu.dev/gomponents-datastar"
 	h "maragu.dev/gomponents/html"
 )
 
 // Login merender halaman masuk. Tombol Google selalu tampil (jalur utama);
 // form email/password hanya bila showPassword (dev — password auth dev-only).
-func Login(showPassword bool) g.Node {
+// errMsg (dari ?err=) dirender sebagai alert di atas form (pola PRG — form native
+// POST→303, bukan SSE; redirect via <script> diblokir CSP, lihat gotcha).
+func Login(showPassword bool, errMsg string) g.Node {
 	return authPage(authOpts{
-		title: "Masuk", action: "/login", showPassword: showPassword,
+		title: "Masuk", action: "/login", showPassword: showPassword, errMsg: errMsg,
 		switchText: "Belum punya akun?", switchHref: "/register", switchLabel: "Daftar",
 	})
 }
 
 // Register merender halaman pendaftaran (dev-only; route-nya tak ada di prod).
 // showWorkspace: register mengumpulkan Nama Workspace (buat workspace baru).
-func Register() g.Node {
+func Register(errMsg string) g.Node {
 	return authPage(authOpts{
-		title: "Daftar", action: "/register", showPassword: true, showWorkspace: true,
+		title: "Daftar", action: "/register", showPassword: true, showWorkspace: true, errMsg: errMsg,
 		switchText: "Sudah punya akun?", switchHref: "/login", switchLabel: "Masuk",
 	})
 }
@@ -30,14 +31,20 @@ func Register() g.Node {
 type authOpts struct {
 	title, action                       string
 	showPassword, showWorkspace         bool
+	errMsg                              string
 	switchText, switchHref, switchLabel string
 }
 
 // authPage adalah kerangka bersama login & register: tombol Google + (opsional)
-// form password (+ field Nama Workspace bila showWorkspace).
+// form password (+ field Nama Workspace bila showWorkspace). Form = NATIVE POST
+// (bukan Datastar @post): navigasi penuh via HTTP 303, bukan SSE — redirect SSE
+// menyuntik <script> yang diblokir CSP proyek (script-src tanpa unsafe-inline).
 func authPage(o authOpts) g.Node {
 	card := []g.Node{googleButton()}
 	if o.showPassword {
+		if o.errMsg != "" {
+			card = append(card, ui.Alert(ui.VariantDestructive, "auth-error", g.Text(o.errMsg)))
+		}
 		card = append(card, passwordDivider(), passwordFields(o.action, o.title, o.showWorkspace))
 	}
 
@@ -53,15 +60,7 @@ func authPage(o authOpts) g.Node {
 			h.A(h.Href(o.switchHref), g.Text(o.switchLabel)),
 		))
 	}
-
-	signals := map[string]any{"email": "", "password": ""}
-	if o.showWorkspace {
-		signals["workspace"] = ""
-	}
-	return h.Div(
-		data.Signals(signals),
-		g.Group(body),
-	)
+	return h.Div(g.Group(body))
 }
 
 // googleButton — tautan penuh (bukan @post) ke flow OAuth. Navigasi biasa 302.
@@ -81,8 +80,9 @@ func passwordDivider() g.Node {
 	return h.P(h.Class("text-center text-sm text-base-content/70"), g.Text("atau"))
 }
 
-// passwordFields adalah form email/password (dev-only). showWorkspace menambahkan
-// field "Nama Workspace" di paling atas (hanya di register — buat workspace baru).
+// passwordFields adalah form email/password NATIVE (dev-only). Submit = POST biasa
+// ke action → server balas HTTP 303 (redirect). Input pakai name= (bukan Datastar
+// bind); tombol type=submit. showWorkspace menambah field "Nama Workspace" di atas.
 func passwordFields(action, submitLabel string, showWorkspace bool) g.Node {
 	fields := []g.Node{}
 	if showWorkspace {
@@ -90,9 +90,7 @@ func passwordFields(action, submitLabel string, showWorkspace bool) g.Node {
 			h.Class("grid gap-2"),
 			ui.Label("Nama Workspace", h.For("workspace")),
 			ui.Input(
-				h.ID("workspace"),
-				h.Type("text"),
-				data.Bind("workspace"),
+				h.ID("workspace"), h.Name("workspace"), h.Type("text"),
 				h.Placeholder("mis. Acme Corp"),
 			),
 		))
@@ -102,9 +100,7 @@ func passwordFields(action, submitLabel string, showWorkspace bool) g.Node {
 			h.Class("grid gap-2"),
 			ui.Label("Email", h.For("email")),
 			ui.Input(
-				h.ID("email"),
-				h.Type("email"),
-				data.Bind("email"),
+				h.ID("email"), h.Name("email"), h.Type("email"),
 				h.Placeholder("nama@contoh.com"),
 			),
 		),
@@ -112,19 +108,16 @@ func passwordFields(action, submitLabel string, showWorkspace bool) g.Node {
 			h.Class("grid gap-2"),
 			ui.Label("Password", h.For("password")),
 			ui.Input(
-				h.ID("password"),
-				h.Type("password"),
-				data.Bind("password"),
+				h.ID("password"), h.Name("password"), h.Type("password"),
 				h.Placeholder("••••••••"),
 			),
 		),
-		ui.Button(
-			ui.VariantDefault,
-			[]g.Node{data.On("click", ui.PostAction(action))},
-			g.Text(submitLabel),
-		),
-		// Slot error kosong — di-patch jadi Alert berisi saat auth gagal.
-		ui.AlertSlot("auth-error"),
+		h.Button(h.Type("submit"), h.Class("btn btn-primary w-full"), g.Text(submitLabel)),
 	)
-	return g.Group(fields)
+	// Form native: method POST + action → navigasi 303 (bukan SSE). w-full agar
+	// tombol & field mengisi kartu (mobile-first).
+	return h.FormEl(
+		h.Method("post"), h.Action(action), h.Class("grid gap-4"),
+		g.Group(fields),
+	)
 }

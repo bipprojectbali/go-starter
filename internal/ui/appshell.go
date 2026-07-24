@@ -86,7 +86,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 
 			// Modal konfirmasi logout (dipicu tombol Keluar).
 			ConfirmModal("logoutConfirm", "Keluar?",
-				"Anda akan keluar dari sesi ini.", "Keluar", PostAction("/logout")),
+				"Anda akan keluar dari sesi ini.", "Keluar", "/logout"),
 		},
 	})
 }

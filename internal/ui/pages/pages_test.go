@@ -17,7 +17,7 @@ func render(t *testing.T, node g.Node) string {
 }
 
 func TestLogin_GoogleAlways_NoPasswordInProd(t *testing.T) {
-	out := render(t, Login(false)) // production: tanpa form password
+	out := render(t, Login(false, "")) // production: tanpa form password
 	if !strings.Contains(out, "/api/auth/google") || !strings.Contains(out, "Masuk dengan Google") {
 		t.Errorf("tombol Google harus selalu ada:\n%s", out)
 	}
@@ -27,17 +27,29 @@ func TestLogin_GoogleAlways_NoPasswordInProd(t *testing.T) {
 }
 
 func TestLogin_WithPassword_Dev(t *testing.T) {
-	out := render(t, Login(true))
-	for _, want := range []string{"Masuk dengan Google", `type="password"`, "@post(&#39;/login&#39;)", "/register"} {
+	out := render(t, Login(true, ""))
+	// Form NATIVE (method post + action), bukan Datastar @post (redirect SSE
+	// diblokir CSP — lihat gotcha). Assert atribut form native + submit.
+	for _, want := range []string{"Masuk dengan Google", `type="password"`, `method="post"`, `action="/login"`, "/register"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("login dev kurang %q:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "@post") {
+		t.Errorf("form auth TAK boleh pakai @post (harus native form):\n%s", out)
+	}
+}
+
+func TestLogin_RendersError(t *testing.T) {
+	out := render(t, Login(true, "Email atau password salah"))
+	if !strings.Contains(out, "Email atau password salah") {
+		t.Errorf("errMsg harus dirender sebagai alert:\n%s", out)
+	}
 }
 
 func TestRegister(t *testing.T) {
-	out := render(t, Register())
-	for _, want := range []string{"@post(&#39;/register&#39;)", `type="password"`, "/login"} {
+	out := render(t, Register(""))
+	for _, want := range []string{`method="post"`, `action="/register"`, `type="password"`, `name="workspace"`, "/login"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("register kurang %q:\n%s", want, out)
 		}

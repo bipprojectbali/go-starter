@@ -10,68 +10,68 @@ import (
 	"go_stater/internal/authz"
 	"go_stater/internal/db"
 	"go_stater/internal/session"
-	"go_stater/internal/ui"
 	"go_stater/internal/ui/pages"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/starfederation/datastar-go/datastar"
-	g "maragu.dev/gomponents"
 )
 
-// credentials adalah bentuk signals yang dikirim form auth Datastar. Workspace
-// hanya diisi di register (nama workspace baru); login mengabaikannya.
-type credentials struct {
-	Workspace string `json:"workspace"`
-	Email     string `json:"email"`
-	Password  string `json:"password"`
-}
-
-// maxWorkspaceNameLen membatasi panjang nama workspace (validasi input signal —
-// signal user-modifiable, WAJIB divalidasi backend, gotcha #15b).
+// maxWorkspaceNameLen membatasi panjang nama workspace (validasi input —
+// user-modifiable, WAJIB divalidasi backend).
 const maxWorkspaceNameLen = 60
 
 // LoginPage — GET /login (full page). Form password hanya di dev (devMode).
+// ?err= (dari redirect PRG) → alert. Menutup juga jalur /login?err=inactive dari
+// RefreshIdentity/OAuth yang dulu tak pernah dirender (pesan hilang senyap).
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Masuk", pages.Login(devMode))
+	h.renderPage(w, r, "Masuk", pages.Login(devMode, authErrMsg(r.URL.Query().Get("err"))))
 }
 
-// RegisterPage — GET /register (full page).
+// RegisterPage — GET /register (full page). ?err= → alert (pola PRG).
 func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Daftar", pages.Register())
+	h.renderPage(w, r, "Daftar", pages.Register(authErrMsg(r.URL.Query().Get("err"))))
 }
 
-// authError mem-patch alert error auth via Datastar (id "auth-error").
-func (h *Handler) authError(w http.ResponseWriter, r *http.Request, msg string) {
-	patch(w, r, h.Log, ui.Alert(ui.VariantDestructive, "auth-error", g.Text(msg)))
+// authErrMsg memetakan kode error auth (query ?err=) ke pesan ramah. Kode ringkas
+// di URL (bukan pesan penuh) agar rapi + tak bocor detail. "" → tak ada alert.
+func authErrMsg(code string) string {
+	switch code {
+	case "invalid":
+		return "Email atau password salah"
+	case "fields":
+		return "Email dan password wajib diisi"
+	case "short":
+		return "Password minimal 8 karakter"
+	case "exists":
+		return "Email sudah terdaftar"
+	case "workspace":
+		return "Nama workspace wajib diisi"
+	case "inactive":
+		return "Akun tidak aktif. Hubungi administrator."
+	default:
+		return ""
+	}
 }
 
-// Register — POST /register. Buat user (argon2id), lalu login otomatis.
+// Register — POST /register (native form, PRG). Buat workspace+owner, lalu login
+// otomatis & redirect 303 ke home. Gagal → redirect /register?err=CODE.
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	var in credentials
-	if err := datastar.ReadSignals(r, &in); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+	password := r.FormValue("password")
+	workspace := strings.TrimSpace(r.FormValue("workspace"))
+	if workspace == "" || len(workspace) > maxWorkspaceNameLen {
+		http.Redirect(w, r, "/register?err=workspace", http.StatusSeeOther)
 		return
 	}
-	email := strings.TrimSpace(strings.ToLower(in.Email))
-	workspace := strings.TrimSpace(in.Workspace)
-	if workspace == "" {
-		h.authError(w, r, "Nama workspace wajib diisi")
+	if email == "" || password == "" {
+		http.Redirect(w, r, "/register?err=fields", http.StatusSeeOther)
 		return
 	}
-	if len(workspace) > maxWorkspaceNameLen {
-		h.authError(w, r, "Nama workspace maksimal 60 karakter")
-		return
-	}
-	if email == "" || in.Password == "" {
-		h.authError(w, r, "Email dan password wajib diisi")
-		return
-	}
-	if len(in.Password) < 8 {
-		h.authError(w, r, "Password minimal 8 karakter")
+	if len(password) < 8 {
+		http.Redirect(w, r, "/register?err=short", http.StatusSeeOther)
 		return
 	}
 
-	hash, err := auth.HashPassword(in.Password)
+	hash, err := auth.HashPassword(password)
 	if err != nil {
 		h.Log.Error("hash password", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -101,7 +101,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Email/slug unik: pelanggaran constraint = email sudah terpakai.
 		h.Log.Warn("register: create tenant+user", "err", err)
-		h.authError(w, r, "Email sudah terdaftar")
+		http.Redirect(w, r, "/register?err=exists", http.StatusSeeOther)
 		return
 	}
 
@@ -110,26 +110,18 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// Tulis cookie SEBELUM NewSSE (NewSSE flush header & bypass scs — lihat auth.go doc).
-	if err := session.WriteCookie(r.Context(), w); err != nil {
-		h.Log.Error("register: write cookie", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	sse := datastar.NewSSE(w, r)
-	_ = sse.Redirect(authz.HomePathFor(session.Role(r.Context())))
+	// Native redirect (bukan SSE): scs LoadAndSave commit cookie otomatis — tak
+	// perlu WriteCookie manual (itu hanya utk jalur NewSSE yang bypass scs).
+	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
 }
 
-// Login — POST /login. Verifikasi argon2id, mulai session.
+// Login — POST /login (native form, PRG). Verifikasi argon2id, mulai session,
+// redirect 303 ke home. Gagal → /login?err=CODE (pesan generik anti-enumeration).
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var in credentials
-	if err := datastar.ReadSignals(r, &in); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
-	}
-	email := strings.TrimSpace(strings.ToLower(in.Email))
-	if email == "" || in.Password == "" {
-		h.authError(w, r, "Email dan password wajib diisi")
+	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
+	password := r.FormValue("password")
+	if email == "" || password == "" {
+		http.Redirect(w, r, "/login?err=fields", http.StatusSeeOther)
 		return
 	}
 
@@ -143,8 +135,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Pesan generik — jangan bocorkan email terdaftar/tidak (anti user-enumeration).
-			h.authError(w, r, "Email atau password salah")
+			// Kode generik — jangan bocorkan email terdaftar/tidak (anti user-enumeration).
+			http.Redirect(w, r, "/login?err=invalid", http.StatusSeeOther)
 			return
 		}
 		h.Log.Error("login: get user", "err", err)
@@ -152,43 +144,39 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Akun Google-only (pass_hash NULL) tak bisa login password. Pesan generik
+	// Akun Google-only (pass_hash NULL) tak bisa login password. Kode generik
 	// yang sama (anti user-enumeration) — jangan ungkap bahwa akun ini OAuth.
 	if user.PassHash == nil {
-		h.authError(w, r, "Email atau password salah")
+		http.Redirect(w, r, "/login?err=invalid", http.StatusSeeOther)
 		return
 	}
 
-	ok, err := auth.VerifyPassword(in.Password, *user.PassHash)
+	ok, err := auth.VerifyPassword(password, *user.PassHash)
 	if err != nil {
 		h.Log.Error("login: verify", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	if !ok {
-		h.authError(w, r, "Email atau password salah")
+		http.Redirect(w, r, "/login?err=invalid", http.StatusSeeOther)
 		return
 	}
 
 	if err := h.startIdentity(r, user, "password"); err != nil {
 		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
-			h.authError(w, r, "Akun tidak aktif. Hubungi administrator.")
+			http.Redirect(w, r, "/login?err=inactive", http.StatusSeeOther)
 			return
 		}
 		h.Log.Error("login: start identity", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := session.WriteCookie(r.Context(), w); err != nil {
-		h.Log.Error("login: write cookie", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	sse := datastar.NewSSE(w, r)
-	_ = sse.Redirect(authz.HomePathFor(session.Role(r.Context())))
+	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
 }
 
-// Logout — POST /logout. Hancurkan session.
+// Logout — POST /logout (native form, PRG). Hancurkan session, redirect 303.
+// SELALU HTTP redirect (bukan SSE): redirect via SSE menyuntik <script> yang
+// diblokir CSP proyek — logout tak akan berpindah halaman (lihat gotcha).
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Jejak logout SEBELUM Clear (uid hilang setelahnya). Fail-soft.
 	if uid := session.UserID(r.Context()); uid != 0 {
@@ -196,16 +184,6 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := session.Clear(r.Context()); err != nil {
 		h.Log.Error("logout", "err", err)
-	}
-	// Logout bisa dari form biasa atau Datastar; tangani keduanya.
-	if r.Header.Get("Datastar-Request") == "true" {
-		// Tulis cookie (Destroy → cookie kadaluwarsa) sebelum NewSSE.
-		if err := session.WriteCookie(r.Context(), w); err != nil {
-			h.Log.Error("logout: write cookie", "err", err)
-		}
-		sse := datastar.NewSSE(w, r)
-		_ = sse.Redirect("/login")
-		return
 	}
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

@@ -141,6 +141,22 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
     `json.Marshal` (bukan user); (b) signal = user-modifiable → WAJIB validasi di
     backend (mis. `ValidRoleName`, `TrimSpace`+empty-check `$title`); (c) jangan
     taruh data sensitif di signal (terlihat plaintext di source).
+16. **`sse.Redirect` (datastar-go) DIBLOKIR CSP — pakai HTTP 303 untuk NAVIGASI.**
+    Konsekuensi langsung #1/#15, terverifikasi wire+CSP-event. `sse.Redirect`/
+    `ExecuteScript`/`ReplaceURL` di datastar-go v1.2.2 mengirim `datastar-patch-
+    elements` yang menyuntik `<script>setTimeout(...location.href)</script>` ke
+    body. CSP kita (`script-src 'self' 'unsafe-eval'`, TANPA `unsafe-inline`)
+    **memblokir** script inline itu (`script-src-elem blocked:inline`) → redirect
+    MATI (aksi server sukses, tapi halaman tak pindah). Terjadi di logout/login/
+    register. **Aturan**: aksi = NAVIGASI penuh (logout, login-sukses, register-
+    sukses) → **native form POST → `http.Redirect(w,r,url,303)`**, BUKAN `sse.Redirect`.
+    Native redirect juga commit cookie via scs `LoadAndSave` normal → tak perlu
+    ritual `WriteCookie`+`NewSSE` (#2). Gagal validasi → PRG `?err=CODE`
+    (`authErrMsg` map kode→pesan). SSE tetap untuk update FRAGMENT parsial (flash,
+    row) yang di-escape — hanya redirect yang pindah ke HTTP. Asimetri kunci:
+    `unsafe-eval` mengizinkan `new Function` (ekspresi `data-*` jalan), tapi
+    `<script>` inline tetap diblokir — jadi menambah `unsafe-inline` BUKAN solusi
+    (melemahkan CSP; lihat § Batasan).
 
 ## Multi-tenancy (RLS + role 2-bidang) — keputusan 0002
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -10,25 +11,30 @@ import (
 	"go_stater/internal/db"
 )
 
+// postForm membangun request POST form-encoded (native form, bukan JSON/Datastar).
+func postForm(path string, form url.Values) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return req
+}
+
 func TestRegister_Success(t *testing.T) {
 	env, _ := setupTest(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"workspace":"Acme Corp","email":"baru@local","password":"rahasia123"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Register)
+	rec := env.do(postForm("/register", url.Values{
+		"workspace": {"Acme Corp"}, "email": {"baru@local"}, "password": {"rahasia123"},
+	}), env.h.Register)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	// Native PRG: sukses → 303 + Location home (owner tenant baru → /admin).
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d: %s", rec.Code, rec.Body.String())
 	}
-	// Sukses → redirect ke home per-role. User baru = OWNER tenant baru → /admin.
-	if !strings.Contains(rec.Body.String(), "/admin") {
-		t.Errorf("register sukses (owner tenant baru) harus redirect ke /admin:\n%s", rec.Body.String())
+	if loc := rec.Header().Get("Location"); loc != "/admin" {
+		t.Errorf("register sukses (owner) harus redirect /admin, got %q", loc)
 	}
-	// REGRESI: cookie WAJIB terkirim meski response via SSE (bug scs+NewSSE).
-	// Tanpa assert ini, bug "session tak login" lolos test.
+	// REGRESI: cookie WAJIB terkirim (native redirect → scs LoadAndSave commit).
 	if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "session=") {
-		t.Errorf("Set-Cookie session harus ada di response register, got %q", c)
+		t.Errorf("Set-Cookie session harus ada, got %q", c)
 	}
 	// User tersimpan dengan hash argon2id (bukan plaintext).
 	u, err := env.q.GetUserByEmail(t.Context(), "baru@local")
@@ -53,62 +59,59 @@ func TestRegister_Success(t *testing.T) {
 
 func TestRegister_ShortPassword(t *testing.T) {
 	env, _ := setupTest(t)
-	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"workspace":"WS","email":"x@local","password":"pendek"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Register)
+	rec := env.do(postForm("/register", url.Values{
+		"workspace": {"WS"}, "email": {"x@local"}, "password": {"pendek"},
+	}), env.h.Register)
 
-	if !strings.Contains(rec.Body.String(), "minimal 8") {
-		t.Errorf("harus tolak password <8 karakter:\n%s", rec.Body.String())
+	// Gagal → 303 ke /register?err=short (pola PRG).
+	if loc := rec.Header().Get("Location"); loc != "/register?err=short" {
+		t.Errorf("password <8 harus redirect ?err=short, got %q", loc)
 	}
 }
 
 func TestRegister_MissingWorkspace(t *testing.T) {
 	env, _ := setupTest(t)
-	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"email":"x@local","password":"rahasia123"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Register)
+	rec := env.do(postForm("/register", url.Values{
+		"email": {"x@local"}, "password": {"rahasia123"},
+	}), env.h.Register)
 
-	if !strings.Contains(rec.Body.String(), "workspace wajib") {
-		t.Errorf("harus tolak nama workspace kosong:\n%s", rec.Body.String())
+	if loc := rec.Header().Get("Location"); loc != "/register?err=workspace" {
+		t.Errorf("nama workspace kosong harus redirect ?err=workspace, got %q", loc)
 	}
 }
 
 func TestRegister_DuplicateEmail(t *testing.T) {
 	env, _ := setupTest(t)
 	// user seed "test@local" sudah ada.
-	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"workspace":"Dup","email":"test@local","password":"rahasia123"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Register)
+	rec := env.do(postForm("/register", url.Values{
+		"workspace": {"Dup"}, "email": {"test@local"}, "password": {"rahasia123"},
+	}), env.h.Register)
 
-	if !strings.Contains(rec.Body.String(), "sudah terdaftar") {
-		t.Errorf("harus tolak email duplikat:\n%s", rec.Body.String())
+	if loc := rec.Header().Get("Location"); loc != "/register?err=exists" {
+		t.Errorf("email duplikat harus redirect ?err=exists, got %q", loc)
 	}
 }
 
 func TestLogin_Success(t *testing.T) {
 	env, _ := setupTest(t)
-	// Buat user dengan password ter-hash.
 	hash, _ := auth.HashPassword("rahasia123")
 	if _, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/login",
-		strings.NewReader(`{"email":"login@local","password":"rahasia123"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Login)
+	rec := env.do(postForm("/login", url.Values{
+		"email": {"login@local"}, "password": {"rahasia123"},
+	}), env.h.Login)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("want 200, got %d", rec.Code)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("want 303, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "/user") {
-		t.Errorf("login sukses harus redirect ke /user (home role):\n%s", rec.Body.String())
+	// member → /user (home role).
+	if loc := rec.Header().Get("Location"); loc != "/user" {
+		t.Errorf("login sukses (member) harus redirect /user, got %q", loc)
 	}
 	if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "session=") {
-		t.Errorf("Set-Cookie session harus ada di response login, got %q", c)
+		t.Errorf("Set-Cookie session harus ada, got %q", c)
 	}
 }
 
@@ -117,25 +120,41 @@ func TestLogin_WrongPassword(t *testing.T) {
 	hash, _ := auth.HashPassword("benar")
 	env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"})
 
-	req := httptest.NewRequest(http.MethodPost, "/login",
-		strings.NewReader(`{"email":"u@local","password":"salah"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Login)
+	rec := env.do(postForm("/login", url.Values{
+		"email": {"u@local"}, "password": {"salah"},
+	}), env.h.Login)
 
-	if !strings.Contains(rec.Body.String(), "salah") {
-		t.Errorf("password salah harus ditolak:\n%s", rec.Body.String())
+	// Kode generik (anti user-enumeration).
+	if loc := rec.Header().Get("Location"); loc != "/login?err=invalid" {
+		t.Errorf("password salah harus redirect ?err=invalid, got %q", loc)
 	}
 }
 
 func TestLogin_UnknownEmail(t *testing.T) {
 	env, _ := setupTest(t)
-	req := httptest.NewRequest(http.MethodPost, "/login",
-		strings.NewReader(`{"email":"nobody@local","password":"apa"}`))
-	req.Header.Set("Content-Type", "application/json")
-	rec := env.do(req, env.h.Login)
+	rec := env.do(postForm("/login", url.Values{
+		"email": {"nobody@local"}, "password": {"apa"},
+	}), env.h.Login)
 
-	// Pesan generik (anti user-enumeration) — sama dengan wrong password.
-	if !strings.Contains(rec.Body.String(), "Email atau password salah") {
-		t.Errorf("email tak dikenal harus pesan generik:\n%s", rec.Body.String())
+	// Kode generik SAMA dengan wrong password (anti user-enumeration).
+	if loc := rec.Header().Get("Location"); loc != "/login?err=invalid" {
+		t.Errorf("email tak dikenal harus redirect ?err=invalid (generik), got %q", loc)
+	}
+}
+
+// TestAuthErrMsg: pemetaan kode → pesan (yang dirender di halaman auth).
+func TestAuthErrMsg(t *testing.T) {
+	cases := map[string]string{
+		"invalid":   "Email atau password salah",
+		"exists":    "Email sudah terdaftar",
+		"inactive":  "Akun tidak aktif. Hubungi administrator.",
+		"workspace": "Nama workspace wajib diisi",
+		"":          "",
+		"unknown":   "",
+	}
+	for code, want := range cases {
+		if got := authErrMsg(code); got != want {
+			t.Errorf("authErrMsg(%q)=%q, want %q", code, got, want)
+		}
 	}
 }

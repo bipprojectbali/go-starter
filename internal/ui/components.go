@@ -23,7 +23,11 @@ func When(allowed bool, node g.Node) g.Node {
 //
 // Pasangkan dengan tombol pemicu yang men-set signal true (lihat ConfirmTrigger).
 // signal harus unik per halaman. Sertakan modal ini SEKALI di halaman.
-func ConfirmModal(sig, title, message, confirmLabel, confirmAction string) g.Node {
+// ConfirmModal merender dialog konfirmasi. Tombol konfirmasi = NATIVE form POST
+// ke confirmPostURL (bukan Datastar @post): aksinya = NAVIGASI (mis. logout →
+// redirect 303), dan redirect via SSE menyuntik <script> yang diblokir CSP proyek.
+// Tombol Batal menutup modal via signal. sig = nama signal boolean pengendali.
+func ConfirmModal(sig, title, message, confirmLabel, confirmPostURL string) g.Node {
 	openExpr := "$" + sig
 	return h.Div(
 		// Overlay + backdrop. Inline display:none agar tak FOUC sebelum Datastar.
@@ -46,11 +50,13 @@ func ConfirmModal(sig, title, message, confirmLabel, confirmAction string) g.Nod
 						data.On("click", openExpr+" = false"),
 						g.Text("Batal"),
 					),
-					h.Button(
-						h.Type("button"), h.Class("btn btn-error btn-sm"),
-						// Jalankan aksi lalu tutup.
-						data.On("click", confirmAction+"; "+openExpr+" = false"),
-						g.Text(confirmLabel),
+					// Konfirmasi = native form submit → HTTP 303 (navigasi penuh).
+					h.FormEl(
+						h.Method("post"), h.Action(confirmPostURL),
+						h.Button(
+							h.Type("submit"), h.Class("btn btn-error btn-sm"),
+							g.Text(confirmLabel),
+						),
 					),
 				),
 			),
