@@ -1,0 +1,25 @@
+# Kecilkan build context. JANGAN exclude static/ migrations/ internal/ —
+# perlu di-embed/compile. Yang WAJIB dibuang: binary besar & rahasia.
+.git
+.github
+
+# Binary besar (gitignored) — 76MB + 30MB, tak boleh masuk context
+/tailwindcss
+/app
+/tmp
+
+# Rahasia & env lokal
+.env
+.env.*
+
+# Artefak lokal / IDE
+.DS_Store
+.idea
+.vscode
+*.test
+*.out
+*-check
+NOTE.md
+
+# Dokumentasi (tak dibutuhkan saat build)
+*.md

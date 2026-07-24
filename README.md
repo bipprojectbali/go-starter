@@ -136,3 +136,36 @@ Test yang butuh DB memakai `TEST_DATABASE_URL` dan di-`skip` bila kosong.
 `make build` menghasilkan satu binary `./app` (assets & migrasi ter-embed).
 Set `ENV=production` + variabel wajib (lihat tabel konfigurasi). Binary butuh
 Postgres + Redis yang dapat dijangkau. Lihat [`CHANGELOG.md`](CHANGELOG.md).
+
+### Deploy produksi (Docker + Portainer)
+
+Single image (`Dockerfile` multi-stage → distroless, ~33MB) dipakai untuk **dua
+peran** via subcommand: `app migrate` (migrasi lalu exit) & `app` tanpa argumen
+(server). Ini memisahkan **lifecycle migrasi dari deploy app** — aman & fail-safe.
+
+**Alur:**
+
+1. **Build & push image** → GHCR via workflow `publish.yml` (`workflow_dispatch`,
+   pilih `stack_env=prod` + `tag`). Menghasilkan `ghcr.io/<owner>/<repo>:prod-<tag>`
+   + `:prod-latest`.
+2. **Deploy stack** di Portainer pakai [`docker-compose.yml`](docker-compose.yml).
+   Set env (`DATABASE_URL`, `REDIS_ADDR`, `SESSION_KEY`, `GOOGLE_*`) via Portainer
+   stack env. Re-pull/update via workflow `re-pull.yml`.
+3. **Runtime (otomatis, urutan dijaga compose):**
+   - Service `migrate` (`app migrate`) jalan **sekali**: ambil `pg_advisory_lock`
+     (aman multi-instance) → `goose up` → exit 0.
+   - Service `app` **menunggu** `migrate` sukses (`service_completed_successfully`)
+     baru start, dengan **`AUTO_MIGRATE=false`** (app tak migrate sendiri).
+   - **Fail-safe:** migrate gagal (exit ≠ 0) → app **tak pernah start**.
+
+**Aturan `AUTO_MIGRATE`:** `true` hanya di dev (migrate saat boot). **Produksi
+WAJIB `false`** — migrasi dikerjakan container `migrate` terpisah.
+
+**Rollback:**
+- **App:** re-pull tag image lama via Portainer.
+- **Schema:** migrasi hanya maju (goose up, tak auto-down). Rancang migrasi
+  **expand-contract** agar app versi lama tetap jalan di schema baru. Bila perlu
+  turun, jalankan `goose down` manual — **backup DB dulu**.
+
+**Health:** `/healthz` (liveness) & `/readyz` (cek DB) untuk probe reverse-proxy /
+uptime monitor. Image distroless tanpa shell → probe dari **luar** container.

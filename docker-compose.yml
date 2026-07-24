@@ -1,0 +1,89 @@
+# Stack produksi go_stater untuk Portainer (Docker + Portainer).
+#
+# ALUR AMAN-MIGRASI:
+#   1. service `migrate` jalan sekali (`/app/app migrate`) → advisory lock 4242 →
+#      goose up → exit 0. TIDAK me-restart.
+#   2. service `app` MENUNGGU migrate selesai sukses (service_completed_successfully)
+#      baru start, dengan AUTO_MIGRATE=false (app TIDAK migrate sendiri).
+#   Fail-safe: migrate gagal (exit ≠ 0) → app TAK PERNAH start.
+#
+# Ganti nilai env via Portainer stack env / file .env di sebelah compose ini.
+# TAG image: prod-latest (di-push publish.yml) atau prod-<versi> spesifik.
+
+services:
+  migrate:
+    image: ghcr.io/bipprojectbali/go-stater:prod-latest
+    command: ["migrate"]          # → /app/app migrate lalu exit
+    restart: "no"                 # one-shot; WAJIB "no" agar completed_successfully stabil
+    environment:
+      DATABASE_URL: ${DATABASE_URL}   # HANYA ini yang dibutuhkan migrate
+    # Bila Postgres di dalam stack (Opsi B), tunggu DB sehat dulu:
+    # depends_on:
+    #   postgres:
+    #     condition: service_healthy
+
+  app:
+    image: ghcr.io/bipprojectbali/go-stater:prod-latest
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully   # start HANYA setelah migrate exit 0
+    environment:
+      PORT: "8080"
+      ENV: production
+      AUTO_MIGRATE: "false"        # WAJIB false di prod — lifecycle migrasi dipisah
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_ADDR: ${REDIS_ADDR}
+      SESSION_KEY: ${SESSION_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+    ports:
+      - "8080:8080"
+    # HEALTHCHECK: image distroless TANPA shell/curl → healthcheck internal CMD
+    # tak jalan. Probe /readyz dari LUAR (reverse-proxy / Portainer / uptime-kuma).
+    # Bila butuh healthcheck compose internal, ganti base image ke alpine + wget:
+    #   healthcheck:
+    #     test: ["CMD", "wget", "-qO-", "http://localhost:8080/readyz"]
+    #     interval: 10s
+    #     timeout: 3s
+    #     retries: 5
+    #     start_period: 20s
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Opsi B — Postgres & Redis DI DALAM stack (uncomment bila TAK pakai DB eksternal).
+  # Lalu set DATABASE_URL=postgres://user:pass@postgres:5432/go_stater?sslmode=disable
+  # dan REDIS_ADDR=redis:6379, plus tambah depends_on condition: service_healthy
+  # di service migrate & app.
+  # ═══════════════════════════════════════════════════════════════════════════
+  # postgres:
+  #   image: postgres:17-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redisdata:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 3s
+  #     retries: 5
+
+# volumes:
+#   pgdata:
+#   redisdata:

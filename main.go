@@ -35,10 +35,55 @@ var staticEmbed embed.FS
 var migrationsEmbed embed.FS
 
 func main() {
+	// Dispatch subcommand SEBELUM run(). `./app migrate` = jalankan migrasi lalu
+	// exit — dipakai container migrate one-shot (compose service_completed_successfully)
+	// SEBELUM app start. Pola stdlib (switch os.Args), tanpa framework CLI.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "migrate":
+			if err := runMigrate(); err != nil {
+				slog.Error("migrate: fatal", "err", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		default:
+			slog.Error("unknown subcommand", "arg", os.Args[1])
+			os.Exit(2)
+		}
+	}
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
+}
+
+// runMigrate menjalankan HANYA migrasi lalu keluar. Dipakai container
+// `./app migrate` (compose: condition service_completed_successfully) SEBELUM app
+// start. Sengaja TIDAK memanggil config.MustLoad(): migrate hanya butuh
+// DATABASE_URL, sedang MustLoad mewajibkan SESSION_KEY/Google di production.
+// Tak buka Redis/OAuth/HTTP — reuse migrationsEmbed + MigrateWithLock (advisory lock).
+func runMigrate() error {
+	_ = config.LoadDotEnv(".env")
+	cfg, err := config.LoadMigrateConfig()
+	if err != nil {
+		return err
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+
+	if err := database.MigrateWithLock(ctx, pool, migrationsEmbed); err != nil {
+		return err
+	}
+	slog.Info("migrations applied")
+	return nil
 }
 
 func run() error {

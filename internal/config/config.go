@@ -95,6 +95,19 @@ func MustLoad() *Config {
 	return c
 }
 
+// LoadMigrateConfig memuat konfigurasi MINIMAL untuk subcommand `migrate`:
+// HANYA DATABASE_URL. Sengaja TIDAK memakai MustLoad — migrate cuma butuh
+// koneksi DB, sedang MustLoad mewajibkan SESSION_KEY/Google/REDIS di production
+// (yang tak relevan untuk container migrate-only). Return error (bukan panic)
+// agar caller (runMigrate) bisa exit(1) rapi. Env tetap dibaca HANYA di sini.
+func LoadMigrateConfig() (*Config, error) {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		return nil, fmt.Errorf("config: env %q wajib di-set untuk migrate", "DATABASE_URL")
+	}
+	return &Config{DatabaseURL: url}, nil
+}
+
 // LoadDotEnv memuat pasangan key=value dari file .env ke environment
 // bila belum di-set. Tanpa dependency — parser sederhana untuk dev.
 // Baris kosong dan yang diawali '#' diabaikan. Aman bila file tidak ada.
