@@ -20,7 +20,8 @@ assets, migrations, dan template di-embed via `embed.FS`).
 | Migrasi | [goose](https://github.com/pressly/goose) (advisory-lock, aman multi-instance) |
 | Session | [scs](https://github.com/alexedwards/scs) + [rueidis](https://github.com/redis/rueidis) (Redis store) |
 | Auth | Password (argon2id, dev-only) + Google OAuth/OIDC |
-| Otorisasi | [Casbin](https://casbin.org) RBAC (user < admin < super_admin) |
+| Otorisasi | [Casbin](https://casbin.org) RBAC — 2 bidang: platform (super_admin/staff) · tenant (owner/admin/member) |
+| Multi-tenancy | Postgres RLS (isolasi per-tenant, defense-in-depth) — lihat `docs/decisions/0002` |
 
 ## Prasyarat
 
@@ -65,19 +66,24 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 
 - **Google OAuth** = jalur login utama. **Password** hanya di dev (`ENV != production`)
   untuk mempermudah agen/dev masuk.
-- Role hierarkis **user < admin < super_admin**. Super-admin "root" ditentukan
-  `SUPER_ADMIN_EMAILS` (immutable — tak bisa diturunkan/diblokir lewat panel).
-- Setelah login, user diarahkan ke home per-role: super_admin→`/dev`,
-  admin→`/admin`, user→`/user`. Landing `/` dapat diakses semua.
+- **Model role 2-bidang** (multi-tenancy). Dua bidang tegak-lurus:
+  - **PLATFORM** (lintas-tenant): `super_admin` (dari `SUPER_ADMIN_EMAILS`, immutable,
+    nol baris DB) + `staff` (tabel `platform_staff`, mutable, akses terbatas).
+  - **TENANT** (isolasi RLS): `owner > admin > member`. **1 user = 1 tenant** —
+    register/login Google user baru = buat tenant baru + owner.
+- Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
+  owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
+- Data tiap tenant terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
+  `docs/decisions/0002`. Runtime app konek role `app_rw` (`APP_DATABASE_URL`).
 
 ## Panel
 
 | Rute | Akses | Isi |
 |------|-------|-----|
-| `/dev/users` | super_admin | kelola role/status/hapus user + audit trail |
-| `/dev/logs` | super_admin | aktivitas user (presence "aktif jam berapa"), KPI + chart (harian/mingguan/bulanan) + event login/logout |
-| `/dev/health` | super_admin, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
-| `/dev/erd` | super_admin, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
+| `/dev/users` | platform (super_admin/staff) | kelola role/status/hapus user + audit trail |
+| `/dev/logs` | platform (super_admin/staff) | aktivitas user (presence "aktif jam berapa"), KPI + chart (harian/mingguan/bulanan) + event login/logout |
+| `/dev/health` | platform, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
+| `/dev/erd` | platform, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
 | `/admin` | admin+ | dashboard admin (stub) |
 | `/user` | user+ | beranda user (stub) |
 

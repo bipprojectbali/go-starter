@@ -13,9 +13,9 @@ import (
 func seedPresence(t *testing.T, env *testEnv, uid int64, bucket time.Time, hits int) {
 	t.Helper()
 	_, err := env.h.Pool.Exec(t.Context(),
-		`INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at)
-		 VALUES ($1, $2, $3, $2)`,
-		uid, bucket, hits)
+		`INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at, tenant_id)
+		 VALUES ($1, $2, $3, $2, $4)`,
+		uid, bucket, hits, env.tenantID)
 	if err != nil {
 		t.Fatalf("seed presence: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestPresenceByHour_TimezoneShift(t *testing.T) {
 
 	from := pgtype.Timestamptz{Time: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC), Valid: true}
 	to := pgtype.Timestamptz{Time: time.Date(2026, 7, 4, 0, 0, 0, 0, time.UTC), Valid: true}
-	rows, err := env.h.DB.PresenceByHour(ctx, db.PresenceByHourParams{
+	rows, err := env.q.PresenceByHour(ctx, db.PresenceByHourParams{
 		Tz: "Asia/Jakarta", FromAt: from, ToAt: to,
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func TestPresenceByHour_TimezoneShift(t *testing.T) {
 func TestPresenceKPIs_SumsAndDistinct(t *testing.T) {
 	env, uid := setupTest(t)
 	ctx := t.Context()
-	u2, err := env.h.DB.CreateUser(ctx, db.CreateUserParams{Email: "u2@local", PassHash: ptr("x")})
+	u2, err := env.q.CreateUser(ctx, db.CreateUserParams{Email: "u2@local", PassHash: ptr("x"), TenantID: env.tenantID, Role: "member"})
 	if err != nil {
 		t.Fatalf("seed u2: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestPresenceKPIs_SumsAndDistinct(t *testing.T) {
 
 	from := pgtype.Timestamptz{Time: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC), Valid: true}
 	to := pgtype.Timestamptz{Time: time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC), Valid: true}
-	kpi, err := env.h.DB.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: from, ToAt: to})
+	kpi, err := env.q.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: from, ToAt: to})
 	if err != nil {
 		t.Fatalf("PresenceKPIs: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestPresenceKPIs_RangeExcludesOutside(t *testing.T) {
 
 	from := pgtype.Timestamptz{Time: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC), Valid: true}
 	to := pgtype.Timestamptz{Time: time.Date(2026, 7, 3, 0, 0, 0, 0, time.UTC), Valid: true}
-	kpi, err := env.h.DB.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: from, ToAt: to})
+	kpi, err := env.q.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: from, ToAt: to})
 	if err != nil {
 		t.Fatalf("PresenceKPIs: %v", err)
 	}

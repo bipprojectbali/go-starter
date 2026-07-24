@@ -15,6 +15,7 @@ const (
 	keyEmail         = "email"         // cache email (hindari GetUser tiap render)
 	keyRole          = "role"          // otoritas (subject Casbin)
 	keyIsRoot        = "isRoot"        // super-admin env (immutable root)
+	keyTenantID      = "tenantID"      // tenant user (multi-tenancy; 0 = platform/anonim)
 	keyAvatarURL     = "avatarURL"     // foto Google untuk nav
 	keyOAuthState    = "oauthState"    // anti-CSRF token flow OAuth
 	keyOAuthNonce    = "oauthNonce"    // anti-replay id_token
@@ -50,15 +51,20 @@ func UserID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyUserID) }
 func SetUserID(ctx context.Context, id int64) { mgr.Put(ctx, keyUserID, id) }
 
 // SetIdentity menyimpan identitas login lengkap ke session sekaligus: id, email,
-// role (subject Casbin), isRoot (super-admin env), dan avatar. Disimpan saat login
-// agar handler/middleware/render tak perlu hit DB per-request untuk data ini.
-func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, avatarURL string) {
+// role (subject Casbin), isRoot (super-admin env), tenantID, dan avatar. Disimpan
+// saat login agar handler/middleware/render tak perlu hit DB per-request. tenantID
+// menggerakkan TenantScope (RLS) — platform user (super_admin/staff) pakai 0.
+func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, tenantID int64, avatarURL string) {
 	mgr.Put(ctx, keyUserID, id)
 	mgr.Put(ctx, keyEmail, email)
 	mgr.Put(ctx, keyRole, role)
 	mgr.Put(ctx, keyIsRoot, isRoot)
+	mgr.Put(ctx, keyTenantID, tenantID)
 	mgr.Put(ctx, keyAvatarURL, avatarURL)
 }
+
+// TenantID mengembalikan tenant user login (0 bila belum login / platform user).
+func TenantID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyTenantID) }
 
 // Email mengembalikan email user login (kosong bila belum login).
 func Email(ctx context.Context) string { return mgr.GetString(ctx, keyEmail) }

@@ -16,11 +16,9 @@ import (
 // env, id super-admin (aktor), dan id user biasa (target).
 func setupDevUsers(t *testing.T) (*testEnv, int64, int64) {
 	t.Helper()
-	env, superID := setupTest(t) // user seed test@local jadi super-admin
-	// Jadikan seed super_admin & tandai sebagai root env.
-	if err := env.h.DB.UpdateUserRole(t.Context(), db.UpdateUserRoleParams{ID: superID, Role: "super_admin"}); err != nil {
-		t.Fatalf("set super role: %v", err)
-	}
+	env, superID := setupTest(t) // seed test@local (role owner di DB)
+	// super_admin = ENV-ONLY (checker), TAK ditulis ke users.role (CHECK hanya
+	// owner/admin/member). RefreshIdentity/checker yang meng-overlay super_admin.
 	SetSuperAdminChecker(func(email string) bool { return email == "test@local" })
 	t.Cleanup(func() { SetSuperAdminChecker(func(string) bool { return false }) })
 
@@ -32,7 +30,7 @@ func setupDevUsers(t *testing.T) (*testEnv, int64, int64) {
 	authz.Init(e)
 
 	// User biasa (target).
-	target, err := env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "target@local", PassHash: ptr("x")})
+	target, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "target@local", PassHash: ptr("x"), TenantID: env.tenantID, Role: "member"})
 	if err != nil {
 		t.Fatalf("seed target: %v", err)
 	}
@@ -51,8 +49,8 @@ func (e *testEnv) doDevAction(actorID, targetID int64, form url.Values, fn http.
 	// scs LoadAndSave menurunkan context dari request masuk, jadi r sudah bawa
 	// chi param (dari base) + session sekaligus.
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session.SetIdentity(r.Context(), actorID, "test@local", "super_admin", true, "")
-		fn(w, r)
+		session.SetIdentity(r.Context(), actorID, "test@local", "super_admin", true, 1, "")
+		fn(w, r.WithContext(withQueries(r.Context(), e.q))) // inject Queries (sim. Scope)
 	}))
 	wrapped.ServeHTTP(rec, base)
 	return rec
@@ -63,7 +61,7 @@ func TestDevUserSetRole_Success(t *testing.T) {
 	// Aksi kini balas SSE (200), bukan redirect. Sukses diverifikasi lewat efek
 	// DB + isi flash, bukan status code.
 	rec := env.doDevAction(superID, targetID, url.Values{"role": {"admin"}}, env.h.DevUserSetRole)
-	u, _ := env.h.DB.GetUser(t.Context(), targetID)
+	u, _ := env.q.GetUser(t.Context(), targetID)
 	if u.Role != "admin" {
 		t.Errorf("role harus admin, got %q", u.Role)
 	}
@@ -71,7 +69,7 @@ func TestDevUserSetRole_Success(t *testing.T) {
 		t.Errorf("flash sukses harus ada:\n%s", rec.Body.String())
 	}
 	// Audit tercatat.
-	logs, _ := env.h.DB.ListAuditLogs(t.Context(), 10)
+	logs, _ := env.q.ListAuditLogs(t.Context(), 10)
 	if len(logs) == 0 {
 		t.Error("aksi harus tercatat di audit_logs")
 	}
@@ -79,11 +77,13 @@ func TestDevUserSetRole_Success(t *testing.T) {
 
 func TestDevUserSetRole_ProtectRootEnv(t *testing.T) {
 	env, superID, _ := setupDevUsers(t)
-	// Target = super-admin itu sendiri (root env) → tak bisa diturunkan.
-	rec := env.doDevAction(superID, superID, url.Values{"role": {"user"}}, env.h.DevUserSetRole)
-	u, _ := env.h.DB.GetUser(t.Context(), superID)
-	if u.Role != "super_admin" {
-		t.Errorf("role root tak boleh berubah, got %q", u.Role)
+	// Target = super-admin itu sendiri (root env) → tak bisa diturunkan. Kirim role
+	// VALID (member) agar lolos validasi & benar-benar menguji guard root-protect
+	// (bukan tertahan "role tidak valid"). users.role tetap "owner" (nilai seed).
+	rec := env.doDevAction(superID, superID, url.Values{"role": {"member"}}, env.h.DevUserSetRole)
+	u, _ := env.q.GetUser(t.Context(), superID)
+	if u.Role != "owner" {
+		t.Errorf("role root tak boleh berubah dari nilai DB seed (owner), got %q", u.Role)
 	}
 	// Flash menolak (root env).
 	if !strings.Contains(rec.Body.String(), "root") {
@@ -94,7 +94,7 @@ func TestDevUserSetRole_ProtectRootEnv(t *testing.T) {
 func TestDevUserSetStatus_Block(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
 	rec := env.doDevAction(superID, targetID, url.Values{"status": {"blocked"}}, env.h.DevUserSetStatus)
-	u, _ := env.h.DB.GetUser(t.Context(), targetID)
+	u, _ := env.q.GetUser(t.Context(), targetID)
 	if u.Status != "blocked" {
 		t.Errorf("status harus blocked, got %q", u.Status)
 	}
@@ -107,7 +107,7 @@ func TestDevUserDelete_Success(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
 	rec := env.doDevAction(superID, targetID, url.Values{}, env.h.DevUserDelete)
 	// Soft-delete: GetUser (filter deleted_at) tak menemukannya.
-	if _, err := env.h.DB.GetUser(t.Context(), targetID); err == nil {
+	if _, err := env.q.GetUser(t.Context(), targetID); err == nil {
 		t.Error("user terhapus tak boleh ditemukan GetUser")
 	}
 	// SSE menghapus baris + flash.
@@ -120,7 +120,7 @@ func TestDevUserDelete_SelfLockout(t *testing.T) {
 	env, superID, _ := setupDevUsers(t)
 	rec := env.doDevAction(superID, superID, url.Values{}, env.h.DevUserDelete)
 	// Root/self → tak terhapus + flash menolak.
-	if _, err := env.h.DB.GetUser(t.Context(), superID); err != nil {
+	if _, err := env.q.GetUser(t.Context(), superID); err != nil {
 		t.Error("root/self tak boleh terhapus")
 	}
 	if !strings.Contains(rec.Body.String(), "root") {

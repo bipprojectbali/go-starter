@@ -26,7 +26,7 @@ func ctxWithRole(t *testing.T, role string) context.Context {
 	if err != nil {
 		t.Fatalf("session load: %v", err)
 	}
-	session.SetIdentity(ctx, 1, "u@x.com", role, false, "")
+	session.SetIdentity(ctx, 1, "u@x.com", role, false, 1, "")
 	return ctx
 }
 
@@ -35,7 +35,7 @@ func TestQuickLinksFor(t *testing.T) {
 		role      string
 		wantHrefs []string
 	}{
-		{"user", []string{"/user"}},                                // user biasa: hanya beranda User
+		{"member", []string{"/user"}},                              // user biasa: hanya beranda User
 		{"admin", []string{"/admin", "/user"}},                     // admin: Admin + User (mewarisi user:home)
 		{"super_admin", []string{"/dev/users", "/admin", "/user"}}, // super: ketiganya, /dev/users (bukan /dev)
 	}

@@ -21,9 +21,9 @@ func TestRegister_Success(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	// Sukses → redirect ke home per-role (user baru → /user) via Datastar.
-	if !strings.Contains(rec.Body.String(), "/user") {
-		t.Errorf("register sukses harus redirect ke /user:\n%s", rec.Body.String())
+	// Sukses → redirect ke home per-role. User baru = OWNER tenant baru → /admin.
+	if !strings.Contains(rec.Body.String(), "/admin") {
+		t.Errorf("register sukses (owner tenant baru) harus redirect ke /admin:\n%s", rec.Body.String())
 	}
 	// REGRESI: cookie WAJIB terkirim meski response via SSE (bug scs+NewSSE).
 	// Tanpa assert ini, bug "session tak login" lolos test.
@@ -31,7 +31,7 @@ func TestRegister_Success(t *testing.T) {
 		t.Errorf("Set-Cookie session harus ada di response register, got %q", c)
 	}
 	// User tersimpan dengan hash argon2id (bukan plaintext).
-	u, err := env.h.DB.GetUserByEmail(t.Context(), "baru@local")
+	u, err := env.q.GetUserByEmail(t.Context(), "baru@local")
 	if err != nil {
 		t.Fatalf("user tidak tersimpan: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestLogin_Success(t *testing.T) {
 	env, _ := setupTest(t)
 	// Buat user dengan password ter-hash.
 	hash, _ := auth.HashPassword("rahasia123")
-	if _, err := env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash}); err != nil {
+	if _, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
@@ -92,7 +92,7 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	env, _ := setupTest(t)
 	hash, _ := auth.HashPassword("benar")
-	env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash})
+	env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"})
 
 	req := httptest.NewRequest(http.MethodPost, "/login",
 		strings.NewReader(`{"email":"u@local","password":"salah"}`))

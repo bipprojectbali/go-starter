@@ -35,24 +35,31 @@ func TestPolicy_Enforcement(t *testing.T) {
 		want           bool
 		why            string
 	}{
-		// Hierarki: admin mewarisi user (user:home).
-		{"user", "user:home", "read", true, "user boleh beranda"},
+		// Hierarki TENANT: admin mewarisi member (user:home), owner mewarisi admin.
+		{"member", "user:home", "read", true, "member boleh beranda"},
 		{"admin", "user:home", "read", true, "admin warisi user:home"},
+		{"owner", "user:home", "read", true, "owner warisi member"},
 		{"super_admin", "user:home", "read", true, "super_admin warisi semua"},
 
-		// admin panel.
+		// admin panel (tenant).
 		{"admin", "admin:users", "read", true, "admin baca users"},
 		{"admin", "admin:users:btn-delete", "delete", true, "admin hapus (glob keyMatch)"},
-		{"user", "admin:users", "read", false, "user tak boleh panel admin"},
+		{"member", "admin:users", "read", false, "member tak boleh panel admin"},
 
-		// /dev = super_admin/root saja (via bypass root), user & admin ditolak.
-		{"user", "dev:users", "read", false, "user tak boleh /dev"},
+		// /dev = PLATFORM (staff + super_admin). Tenant role ditolak.
+		{"member", "dev:users", "read", false, "member tak boleh /dev"},
 		{"admin", "dev:users", "read", false, "admin tak boleh /dev"},
+		{"owner", "dev:users", "read", false, "owner (tenant) tak boleh /dev"},
+		{"staff", "dev:users", "read", true, "staff baca panel /dev"},
 		{"super_admin", "dev:users", "read", true, "super_admin god-mode via root"},
 		{"super_admin", "dev:apa-pun:xyz", "manage", true, "super_admin bypass total"},
 
+		// staff TERBATAS: bukan god-mode (bukan root). Obj platform sensitif ditolak.
+		{"staff", "platform:tenants:delete", "delete", false, "staff TAK boleh hapus tenant"},
+		{"staff", "platform:staff:manage", "manage", false, "staff TAK boleh kelola staff"},
+
 		// Default deny: role tak dikenal / obj tak ada policy.
-		{"user", "dev:secret", "manage", false, "deny default"},
+		{"member", "dev:secret", "manage", false, "deny default"},
 		{"stranger", "user:home", "read", false, "role tak dikenal ditolak"},
 	}
 	for _, c := range cases {

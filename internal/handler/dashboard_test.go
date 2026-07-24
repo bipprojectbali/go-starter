@@ -15,7 +15,7 @@ func (e *testEnv) renderAs(role string, fn http.HandlerFunc) *httptest.ResponseR
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session.SetIdentity(r.Context(), 1, "u@x.com", role, false, "")
+		session.SetIdentity(r.Context(), 1, "u@x.com", role, false, 1, "")
 		fn(w, r)
 	}))
 	wrapped.ServeHTTP(rec, req)
@@ -38,7 +38,7 @@ func TestAdminHome_Renders(t *testing.T) {
 
 func TestUserHome_Renders(t *testing.T) {
 	env, _ := setupTest(t)
-	rec := env.renderAs("user", env.h.UserHome)
+	rec := env.renderAs("member", env.h.UserHome)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("UserHome harus 200, got %d", rec.Code)
 	}
@@ -61,8 +61,8 @@ func TestPolicy_PanelAccess(t *testing.T) {
 		role, obj string
 		want      bool
 	}{
-		{"user", "user:home", true},
-		{"user", "admin:home", false},
+		{"member", "user:home", true},
+		{"member", "admin:home", false},
 		{"user", "dev:users", false},
 		{"admin", "user:home", true}, // admin mewarisi user
 		{"admin", "admin:home", true},

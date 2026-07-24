@@ -34,10 +34,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
 	})
 
-	// Publik: landing page (TIDAK redirect ke /login). RefreshIdentity agar
-	// redirect per-role pakai role SEGAR dari DB (self-heal session lama).
-	// TrackPresence: rekam kehadiran bila user login (no-op utk anonim).
-	r.With(h.RefreshIdentity, h.TrackPresence).Get("/", h.Home)
+	// Publik: landing page (TIDAK redirect ke /login). Scope buka tx ber-tenant
+	// bila login (no-op anonim) — RefreshIdentity/TrackPresence butuh h.q(ctx).
+	// RefreshIdentity agar redirect per-role pakai role SEGAR dari DB (self-heal
+	// session lama). TrackPresence: rekam kehadiran bila login (no-op anonim).
+	r.With(h.Scope, h.RefreshIdentity, h.TrackPresence).Get("/", h.Home)
 
 	// Login Google — SELALU aktif (jalur login utama di produksi). Path pakai
 	// prefix /api/auth/ agar exact-match dengan redirect URI di Google Console.
@@ -64,6 +65,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Panel /dev — owner/developer. Hanya super_admin/root lolos "dev:users".
 	r.Route("/dev", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.Scope) // buka tx ber-tenant (RLS) SEBELUM RefreshIdentity butuh h.q
 		r.Use(h.RefreshIdentity)
 		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("dev:users", "read"))
@@ -92,6 +94,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Panel /admin — admin+ (super_admin mewarisi). Konten menyusul.
 	r.Route("/admin", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.Scope) // buka tx ber-tenant (RLS) SEBELUM RefreshIdentity butuh h.q
 		r.Use(h.RefreshIdentity)
 		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("admin:home", "read"))
@@ -101,6 +104,7 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Beranda /user — semua user login (admin/super mewarisi user:home).
 	r.Route("/user", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
+		r.Use(h.Scope) // buka tx ber-tenant (RLS) SEBELUM RefreshIdentity butuh h.q
 		r.Use(h.RefreshIdentity)
 		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("user:home", "read"))

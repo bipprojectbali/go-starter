@@ -26,7 +26,7 @@ func (h *Handler) DevLogs(w http.ResponseWriter, r *http.Request) {
 		RangeLabel: rng.Label(),
 		IsDaily:    rng.IsDaily(),
 	}
-	if kpi, err := h.DB.PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: fromTS, ToAt: toTS}); err != nil {
+	if kpi, err := h.q(ctx).PresenceKPIs(ctx, db.PresenceKPIsParams{FromAt: fromTS, ToAt: toTS}); err != nil {
 		h.Log.Error("dev logs: kpi", "err", err)
 	} else {
 		vm.ActiveUsers, vm.TotalHits = kpi.ActiveUsers, kpi.TotalHits

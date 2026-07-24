@@ -30,7 +30,7 @@ func withSession(t *testing.T, fn func(ctx context.Context, w http.ResponseWrite
 
 func TestSetIdentity_RoundTrip(t *testing.T) {
 	withSession(t, func(ctx context.Context, _ http.ResponseWriter) {
-		SetIdentity(ctx, 7, "u@x.com", "admin", true, "https://a/av")
+		SetIdentity(ctx, 7, "u@x.com", "admin", true, 42, "https://a/av")
 		if UserID(ctx) != 7 {
 			t.Errorf("UserID=%d, want 7", UserID(ctx))
 		}
@@ -42,6 +42,9 @@ func TestSetIdentity_RoundTrip(t *testing.T) {
 		}
 		if !IsRoot(ctx) {
 			t.Error("IsRoot harus true")
+		}
+		if TenantID(ctx) != 42 {
+			t.Errorf("TenantID=%d, want 42", TenantID(ctx))
 		}
 		if AvatarURL(ctx) != "https://a/av" {
 			t.Errorf("AvatarURL=%q", AvatarURL(ctx))

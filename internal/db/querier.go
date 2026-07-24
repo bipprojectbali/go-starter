@@ -9,20 +9,32 @@ import (
 )
 
 type Querier interface {
+	AddPlatformStaff(ctx context.Context, email string) (PlatformStaff, error)
 	// Jejak aksi admin. metadata TANPA PII (id saja, bukan email/nama).
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
 	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
+	// Buat tenant baru (dipanggil saat register/oauth user baru — 1 user = 1 tenant).
+	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
+	// tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
+	// tenant dari tenant yang baru dibuat.
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
+	GetTenant(ctx context.Context, id int64) (Tenant, error)
+	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	// Soft-delete gotcha: user terhapus tak boleh login.
 	GetUserByEmail(ctx context.Context, email string) (User, error)
+	// Cek apakah email = operator platform (staff). Dipakai RefreshIdentity untuk
+	// menentukan bypass RLS (is_super) + role platform. super_admin TIDAK di sini
+	// (env-only via SUPER_ADMIN_EMAILS).
+	IsPlatformStaff(ctx context.Context, email string) (bool, error)
 	ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
 	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
+	ListPlatformStaff(ctx context.Context) ([]PlatformStaff, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	// Tren per HARI-LOKAL untuk rentang mingguan/bulanan (line chart).
@@ -40,14 +52,11 @@ type Querier interface {
 	// timestamptz UTC; handler memformatnya ke jam lokal (appTZ) — lebih bersih dari
 	// AT TIME ZONE di SQL (yang bikin sqlc emit interface{}).
 	PresenceUserSpans(ctx context.Context, arg PresenceUserSpansParams) ([]PresenceUserSpansRow, error)
-	// Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
-	// ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
-	// lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
-	PromoteSuperAdmins(ctx context.Context, emails []string) error
 	// Presence bucket 15-menit. bucket_at di-floor SERVER-SIDE ke kelipatan 900 dtk
 	// (jangan hitung di Go — hindari drift clock). Agregasi di level baris: request
 	// berulang dalam bucket sama hanya menaikkan hits, bukan insert baris baru.
-	RecordPresence(ctx context.Context, userID int64) error
+	RecordPresence(ctx context.Context, arg RecordPresenceParams) error
+	RemovePlatformStaff(ctx context.Context, email string) error
 	SoftDeleteUser(ctx context.Context, id int64) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error

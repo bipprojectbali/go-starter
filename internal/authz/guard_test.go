@@ -5,10 +5,13 @@ import (
 	"testing"
 )
 
+// Guard beroperasi pada tangga TENANT (member < admin < owner). Root env
+// (IsRoot) selalu efektif super_admin (> owner). Owner = puncak tenant yang
+// dilindungi (dulu super_admin di model lama).
 func TestGuardSetRole(t *testing.T) {
-	superA := Actor{ID: 1, Role: RoleSuperAdmin}
+	owner := Actor{ID: 1, Role: RoleOwner}
 	admin := Actor{ID: 2, Role: RoleAdmin}
-	rootEnv := Actor{ID: 3, Role: RoleUser, IsRoot: true} // env override
+	rootEnv := Actor{ID: 3, Role: RoleMember, IsRoot: true} // env override → super_admin
 
 	cases := []struct {
 		name    string
@@ -17,14 +20,14 @@ func TestGuardSetRole(t *testing.T) {
 		newRole Role
 		wantErr error
 	}{
-		{"super angkat user->admin", superA, Target{ID: 10, Role: RoleUser}, RoleAdmin, nil},
-		{"super angkat user->super", superA, Target{ID: 10, Role: RoleUser}, RoleSuperAdmin, nil},
-		{"admin angkat user->admin", admin, Target{ID: 10, Role: RoleUser}, RoleAdmin, nil},
-		{"admin TAK boleh angkat super", admin, Target{ID: 10, Role: RoleUser}, RoleSuperAdmin, ErrForbidden},
-		{"admin TAK boleh sentuh super", admin, Target{ID: 10, Role: RoleSuperAdmin}, RoleAdmin, ErrForbidden},
-		{"target root env kebal", superA, Target{ID: 10, Role: RoleSuperAdmin, IsEnvSuperA: true}, RoleUser, ErrProtectedRoot},
-		{"root env aktor bisa angkat super", rootEnv, Target{ID: 10, Role: RoleUser}, RoleSuperAdmin, nil},
-		{"self-demote ditolak", superA, Target{ID: 1, Role: RoleSuperAdmin}, RoleAdmin, ErrSelfLockout},
+		{"owner angkat member->admin", owner, Target{ID: 10, Role: RoleMember}, RoleAdmin, nil},
+		{"owner angkat member->owner", owner, Target{ID: 10, Role: RoleMember}, RoleOwner, nil},
+		{"admin angkat member->admin", admin, Target{ID: 10, Role: RoleMember}, RoleAdmin, nil},
+		{"admin TAK boleh angkat owner", admin, Target{ID: 10, Role: RoleMember}, RoleOwner, ErrForbidden},
+		{"admin TAK boleh sentuh owner", admin, Target{ID: 10, Role: RoleOwner}, RoleAdmin, ErrForbidden},
+		{"target root env kebal", owner, Target{ID: 10, Role: RoleOwner, IsEnvSuperA: true}, RoleMember, ErrProtectedRoot},
+		{"root env aktor bisa angkat owner", rootEnv, Target{ID: 10, Role: RoleMember}, RoleOwner, nil},
+		{"self-demote ditolak", owner, Target{ID: 1, Role: RoleOwner}, RoleAdmin, ErrSelfLockout},
 	}
 	for _, c := range cases {
 		err := GuardSetRole(c.actor, c.target, c.newRole)
@@ -35,7 +38,7 @@ func TestGuardSetRole(t *testing.T) {
 }
 
 func TestGuardMutateStatus(t *testing.T) {
-	superA := Actor{ID: 1, Role: RoleSuperAdmin}
+	owner := Actor{ID: 1, Role: RoleOwner}
 	admin := Actor{ID: 2, Role: RoleAdmin}
 
 	cases := []struct {
@@ -45,11 +48,11 @@ func TestGuardMutateStatus(t *testing.T) {
 		newStatus string
 		wantErr   error
 	}{
-		{"admin disable user", admin, Target{ID: 10, Role: RoleUser}, "disabled", nil},
-		{"admin block user butuh super", admin, Target{ID: 10, Role: RoleUser}, "blocked", ErrForbidden},
-		{"super block user", superA, Target{ID: 10, Role: RoleUser}, "blocked", nil},
+		{"admin disable member", admin, Target{ID: 10, Role: RoleMember}, "disabled", nil},
+		{"admin block member butuh owner", admin, Target{ID: 10, Role: RoleMember}, "blocked", ErrForbidden},
+		{"owner block member", owner, Target{ID: 10, Role: RoleMember}, "blocked", nil},
 		{"admin TAK sentuh admin lain", admin, Target{ID: 10, Role: RoleAdmin}, "disabled", ErrForbidden},
-		{"root env kebal", superA, Target{ID: 10, Role: RoleUser, IsEnvSuperA: true}, "blocked", ErrProtectedRoot},
+		{"root env kebal", owner, Target{ID: 10, Role: RoleMember, IsEnvSuperA: true}, "blocked", ErrProtectedRoot},
 		{"self ditolak", admin, Target{ID: 2, Role: RoleAdmin}, "disabled", ErrSelfLockout},
 	}
 	for _, c := range cases {
@@ -61,19 +64,19 @@ func TestGuardMutateStatus(t *testing.T) {
 }
 
 func TestGuardDelete(t *testing.T) {
-	superA := Actor{ID: 1, Role: RoleSuperAdmin}
+	owner := Actor{ID: 1, Role: RoleOwner}
 	admin := Actor{ID: 2, Role: RoleAdmin}
 
-	if err := GuardDelete(admin, Target{ID: 10, Role: RoleUser}); err != nil {
-		t.Errorf("admin hapus user: %v", err)
+	if err := GuardDelete(admin, Target{ID: 10, Role: RoleMember}); err != nil {
+		t.Errorf("admin hapus member: %v", err)
 	}
 	if err := GuardDelete(admin, Target{ID: 10, Role: RoleAdmin}); !errors.Is(err, ErrForbidden) {
 		t.Errorf("admin hapus admin lain harus forbidden: %v", err)
 	}
-	if err := GuardDelete(superA, Target{ID: 10, IsEnvSuperA: true}); !errors.Is(err, ErrProtectedRoot) {
+	if err := GuardDelete(owner, Target{ID: 10, IsEnvSuperA: true}); !errors.Is(err, ErrProtectedRoot) {
 		t.Errorf("hapus root env harus protected: %v", err)
 	}
-	if err := GuardDelete(superA, Target{ID: 1, Role: RoleSuperAdmin}); !errors.Is(err, ErrSelfLockout) {
+	if err := GuardDelete(owner, Target{ID: 1, Role: RoleOwner}); !errors.Is(err, ErrSelfLockout) {
 		t.Errorf("hapus diri sendiri harus self-lockout: %v", err)
 	}
 }

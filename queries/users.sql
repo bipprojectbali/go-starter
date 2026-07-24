@@ -1,12 +1,14 @@
 -- name: CreateUser :one
-INSERT INTO users (email, pass_hash)
-VALUES ($1, $2)
+-- tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
+-- tenant dari tenant yang baru dibuat.
+INSERT INTO users (email, pass_hash, tenant_id, role)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: CreateOAuthUser :one
 -- User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
-INSERT INTO users (email, email_verified, avatar_url)
-VALUES ($1, true, $2)
+INSERT INTO users (email, email_verified, avatar_url, tenant_id, role)
+VALUES ($1, true, $2, $3, $4)
 RETURNING *;
 
 -- name: GetUserByEmail :one
@@ -22,13 +24,6 @@ UPDATE users SET avatar_url = $2 WHERE id = $1;
 
 -- name: UpdateUserRole :exec
 UPDATE users SET role = $2 WHERE id = $1 AND deleted_at IS NULL;
-
--- name: PromoteSuperAdmins :exec
--- Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
--- ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
--- lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
-UPDATE users SET role = 'super_admin'
-WHERE email = ANY(@emails::text[]) AND role <> 'super_admin' AND deleted_at IS NULL;
 
 -- name: UpdateUserStatus :exec
 UPDATE users SET status = $2 WHERE id = $1 AND deleted_at IS NULL;

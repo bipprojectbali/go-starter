@@ -12,7 +12,7 @@ import (
 )
 
 const listAuthEvents = `-- name: ListAuthEvents :many
-SELECT id, actor_user_id, action, target_type, target_id, metadata, created_at FROM audit_logs
+SELECT id, actor_user_id, action, target_type, target_id, metadata, created_at, tenant_id FROM audit_logs
 WHERE action IN ('auth.login', 'auth.logout')
 ORDER BY created_at DESC, id DESC
 LIMIT $1
@@ -36,6 +36,7 @@ func (q *Queries) ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLo
 			&i.TargetID,
 			&i.Metadata,
 			&i.CreatedAt,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}
@@ -227,20 +228,26 @@ func (q *Queries) PresenceUserSpans(ctx context.Context, arg PresenceUserSpansPa
 }
 
 const recordPresence = `-- name: RecordPresence :exec
-INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at)
+INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at, tenant_id)
 VALUES (
     $1::bigint,
     to_timestamp(floor(extract(epoch FROM now()) / 900) * 900),
-    1, now()
+    1, now(),
+    $2::bigint
 )
 ON CONFLICT (user_id, bucket_at)
 DO UPDATE SET hits = activity_presence.hits + 1, last_seen_at = now()
 `
 
+type RecordPresenceParams struct {
+	UserID   int64 `json:"user_id"`
+	TenantID int64 `json:"tenant_id"`
+}
+
 // Presence bucket 15-menit. bucket_at di-floor SERVER-SIDE ke kelipatan 900 dtk
 // (jangan hitung di Go — hindari drift clock). Agregasi di level baris: request
 // berulang dalam bucket sama hanya menaikkan hits, bukan insert baris baru.
-func (q *Queries) RecordPresence(ctx context.Context, userID int64) error {
-	_, err := q.db.Exec(ctx, recordPresence, userID)
+func (q *Queries) RecordPresence(ctx context.Context, arg RecordPresenceParams) error {
+	_, err := q.db.Exec(ctx, recordPresence, arg.UserID, arg.TenantID)
 	return err
 }

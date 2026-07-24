@@ -5,6 +5,15 @@ Semua perubahan penting pada go_stater dicatat di sini.
 ## [Unreleased]
 
 ### Added
+- **Multi-tenancy (Postgres RLS) + model role 2-bidang:** fondasi SaaS multi-tenant. **1 user = 1 tenant** (`users.tenant_id NOT NULL`; register/OAuth user baru = buat tenant baru + owner). Isolasi via **Row-Level Security Postgres** (defense-in-depth: "lupa `WHERE tenant_id`" tetap 0 baris — DB yang menolak, bukan kebocoran). Migrasi `00007_tenancy.sql`: tabel `tenants` & `platform_staff`, `tenant_id` di users/oauth_accounts/audit_logs/activity_presence (backfill tenant `default` → `SET NOT NULL`), policy `tenant_isolation` (`ENABLE`+`FORCE` RLS) berbasis **dua GUC** `app.tenant_id` (scope) + `app.is_super` (bypass platform), role **`app_rw`** (`NOBYPASSRLS`) untuk pool runtime. Helper inti `db.WithTenant`/`db.WithSuper` (`internal/db/tenant.go`) — satu tx per-request dengan `set_config(...,true)` **transaction-local** (anti pool-leak). Handler kehilangan `h.DB`; akses DB via **`h.q(ctx)`** (Queries ber-tenant dari middleware `Scope`) — "lupa scope" = panic, bukan kebocoran senyap. **Model role 2-bidang tegak-lurus:** PLATFORM `super_admin` (env-only `SUPER_ADMIN_EMAILS`, immutable, nol baris DB) + `staff` (tabel `platform_staff`, mutable, bypass RLS, akses terbatas — TAK bisa hapus tenant/kelola staff lain); TENANT `owner > admin > member` (scoped RLS). Casbin diperluas ke 2-bidang. **Dual-DSN**: `DATABASE_URL` (owner: migrate+boot) + `APP_DATABASE_URL` (app_rw: runtime, RLS mengikat; fallback ke `DATABASE_URL` di dev). Test isolasi RLS (`rls_test.go`) konek sebagai `app_rw` non-superuser membuktikan: isolasi tenant, super-bypass, WITH CHECK menolak INSERT lintas-tenant, pool-leak aman, deny-default tanpa GUC.
+
+### Changed
+- **Role terendah `user` → `member`** (hindari rancu dengan tabel `users`). Redirect per-role: platform (super_admin/staff)→`/dev`, tenant (owner/admin)→`/admin`, member→`/user`.
+
+### Removed
+- **`PromoteSuperAdmins` (reconcile boot) dihapus:** di model 2-bidang super_admin murni env-overlay (nol baris DB, di-resolve `RefreshIdentity` per-request) — tak ada lagi role `super_admin` yang ditulis ke `users.role` (CHECK kini `owner/admin/member`).
+
+### Added
 - **Deploy produksi Docker + Portainer (aman-migrasi):** `Dockerfile` multi-stage (build Go statis `CGO_ENABLED=0` → runtime distroless non-root, ~33MB; `app.css`+`internal/db` sudah di git jadi tak perlu Tailwind/sqlc/Node di image), `.dockerignore` (buang `tailwindcss` 76MB + `app`). Subcommand **`app migrate`** — jalankan migrasi lalu exit (advisory lock, reuse `MigrateWithLock`); pakai `config.LoadMigrateConfig()` yang hanya butuh `DATABASE_URL` (bukan `MustLoad` yang mewajibkan `SESSION_KEY`/Google di prod). `docker-compose.yml` untuk stack Portainer: service `migrate` (one-shot, `restart: no`) + service `app` (`AUTO_MIGRATE=false`, `depends_on` `condition: service_completed_successfully`) — migrasi dipisah dari deploy app, fail-safe (migrate gagal → app tak start). Runbook di README §Deploy. `AUTO_MIGRATE` didokumentasikan: `true` dev, **`false` prod**.
 
 ### Removed

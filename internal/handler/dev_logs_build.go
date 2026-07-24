@@ -26,7 +26,7 @@ func (h *Handler) buildChart(ctx context.Context, rng activity.Range, fromTS, to
 	var opt activity.EChartsOption
 	peak := ""
 	if rng.IsDaily() {
-		rows, err := h.DB.PresenceByHour(ctx, db.PresenceByHourParams{Tz: tz, FromAt: fromTS, ToAt: toTS})
+		rows, err := h.q(ctx).PresenceByHour(ctx, db.PresenceByHourParams{Tz: tz, FromAt: fromTS, ToAt: toTS})
 		if err != nil {
 			h.Log.Error("dev logs: by hour", "err", err)
 		}
@@ -38,7 +38,7 @@ func (h *Handler) buildChart(ctx context.Context, rng activity.Range, fromTS, to
 		peak = peakHourLabel(filled)
 		opt = activity.HourlyBarOption(filled)
 	} else {
-		rows, err := h.DB.PresenceByDay(ctx, db.PresenceByDayParams{Tz: tz, FromAt: fromTS, ToAt: toTS})
+		rows, err := h.q(ctx).PresenceByDay(ctx, db.PresenceByDayParams{Tz: tz, FromAt: fromTS, ToAt: toTS})
 		if err != nil {
 			h.Log.Error("dev logs: by day", "err", err)
 		}
@@ -83,7 +83,7 @@ func fmtHour(hr int) string {
 
 // buildSpans memetakan rentang aktivitas user (first/last seen diformat lokal).
 func (h *Handler) buildSpans(ctx context.Context, fromTS, toTS pgtype.Timestamptz) []dev.SpanRow {
-	rows, err := h.DB.PresenceUserSpans(ctx, db.PresenceUserSpansParams{FromAt: fromTS, ToAt: toTS})
+	rows, err := h.q(ctx).PresenceUserSpans(ctx, db.PresenceUserSpansParams{FromAt: fromTS, ToAt: toTS})
 	if err != nil {
 		h.Log.Error("dev logs: spans", "err", err)
 		return nil
@@ -102,7 +102,7 @@ func (h *Handler) buildSpans(ctx context.Context, fromTS, toTS pgtype.Timestampt
 
 // buildAuthEvents memetakan event login/logout terbaru.
 func (h *Handler) buildAuthEvents(ctx context.Context) []dev.AuthRow {
-	rows, err := h.DB.ListAuthEvents(ctx, recentAuthLimit)
+	rows, err := h.q(ctx).ListAuthEvents(ctx, recentAuthLimit)
 	if err != nil {
 		h.Log.Error("dev logs: auth events", "err", err)
 		return nil

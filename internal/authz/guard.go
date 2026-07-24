@@ -36,8 +36,9 @@ func GuardSetRole(actor Actor, target Target, newRole Role) error {
 		return ErrProtectedRoot // root env tak tersentuh siapa pun
 	}
 	actorRole := effectiveRole(actor)
-	// Mengangkat/menurunkan ke atau dari super_admin → hanya super-admin.
-	if (newRole == RoleSuperAdmin || target.Role == RoleSuperAdmin) && actorRole < RoleSuperAdmin {
+	// Mengangkat/menurunkan ke atau dari owner (puncak tenant) → butuh owner+
+	// (platform mewarisi karena otoritas lebih tinggi).
+	if (newRole == RoleOwner || target.Role == RoleOwner) && actorRole < RoleOwner {
 		return ErrForbidden
 	}
 	// Aktor tak boleh memberi role di atas otoritasnya sendiri.
@@ -65,8 +66,8 @@ func GuardMutateStatus(actor Actor, target Target, newStatus string) error {
 	if target.Role >= actorRole {
 		return ErrForbidden // tak bisa menyentuh setara/di atas
 	}
-	// "blocked" (ban berat) hanya super-admin.
-	if newStatus == "blocked" && actorRole < RoleSuperAdmin {
+	// "blocked" (ban berat) butuh owner+ (owner di tenant, platform lintas-tenant).
+	if newStatus == "blocked" && actorRole < RoleOwner {
 		return ErrForbidden
 	}
 	return nil

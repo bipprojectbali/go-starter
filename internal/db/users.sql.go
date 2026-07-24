@@ -12,19 +12,26 @@ import (
 )
 
 const createOAuthUser = `-- name: CreateOAuthUser :one
-INSERT INTO users (email, email_verified, avatar_url)
-VALUES ($1, true, $2)
-RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at
+INSERT INTO users (email, email_verified, avatar_url, tenant_id, role)
+VALUES ($1, true, $2, $3, $4)
+RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id
 `
 
 type CreateOAuthUserParams struct {
 	Email     string  `json:"email"`
 	AvatarUrl *string `json:"avatar_url"`
+	TenantID  int64   `json:"tenant_id"`
+	Role      string  `json:"role"`
 }
 
 // User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createOAuthUser, arg.Email, arg.AvatarUrl)
+	row := q.db.QueryRow(ctx, createOAuthUser,
+		arg.Email,
+		arg.AvatarUrl,
+		arg.TenantID,
+		arg.Role,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -36,23 +43,33 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, pass_hash)
-VALUES ($1, $2)
-RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at
+INSERT INTO users (email, pass_hash, tenant_id, role)
+VALUES ($1, $2, $3, $4)
+RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id
 `
 
 type CreateUserParams struct {
 	Email    string  `json:"email"`
 	PassHash *string `json:"pass_hash"`
+	TenantID int64   `json:"tenant_id"`
+	Role     string  `json:"role"`
 }
 
+// tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
+// tenant dari tenant yang baru dibuat.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PassHash)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Email,
+		arg.PassHash,
+		arg.TenantID,
+		arg.Role,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -64,12 +81,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users WHERE id = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -85,12 +103,13 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users WHERE email = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users WHERE email = $1 AND deleted_at IS NULL
 `
 
 // Soft-delete gotcha: user terhapus tak boleh login.
@@ -107,12 +126,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at FROM users
+SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users
 WHERE deleted_at IS NULL
   AND (created_at, id) < ($1::timestamptz, $2::bigint)
 ORDER BY created_at DESC, id DESC
@@ -145,6 +165,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.Status,
 			&i.AvatarUrl,
 			&i.DeletedAt,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}
@@ -154,19 +175,6 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 		return nil, err
 	}
 	return items, nil
-}
-
-const promoteSuperAdmins = `-- name: PromoteSuperAdmins :exec
-UPDATE users SET role = 'super_admin'
-WHERE email = ANY($1::text[]) AND role <> 'super_admin' AND deleted_at IS NULL
-`
-
-// Reconcile boot: naikkan email root (env) ke super_admin bila belum. Promote-
-// ONLY — tak pernah menurunkan siapa pun, jadi super-admin DB tier-2 (diangkat
-// lewat panel) tetap aman, dan email yang dicabut dari env tak otomatis turun.
-func (q *Queries) PromoteSuperAdmins(ctx context.Context, emails []string) error {
-	_, err := q.db.Exec(ctx, promoteSuperAdmins, emails)
-	return err
 }
 
 const softDeleteUser = `-- name: SoftDeleteUser :exec

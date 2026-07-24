@@ -20,7 +20,9 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
 ## Arsitektur & konvensi
 
 - **`routes.go` = single source of truth** semua route. Middleware terproteksi:
-  `RequireAuth` → `RefreshIdentity` → `TrackPresence` → `RequireEnforce(obj, act)`.
+  `RequireAuth` → `Scope` → `RefreshIdentity` → `TrackPresence` → `RequireEnforce(obj, act)`.
+  `Scope` (multi-tenancy) buka tx ber-tenant SEBELUM `RefreshIdentity`/`TrackPresence`
+  (keduanya pakai `h.q(ctx)`). Lihat § Multi-tenancy.
 - **Config dibaca HANYA di `internal/config`** — jangan `os.Getenv` tersebar.
 - **Handler tak menyimpan config**; nilai di-inject via setter global saat startup
   (pola `SetCSSPath`, `SetDevMode`, `SetGoogleOAuth`, `SetSuperAdminChecker`,
@@ -112,6 +114,41 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
     `json.Marshal` (bukan user); (b) signal = user-modifiable → WAJIB validasi di
     backend (mis. `ValidRoleName`, `TrimSpace`+empty-check `$title`); (c) jangan
     taruh data sensitif di signal (terlihat plaintext di source).
+
+## Multi-tenancy (RLS + role 2-bidang) — keputusan 0002
+
+Isolasi tenant ditegakkan **Postgres RLS**, bukan cuma `WHERE tenant_id` di app.
+Baca `docs/decisions/0002` untuk alasan lengkap. Gotcha yang mahal ditemukan ulang:
+
+- **`h.q(ctx)`, JANGAN `h.DB`** (dihapus). `h.q` ambil `*db.Queries` ber-tenant dari
+  middleware `Scope`. Lupa Scope = **panic keras** (bug wiring ketahuan seketika),
+  bukan query tak ter-scope. Jalur pre-identity (auth/oauth/boot — tenant belum
+  diketahui) pakai `db.WithSuper` eksplisit, BUKAN `h.q`.
+- **`WithTenant`/`WithSuper` = SATU tx dgn GUC `set_config(...,true)` TRANSACTION-
+  LOCAL** (`internal/db/tenant.go`). `,true` wajib — plain `SET` bocor ke peminjam
+  pool berikutnya (kebocoran tenant #1 paling umum). Keputusan bypass diambil dari
+  **ROLE** (`isPlatformRole`), TAK PERNAH dari data DB (anti privilege-escalation).
+- **`FORCE` RLS wajib** — tanpanya owner tabel bypass policy diam-diam. **App konek
+  role non-owner** (`app_rw` `NOBYPASSRLS`, via `APP_DATABASE_URL`) — kalau konek
+  owner/superuser, RLS TAK berlaku (bocor senyap). Dual-DSN: `DATABASE_URL` (owner:
+  migrate+boot) vs `APP_DATABASE_URL` (runtime).
+- **super_admin = ENV-ONLY, nol baris DB.** Role efektif di-overlay `RefreshIdentity`
+  per-request (env-check → `platform_staff` lookup → `users.role`). JANGAN tulis
+  `super_admin`/`staff` ke `users.role` (CHECK hanya `owner/admin/member`). Tak ada
+  `PromoteSuperAdmins` (dihapus). `platform_staff` TANPA RLS (platform-scope) → terbaca
+  di WithTenant maupun WithSuper.
+- **1 user = 1 tenant.** Register/OAuth user baru = buat tenant baru + owner (atomik
+  dalam `WithSuper` tx). `tenant_id` di SEMUA user (NOT NULL) termasuk platform —
+  bypass ditentukan role, bukan `tenant_id==0` (hindari FK violation + audit tetap
+  ter-atribusi ke home-tenant).
+- **Audit di tx `WithSuper` TERPISAH** dari Scope tx (fail-soft struktural: gagal
+  audit tak abort aksi utama). `tenant_id` audit = tenant aktor.
+- **Test isolasi RLS** (`rls_test.go`) konek `app_rw` non-superuser via `SET ROLE` di
+  `AfterConnect` — HARUS begitu utk membuktikan RLS sungguh mengikat. Test handler
+  lain konek superuser (uji logika; RLS di-bypass diam-diam). Seed pakai owner-pool.
+- **Casbin CSV TAK dukung komentar inline** di akhir baris `g,`/`p,` (jadi bagian
+  nilai → link mati). Komentar HARUS di baris `#` tersendiri (gotcha: `g, super_admin,
+  root  # x` bikin target `"root  # x"` → god-mode mati senyap).
 
 ## Client-side JS (CSP-safe)
 

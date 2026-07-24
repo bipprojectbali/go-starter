@@ -1,7 +1,7 @@
 -- name: CreateAuditLog :one
 -- Jejak aksi admin. metadata TANPA PII (id saja, bukan email/nama).
-INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, metadata)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, metadata, tenant_id)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: ListAuditLogs :many

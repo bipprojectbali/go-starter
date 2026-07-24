@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -62,10 +63,26 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.DB.CreateUser(r.Context(), db.CreateUserParams{Email: email, PassHash: &hash})
+	// Register = buat TENANT baru + user OWNER-nya (1 user = 1 tenant). Pre-identity:
+	// tenant belum ada, jadi WithSuper (bypass RLS). Tenant + user dalam SATU tx →
+	// atomic (gagal di tengah tak meninggalkan tenant yatim). Slug dari email-local.
+	var user db.User
+	err = db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		t, e := q.CreateTenant(r.Context(), db.CreateTenantParams{
+			Name: email, Slug: tenantSlug(email),
+		})
+		if e != nil {
+			return e
+		}
+		user, e = q.CreateUser(r.Context(), db.CreateUserParams{
+			Email: email, PassHash: &hash,
+			TenantID: t.ID, Role: authz.RoleNameOwner,
+		})
+		return e
+	})
 	if err != nil {
-		// Email unik: pelanggaran constraint = email sudah terpakai.
-		h.Log.Warn("register: create user", "err", err)
+		// Email/slug unik: pelanggaran constraint = email sudah terpakai.
+		h.Log.Warn("register: create tenant+user", "err", err)
 		h.authError(w, r, "Email sudah terdaftar")
 		return
 	}
@@ -98,7 +115,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.DB.GetUserByEmail(r.Context(), email)
+	// Pre-identity: tenant user belum diketahui (login MEMUTUSKANNYA dari hasil ini).
+	// email UNIQUE global → WithSuper (bypass RLS) untuk mencari lintas-tenant.
+	var user db.User
+	err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		u, e := q.GetUserByEmail(r.Context(), email)
+		user = u
+		return e
+	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Pesan generik — jangan bocorkan email terdaftar/tidak (anti user-enumeration).
@@ -191,9 +215,13 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error
 		}
 	}
 
+	// Role efektif 2-bidang: env super_admin > staff (platform_staff) > role tenant.
+	// Lookup staff via WithSuper (pre-identity, platform_staff tanpa RLS). Fail-soft.
 	role := u.Role
 	if isRoot {
-		role = "super_admin" // env override apa pun nilai kolom DB
+		role = authz.RoleNameSuperAdmin // env override apa pun nilai kolom DB
+	} else if staff, err := h.isStaff(r.Context(), u.Email); err == nil && staff {
+		role = authz.RoleNameStaff
 	}
 
 	if err := session.Renew(r.Context()); err != nil {
@@ -203,8 +231,45 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error
 	if u.AvatarUrl != nil {
 		avatar = *u.AvatarUrl
 	}
-	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, avatar)
+	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, u.TenantID, avatar)
 	// Jejak login (fail-soft) — untuk panel aktivitas. actor = user sendiri.
 	h.auditAuth(r.Context(), u.ID, "auth.login", method)
 	return nil
+}
+
+// isStaff melaporkan apakah email = operator platform (platform_staff). Dipakai
+// jalur pre-identity (login/oauth) — platform_staff TANPA RLS, WithSuper aman.
+func (h *Handler) isStaff(ctx context.Context, email string) (bool, error) {
+	var ok bool
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		v, e := q.IsPlatformStaff(ctx, email)
+		ok = v
+		return e
+	})
+	return ok, err
+}
+
+// tenantSlug menurunkan slug URL-safe dari email (bagian sebelum '@', non-alnum
+// → '-'). Bukan jaminan unik — UNIQUE constraint slug yang menegakkan; tabrakan
+// slug = error create (ditangani sebagai "email sudah terdaftar" di Register).
+func tenantSlug(email string) string {
+	local := email
+	if i := strings.IndexByte(local, '@'); i >= 0 {
+		local = local[:i]
+	}
+	var b strings.Builder
+	for _, r := range local {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r + 32)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	if b.Len() == 0 {
+		return "tenant"
+	}
+	return b.String()
 }

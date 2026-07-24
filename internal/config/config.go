@@ -12,12 +12,13 @@ import (
 
 // Config menampung seluruh konfigurasi runtime aplikasi.
 type Config struct {
-	Port        string // PORT, default "8080"
-	DatabaseURL string // DATABASE_URL (wajib)
-	RedisAddr   string // REDIS_ADDR (wajib)
-	Env         string // ENV: "dev" | "production"
-	AutoMigrate bool   // AUTO_MIGRATE, default true
-	SessionKey  string // SESSION_KEY (wajib di production)
+	Port           string // PORT, default "8080"
+	DatabaseURL    string // DATABASE_URL (wajib) — role OWNER: migrate + boot (BYPASS RLS)
+	AppDatabaseURL string // APP_DATABASE_URL — role app_rw NOBYPASSRLS: pool runtime (RLS mengikat). Default = DatabaseURL bila kosong (dev).
+	RedisAddr      string // REDIS_ADDR (wajib)
+	Env            string // ENV: "dev" | "production"
+	AutoMigrate    bool   // AUTO_MIGRATE, default true
+	SessionKey     string // SESSION_KEY (wajib di production)
 
 	// Google OAuth. Opsional di dev (tombol Google nonaktif bila kosong),
 	// WAJIB di production (Google = jalur login utama).
@@ -71,6 +72,7 @@ func MustLoad() *Config {
 	c := &Config{
 		Port:               getEnv("PORT", "8080"),
 		DatabaseURL:        mustEnv("DATABASE_URL"),
+		AppDatabaseURL:     getEnv("APP_DATABASE_URL", ""),
 		RedisAddr:          mustEnv("REDIS_ADDR"),
 		Env:                getEnv("ENV", "dev"),
 		AutoMigrate:        getEnv("AUTO_MIGRATE", "true") == "true",
@@ -84,6 +86,13 @@ func MustLoad() *Config {
 	// senyap saat render panel logs. (tzdata di-embed via import di main.)
 	if _, err := time.LoadLocation(c.AppTimezone); err != nil {
 		panic(fmt.Sprintf("config: APP_TIMEZONE %q tidak valid: %v", c.AppTimezone, err))
+	}
+	// Dual-DSN: pool runtime pakai APP_DATABASE_URL (role app_rw NOBYPASSRLS) agar
+	// RLS mengikat. Kosong → fallback DATABASE_URL (dev: owner, RLS TAK mengikat —
+	// isolasi tetap benar via WHERE, tapi tak ada jaring RLS). Di production SANGAT
+	// disarankan set APP_DATABASE_URL ke role non-owner (defense-in-depth).
+	if c.AppDatabaseURL == "" {
+		c.AppDatabaseURL = c.DatabaseURL
 	}
 	if c.IsProduction() {
 		c.SessionKey = mustEnv("SESSION_KEY")

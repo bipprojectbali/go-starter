@@ -1,59 +1,83 @@
 package authz
 
-// Role adalah tingkat otoritas sebagai ordinal — perbandingan hierarki O(1)
-// (RoleAdmin > RoleUser). Nilai string map ke kolom users.role & subject Casbin.
+// Role adalah tingkat otoritas sebagai ordinal — perbandingan hierarki O(1).
+// Model 2-BIDANG (multi-tenancy), diurut sebagai satu tangga otoritas untuk
+// perbandingan guard, tapi konseptual TEGAK LURUS:
+//
+//	TENANT   (scoped RLS):     member < admin < owner
+//	PLATFORM (bypass RLS):     staff  < super_admin
+//
+// Platform > semua tenant (operator lintas-tenant). Nilai string map ke kolom
+// users.role (member/admin/owner) ATAU role efektif session (staff/super_admin
+// di-overlay RefreshIdentity — TAK disimpan di users.role).
 type Role int8
 
 const (
-	RoleUser Role = iota
-	RoleAdmin
-	RoleSuperAdmin
+	RoleMember     Role = iota // tenant: anggota
+	RoleAdmin                  // tenant: delegasi owner
+	RoleOwner                  // tenant: pemilik (yang bayar)
+	RoleStaff                  // platform: operator support (tabel platform_staff)
+	RoleSuperAdmin             // platform: env-only (SUPER_ADMIN_EMAILS), immutable
 )
 
-// Nama role di DB / policy Casbin.
+// Nama role di DB / policy Casbin / role efektif session.
 const (
-	RoleNameUser       = "user"
+	RoleNameMember     = "member"
 	RoleNameAdmin      = "admin"
+	RoleNameOwner      = "owner"
+	RoleNameStaff      = "staff"
 	RoleNameSuperAdmin = "super_admin"
 )
 
-// ParseRole memetakan string DB ke Role. Nilai tak dikenal → RoleUser (aman).
+// ParseRole memetakan string ke Role. Nilai tak dikenal → RoleMember (aman:
+// otoritas terendah). Menerima role platform (staff/super_admin) dari session.
 func ParseRole(s string) Role {
 	switch s {
 	case RoleNameSuperAdmin:
 		return RoleSuperAdmin
+	case RoleNameStaff:
+		return RoleStaff
+	case RoleNameOwner:
+		return RoleOwner
 	case RoleNameAdmin:
 		return RoleAdmin
 	default:
-		return RoleUser
+		return RoleMember
 	}
 }
 
-// String mengembalikan nama role untuk DB/policy.
+// String mengembalikan nama role untuk DB/policy/session.
 func (r Role) String() string {
 	switch r {
 	case RoleSuperAdmin:
 		return RoleNameSuperAdmin
+	case RoleStaff:
+		return RoleNameStaff
+	case RoleOwner:
+		return RoleNameOwner
 	case RoleAdmin:
 		return RoleNameAdmin
 	default:
-		return RoleNameUser
+		return RoleNameMember
 	}
 }
 
-// ValidRoleName melaporkan apakah s adalah nama role yang sah (untuk validasi input).
+// ValidRoleName melaporkan apakah s adalah role TENANT yang boleh di-assign lewat
+// panel (kolom users.role CHECK). Role platform TAK di sini: super_admin = env-only,
+// staff = dikelola via platform_staff — bukan lewat set-role user biasa.
 func ValidRoleName(s string) bool {
-	return s == RoleNameUser || s == RoleNameAdmin || s == RoleNameSuperAdmin
+	return s == RoleNameMember || s == RoleNameAdmin || s == RoleNameOwner
 }
 
 // HomePath mengembalikan halaman "rumah" untuk sebuah role — tujuan redirect
 // setelah login & pengalihan landing. Sumber TUNGGAL agar tak ada literal
-// redirect tersebar. super_admin → /dev, admin → /admin, user → /user.
+// redirect tersebar. Platform (super_admin/staff) → /dev; owner/admin → /admin;
+// member → /user.
 func HomePath(role Role) string {
 	switch role {
-	case RoleSuperAdmin:
+	case RoleSuperAdmin, RoleStaff:
 		return "/dev"
-	case RoleAdmin:
+	case RoleOwner, RoleAdmin:
 		return "/admin"
 	default:
 		return "/user"

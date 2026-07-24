@@ -13,6 +13,7 @@ type ActivityPresence struct {
 	BucketAt   pgtype.Timestamptz `json:"bucket_at"`
 	Hits       int32              `json:"hits"`
 	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+	TenantID   int64              `json:"tenant_id"`
 }
 
 type AuditLog struct {
@@ -23,6 +24,7 @@ type AuditLog struct {
 	TargetID    *int64             `json:"target_id"`
 	Metadata    []byte             `json:"metadata"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	TenantID    int64              `json:"tenant_id"`
 }
 
 type OauthAccount struct {
@@ -31,6 +33,21 @@ type OauthAccount struct {
 	Provider    string             `json:"provider"`
 	ProviderUid string             `json:"provider_uid"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	TenantID    int64              `json:"tenant_id"`
+}
+
+type PlatformStaff struct {
+	ID        int64              `json:"id"`
+	Email     string             `json:"email"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type Tenant struct {
+	ID        int64              `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {
@@ -43,4 +60,5 @@ type User struct {
 	Status        string             `json:"status"`
 	AvatarUrl     *string            `json:"avatar_url"`
 	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
+	TenantID      int64              `json:"tenant_id"`
 }

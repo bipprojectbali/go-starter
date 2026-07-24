@@ -20,14 +20,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// testEnv menampung Handler + session manager untuk test.
+// testEnv menampung Handler + session manager untuk test. q = Queries pool-bound
+// (seed/assert langsung); tenantID = tenant seed default. Koneksi test = superuser
+// (bypass RLS) → uji LOGIKA handler; isolasi RLS sesungguhnya diuji terpisah di
+// rls_test.go sebagai role app_rw non-superuser.
 type testEnv struct {
-	h  *Handler
-	sm *scs.SessionManager
+	h        *Handler
+	sm       *scs.SessionManager
+	q        *db.Queries
+	tenantID int64
 }
 
-// setupTest menyiapkan Handler + user seed + session manager (memstore, bukan
-// Redis — test tak butuh Redis). Skip bila TEST_DATABASE_URL kosong.
+// setupTest menyiapkan Handler + tenant/user seed + session manager (memstore,
+// bukan Redis). Skip bila TEST_DATABASE_URL kosong. Seed user = OWNER tenant
+// default (role tertinggi tenant) agar test aksi admin punya otoritas.
 func setupTest(t *testing.T) (*testEnv, int64) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -42,12 +48,18 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	t.Cleanup(pool.Close)
 
 	q := db.New(pool)
-	// audit_logs (actor SET NULL) & activity_presence (FK CASCADE dari users, tapi
-	// eksplisit agar isolasi test pasti) ikut dibersihkan.
-	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, users RESTART IDENTITY CASCADE"); err != nil {
+	// tenants ikut dibersihkan (FK dari users). RESTART IDENTITY agar id deterministik.
+	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, oauth_accounts, users, tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
-	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: "test@local", PassHash: ptr("x")})
+	tenant, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: "Test", Slug: "test"})
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	u, err := q.CreateUser(ctx, db.CreateUserParams{
+		Email: "test@local", PassHash: ptr("x"),
+		TenantID: tenant.ID, Role: "owner",
+	})
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
@@ -58,20 +70,21 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	sm.Lifetime = time.Hour
 	session.Init(sm)
 
-	h := &Handler{DB: q, Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
-	return &testEnv{h: h, sm: sm}, u.ID
+	h := &Handler{Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	return &testEnv{h: h, sm: sm, q: q, tenantID: tenant.ID}, u.ID
 }
 
-// doAuthed menjalankan handler dalam konteks session dengan user login.
-// scs butuh request melewati LoadAndSave agar context punya session data;
-// kita bungkus handler dengan LoadAndSave lalu inject userID lewat pre-handler.
+// doAuthed menjalankan handler dalam konteks session dengan user login. scs butuh
+// request melewati LoadAndSave agar context punya session data; kita bungkus
+// handler + inject userID DAN Queries ber-scope (agar h.q(ctx) resolve tanpa
+// rantai middleware penuh — koneksi test bypass RLS, jadi pool-bound q cukup).
 func (e *testEnv) doAuthed(userID int64, req *http.Request, fn http.HandlerFunc) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if userID != 0 {
 			session.SetUserID(r.Context(), userID)
 		}
-		fn(w, r)
+		fn(w, r.WithContext(withQueries(r.Context(), e.q)))
 	}))
 	wrapped.ServeHTTP(rec, req)
 	return rec

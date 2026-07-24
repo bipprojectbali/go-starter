@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
+	"go_stater/internal/authz"
+	"go_stater/internal/db"
 	"go_stater/internal/session"
 )
 
@@ -25,7 +28,7 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r) // anonim — tak ada yang perlu disegarkan
 			return
 		}
-		u, err := h.DB.GetUser(ctx, uid)
+		u, err := h.q(ctx).GetUser(ctx, uid)
 		if err != nil {
 			// User tak ada (dihapus) — GetUser memfilter deleted_at. Session basi.
 			_ = session.Clear(ctx)
@@ -41,19 +44,39 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 			return
 		}
 
-		role := u.Role
-		if isRoot {
-			role = "super_admin" // env override apa pun nilai kolom DB
-		}
+		role := h.resolveRole(ctx, h.q(ctx), u)
 		avatar := ""
 		if u.AvatarUrl != nil {
 			avatar = *u.AvatarUrl
 		}
 		// Tulis session hanya bila ada yang berubah (hindari commit tiap request).
 		if session.Role(ctx) != role || session.IsRoot(ctx) != isRoot ||
-			session.Email(ctx) != u.Email || session.AvatarURL(ctx) != avatar {
-			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, avatar)
+			session.Email(ctx) != u.Email || session.AvatarURL(ctx) != avatar ||
+			session.TenantID(ctx) != u.TenantID {
+			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, u.TenantID, avatar)
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// resolveRole menentukan role EFEKTIF 2-bidang dari DB tiap request (real-time):
+//
+//	super_admin — email di SUPER_ADMIN_EMAILS (env-only, immutable, menang atas apa pun)
+//	staff       — email terdaftar di platform_staff (support platform, mutable)
+//	<u.Role>    — role tenant (owner/admin/member) dari kolom users.role
+//
+// Platform role di-overlay di sini, TAK disimpan di users.role (kolom itu CHECK
+// owner/admin/member). q HARUS bisa membaca platform_staff — tabel itu TANPA RLS
+// (platform-scope), jadi terbaca di WithTenant maupun WithSuper tx. Lookup staff
+// fail-soft: error DB → fallback ke role tenant (jangan kunci user karena glitch).
+func (h *Handler) resolveRole(ctx context.Context, q *db.Queries, u db.User) string {
+	if isSuperAdminEmail(u.Email) {
+		return authz.RoleNameSuperAdmin // env override menang atas semua
+	}
+	if ok, err := q.IsPlatformStaff(ctx, u.Email); err != nil {
+		h.Log.Error("resolveRole: staff lookup", "err", err)
+	} else if ok {
+		return authz.RoleNameStaff
+	}
+	return u.Role
 }

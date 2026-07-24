@@ -113,9 +113,14 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ambil user (dgn role/status/avatar terkini) lalu mulai identitas.
-	user, err := h.DB.GetUser(ctx, userID)
-	if err != nil {
+	// Ambil user (dgn role/status/avatar terkini) lalu mulai identitas. Pre-identity
+	// (tenant belum di session) → WithSuper. uid global-unique.
+	var user db.User
+	if err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		u, e := q.GetUser(ctx, userID)
+		user = u
+		return e
+	}); err != nil {
 		h.Log.Error("google callback: get user", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -149,57 +154,67 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims) (int64, error) {
 	const provider = "google"
 
-	tx, err := h.Pool.Begin(ctx)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback(ctx) //nolint — no-op bila sudah Commit
-	q := h.DB.WithTx(tx)
-
+	// Pre-identity: tenant belum diketahui (find-or-link MEMUTUSKANNYA). WithSuper
+	// = SATU tx bypass RLS (email/sub global-unique). Semua cabang commit/rollback
+	// bersama; new-user membuat tenant+owner atomik dalam tx yang sama.
+	var userID int64
 	avatar := oauth.NormalizeAvatarURL(claims.Picture)
-
-	// 1. Identitas Google sudah tertaut? Refresh avatar (URL berubah saat ganti foto).
-	acc, err := q.GetOAuthAccount(ctx, db.GetOAuthAccountParams{Provider: provider, ProviderUid: claims.Sub})
-	switch {
-	case err == nil:
-		if avatar != nil {
-			if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: acc.UserID, AvatarUrl: avatar}); err != nil {
-				return 0, err
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		// 1. Identitas Google sudah tertaut? Refresh avatar (URL berubah saat ganti foto).
+		acc, err := q.GetOAuthAccount(ctx, db.GetOAuthAccountParams{Provider: provider, ProviderUid: claims.Sub})
+		switch {
+		case err == nil:
+			if avatar != nil {
+				if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: acc.UserID, AvatarUrl: avatar}); err != nil {
+					return err
+				}
 			}
+			userID = acc.UserID
+			return nil
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
 		}
-		return acc.UserID, tx.Commit(ctx)
-	case !errors.Is(err, pgx.ErrNoRows):
-		return 0, err
-	}
 
-	// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + avatar.
-	user, err := q.GetUserByEmail(ctx, claims.Email)
-	switch {
-	case err == nil:
+		// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + avatar.
+		//    oauth_account mewarisi tenant_id user (jaga konsistensi scope RLS).
+		user, err := q.GetUserByEmail(ctx, claims.Email)
+		switch {
+		case err == nil:
+			if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{
+				UserID: user.ID, Provider: provider, ProviderUid: claims.Sub, TenantID: user.TenantID,
+			}); err != nil {
+				return err
+			}
+			if avatar != nil {
+				if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: user.ID, AvatarUrl: avatar}); err != nil {
+					return err
+				}
+			}
+			userID = user.ID
+			return nil
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+
+		// 3. User baru sepenuhnya dari Google → buat TENANT baru + user OWNER-nya
+		//    (1 user = 1 tenant, sama seperti register password).
+		t, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: claims.Email, Slug: tenantSlug(claims.Email)})
+		if err != nil {
+			return err
+		}
+		newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{
+			Email: claims.Email, AvatarUrl: avatar, TenantID: t.ID, Role: authz.RoleNameOwner,
+		})
+		if err != nil {
+			return err
+		}
 		if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{
-			UserID: user.ID, Provider: provider, ProviderUid: claims.Sub,
+			UserID: newUser.ID, Provider: provider, ProviderUid: claims.Sub, TenantID: t.ID,
 		}); err != nil {
-			return 0, err
+			return err
 		}
-		if avatar != nil {
-			if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: user.ID, AvatarUrl: avatar}); err != nil {
-				return 0, err
-			}
-		}
-		return user.ID, tx.Commit(ctx)
-	case !errors.Is(err, pgx.ErrNoRows):
-		return 0, err
-	}
-
-	// 3. User baru sepenuhnya dari Google.
-	newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{Email: claims.Email, AvatarUrl: avatar})
-	if err != nil {
-		return 0, err
-	}
-	if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{
-		UserID: newUser.ID, Provider: provider, ProviderUid: claims.Sub,
-	}); err != nil {
-		return 0, err
-	}
-	return newUser.ID, tx.Commit(ctx)
+		userID = newUser.ID
+		return nil
+	})
+	return userID, err
 }

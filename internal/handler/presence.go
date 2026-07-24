@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"go_stater/internal/db"
 	"go_stater/internal/session"
 )
 
@@ -59,7 +60,13 @@ func (h *Handler) recordPresence(ctx context.Context, uid int64) {
 			h.Log.Error("presence: panic", "user_id", uid, "recover", rec)
 		}
 	}()
-	if err := h.DB.RecordPresence(ctx, uid); err != nil {
+	// TenantID dari session (0 utk platform user — presence-nya tercatat lintas
+	// scope via WithSuper tx). RLS WITH CHECK menolak tenant_id yang tak cocok
+	// GUC, jadi nilai session HARUS = tenant tx (dijamin Scope middleware).
+	if err := h.q(ctx).RecordPresence(ctx, db.RecordPresenceParams{
+		UserID:   uid,
+		TenantID: session.TenantID(ctx),
+	}); err != nil {
 		h.Log.Error("presence: record", "user_id", uid, "err", err)
 	}
 }

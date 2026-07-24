@@ -18,7 +18,6 @@ import (
 	"go_stater/internal/authz"
 	"go_stater/internal/config"
 	"go_stater/internal/database"
-	"go_stater/internal/db"
 	"go_stater/internal/handler"
 	"go_stater/internal/oauth"
 	"go_stater/internal/session"
@@ -98,8 +97,18 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Postgres pool.
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	// Postgres — DUA pool (defense-in-depth RLS):
+	//   migratePool (DATABASE_URL, role owner)  → migrasi + boot, BYPASS RLS.
+	//   pool (APP_DATABASE_URL, role app_rw)     → runtime handler, RLS MENGIKAT.
+	// Di dev keduanya bisa DSN sama (owner) — RLS tak mengikat, tapi isolasi tetap
+	// benar via GUC+WHERE. Di prod, app_rw NOBYPASSRLS = jaring pengaman terakhir.
+	migratePool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer migratePool.Close()
+
+	pool, err := pgxpool.New(ctx, cfg.AppDatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -118,23 +127,19 @@ func run() error {
 	sm := session.NewManager(rc)
 	session.Init(sm)
 
-	// Auto-migrate dengan advisory lock (aman multi-instance).
+	// Auto-migrate dengan advisory lock (aman multi-instance). Pakai migratePool
+	// (owner) — migrasi ALTER/CREATE POLICY butuh privilege owner, bukan app_rw.
 	if cfg.AutoMigrate {
-		if err := database.MigrateWithLock(ctx, pool, migrationsEmbed); err != nil {
+		if err := database.MigrateWithLock(ctx, migratePool, migrationsEmbed); err != nil {
 			return err
 		}
 		log.Info("migrations applied")
 	}
 
-	// Reconcile super-admin env → DB (promote-only). Email di SUPER_ADMIN_EMAILS
-	// yang sudah terdaftar dinaikkan ke super_admin agar role DB "jujur". Tak
-	// menurunkan siapa pun (super-admin tier-2 & email yang dicabut env aman).
-	if len(cfg.SuperAdminEmails) > 0 {
-		if err := db.New(pool).PromoteSuperAdmins(ctx, cfg.SuperAdminEmails); err != nil {
-			return err
-		}
-		log.Info("super-admin reconcile applied", "count", len(cfg.SuperAdminEmails))
-	}
+	// Model role 2-bidang: super_admin = ENV-ONLY (SUPER_ADMIN_EMAILS), nol baris
+	// DB, di-overlay RefreshIdentity per-request. Tak ada reconcile boot ke DB —
+	// role users.role hanya owner/admin/member (CHECK). Kehadiran super_admin tak
+	// pernah ditulis; sepenuhnya diturunkan dari env saat identity di-resolve.
 
 	// Static server dengan cache-busting untuk app.css (berubah tiap `make css`).
 	staticSub, err := fs.Sub(staticEmbed, "static")

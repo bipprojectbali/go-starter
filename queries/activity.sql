@@ -2,11 +2,12 @@
 -- Presence bucket 15-menit. bucket_at di-floor SERVER-SIDE ke kelipatan 900 dtk
 -- (jangan hitung di Go — hindari drift clock). Agregasi di level baris: request
 -- berulang dalam bucket sama hanya menaikkan hits, bukan insert baris baru.
-INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at)
+INSERT INTO activity_presence (user_id, bucket_at, hits, last_seen_at, tenant_id)
 VALUES (
     sqlc.arg(user_id)::bigint,
     to_timestamp(floor(extract(epoch FROM now()) / 900) * 900),
-    1, now()
+    1, now(),
+    sqlc.arg(tenant_id)::bigint
 )
 ON CONFLICT (user_id, bucket_at)
 DO UPDATE SET hits = activity_presence.hits + 1, last_seen_at = now();

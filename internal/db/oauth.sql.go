@@ -10,19 +10,25 @@ import (
 )
 
 const createOAuthAccount = `-- name: CreateOAuthAccount :one
-INSERT INTO oauth_accounts (user_id, provider, provider_uid)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, provider, provider_uid, created_at
+INSERT INTO oauth_accounts (user_id, provider, provider_uid, tenant_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, user_id, provider, provider_uid, created_at, tenant_id
 `
 
 type CreateOAuthAccountParams struct {
 	UserID      int64  `json:"user_id"`
 	Provider    string `json:"provider"`
 	ProviderUid string `json:"provider_uid"`
+	TenantID    int64  `json:"tenant_id"`
 }
 
 func (q *Queries) CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error) {
-	row := q.db.QueryRow(ctx, createOAuthAccount, arg.UserID, arg.Provider, arg.ProviderUid)
+	row := q.db.QueryRow(ctx, createOAuthAccount,
+		arg.UserID,
+		arg.Provider,
+		arg.ProviderUid,
+		arg.TenantID,
+	)
 	var i OauthAccount
 	err := row.Scan(
 		&i.ID,
@@ -30,12 +36,13 @@ func (q *Queries) CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccount
 		&i.Provider,
 		&i.ProviderUid,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const getOAuthAccount = `-- name: GetOAuthAccount :one
-SELECT id, user_id, provider, provider_uid, created_at FROM oauth_accounts WHERE provider = $1 AND provider_uid = $2
+SELECT id, user_id, provider, provider_uid, created_at, tenant_id FROM oauth_accounts WHERE provider = $1 AND provider_uid = $2
 `
 
 type GetOAuthAccountParams struct {
@@ -52,12 +59,13 @@ func (q *Queries) GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams
 		&i.Provider,
 		&i.ProviderUid,
 		&i.CreatedAt,
+		&i.TenantID,
 	)
 	return i, err
 }
 
 const listOAuthAccountsByUser = `-- name: ListOAuthAccountsByUser :many
-SELECT id, user_id, provider, provider_uid, created_at FROM oauth_accounts WHERE user_id = $1 ORDER BY created_at
+SELECT id, user_id, provider, provider_uid, created_at, tenant_id FROM oauth_accounts WHERE user_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error) {
@@ -75,6 +83,7 @@ func (q *Queries) ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]
 			&i.Provider,
 			&i.ProviderUid,
 			&i.CreatedAt,
+			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}

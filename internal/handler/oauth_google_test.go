@@ -92,11 +92,11 @@ func TestGoogleCallback_NewUser(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("login sukses harus redirect 303, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "/user" {
-		t.Errorf("user Google baru harus redirect ke /user (home role), got %q", loc)
+	if loc := rec.Header().Get("Location"); loc != "/admin" {
+		t.Errorf("user Google baru = owner tenant baru → redirect /admin, got %q", loc)
 	}
 	// User baru + oauth_account terbuat.
-	u, err := env.h.DB.GetUserByEmail(t.Context(), "baru@gmail.com")
+	u, err := env.q.GetUserByEmail(t.Context(), "baru@gmail.com")
 	if err != nil {
 		t.Fatalf("user Google tidak terbuat: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestGoogleCallback_NewUser(t *testing.T) {
 	if !u.EmailVerified {
 		t.Errorf("user Google harus email_verified=true")
 	}
-	acc, err := env.h.DB.GetOAuthAccount(t.Context(), db.GetOAuthAccountParams{Provider: "google", ProviderUid: sub})
+	acc, err := env.q.GetOAuthAccount(t.Context(), db.GetOAuthAccountParams{Provider: "google", ProviderUid: sub})
 	if err != nil {
 		t.Fatalf("oauth_account tidak terbuat: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestGoogleCallback_NewUser(t *testing.T) {
 func TestGoogleCallback_AutoLinkExistingEmail(t *testing.T) {
 	env, _ := setupTest(t)
 	// Buat dulu akun password (dev) dengan email sama.
-	existing, err := env.h.DB.CreateUser(t.Context(), db.CreateUserParams{Email: "dev@gmail.com", PassHash: ptr("$argon2id$x")})
+	existing, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "dev@gmail.com", PassHash: ptr("$argon2id$x"), TenantID: env.tenantID, Role: "member"})
 	if err != nil {
 		t.Fatalf("seed existing: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestGoogleCallback_AutoLinkExistingEmail(t *testing.T) {
 		t.Fatalf("auto-link harus sukses 303, got %d: %s", rec.Code, rec.Body.String())
 	}
 	// TIDAK boleh buat user baru — oauth_account tertaut ke user yang ada.
-	acc, err := env.h.DB.GetOAuthAccount(t.Context(), db.GetOAuthAccountParams{Provider: "google", ProviderUid: sub})
+	acc, err := env.q.GetOAuthAccount(t.Context(), db.GetOAuthAccountParams{Provider: "google", ProviderUid: sub})
 	if err != nil {
 		t.Fatalf("oauth_account tidak terbuat: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestGoogleCallback_ExistingOAuthNoDuplicate(t *testing.T) {
 
 	// Login Google pertama → buat user.
 	env.doCallback(t, "s1", "s1")
-	first, err := env.h.DB.GetUserByEmail(t.Context(), "repeat@gmail.com")
+	first, err := env.q.GetUserByEmail(t.Context(), "repeat@gmail.com")
 	if err != nil {
 		t.Fatalf("login pertama gagal: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestGoogleCallback_ExistingOAuthNoDuplicate(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("login kedua harus sukses, got %d", rec.Code)
 	}
-	accts, err := env.h.DB.ListOAuthAccountsByUser(t.Context(), first.ID)
+	accts, err := env.q.ListOAuthAccountsByUser(t.Context(), first.ID)
 	if err != nil {
 		t.Fatalf("list oauth: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestGoogleCallback_NonceForwarded(t *testing.T) {
 func TestLogin_GoogleOnlyAccountRejected(t *testing.T) {
 	env, _ := setupTest(t)
 	// User Google-only (tanpa pass_hash).
-	if _, err := env.h.DB.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com"}); err != nil {
+	if _, err := env.q.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com", TenantID: env.tenantID, Role: "member"}); err != nil {
 		t.Fatalf("seed google user: %v", err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/login",

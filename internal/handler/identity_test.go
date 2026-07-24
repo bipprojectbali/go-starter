@@ -25,6 +25,8 @@ func (e *testEnv) runRefresh(t *testing.T, userID int64, setupSuper func(string)
 	rec := httptest.NewRecorder()
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session.SetUserID(r.Context(), userID) // HANYA userID — role kosong (session lama)
+		// Inject Queries ber-scope (RefreshIdentity pakai h.q) — sim. Scope middleware.
+		r = r.WithContext(withQueries(r.Context(), e.q))
 		e.h.RefreshIdentity(final).ServeHTTP(w, r)
 	}))
 	wrapped.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/user", nil))
@@ -33,17 +35,17 @@ func (e *testEnv) runRefresh(t *testing.T, userID int64, setupSuper func(string)
 
 func TestRefreshIdentity_SelfHealMissingRole(t *testing.T) {
 	env, uid := setupTest(t)
-	// Jadikan user super_admin di DB (seed test@local).
-	if err := env.h.DB.UpdateUserRole(t.Context(), db.UpdateUserRoleParams{ID: uid, Role: "super_admin"}); err != nil {
+	// Seed test@local role = "admin" di DB (role tenant valid).
+	if err := env.q.UpdateUserRole(t.Context(), db.UpdateUserRoleParams{ID: uid, Role: "admin"}); err != nil {
 		t.Fatalf("set role: %v", err)
 	}
 	rec, role := env.runRefresh(t, uid, func(string) bool { return false })
 	if rec.Code != http.StatusOK {
 		t.Fatalf("harus lolos, got %d", rec.Code)
 	}
-	// Session lama tanpa role → terisi ulang dari DB.
-	if role != "super_admin" {
-		t.Errorf("role harus di-heal jadi super_admin, got %q", role)
+	// Session lama tanpa role → terisi ulang dari DB (role tenant, bukan platform).
+	if role != "admin" {
+		t.Errorf("role harus di-heal jadi admin (dari DB), got %q", role)
 	}
 }
 
@@ -61,7 +63,7 @@ func TestRefreshIdentity_RootEnvOverride(t *testing.T) {
 
 func TestRefreshIdentity_BlockedForcesLogout(t *testing.T) {
 	env, uid := setupTest(t)
-	if err := env.h.DB.UpdateUserStatus(t.Context(), db.UpdateUserStatusParams{ID: uid, Status: "blocked"}); err != nil {
+	if err := env.q.UpdateUserStatus(t.Context(), db.UpdateUserStatusParams{ID: uid, Status: "blocked"}); err != nil {
 		t.Fatalf("block: %v", err)
 	}
 	rec, _ := env.runRefresh(t, uid, func(string) bool { return false })
@@ -77,7 +79,7 @@ func TestRefreshIdentity_BlockedForcesLogout(t *testing.T) {
 func TestRefreshIdentity_RootBypassesBlock(t *testing.T) {
 	env, uid := setupTest(t)
 	// Root env di-set blocked di DB → tetap lolos (kebal gate status).
-	if err := env.h.DB.UpdateUserStatus(t.Context(), db.UpdateUserStatusParams{ID: uid, Status: "blocked"}); err != nil {
+	if err := env.q.UpdateUserStatus(t.Context(), db.UpdateUserStatusParams{ID: uid, Status: "blocked"}); err != nil {
 		t.Fatalf("block: %v", err)
 	}
 	rec, role := env.runRefresh(t, uid, func(email string) bool { return email == "test@local" })

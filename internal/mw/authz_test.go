@@ -40,7 +40,7 @@ func runWithRole(t *testing.T, sm *scs.SessionManager, role, obj, act string) in
 	}))
 	wrapped := sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if role != "" {
-			session.SetIdentity(r.Context(), 1, "u@x.com", role, false, "")
+			session.SetIdentity(r.Context(), 1, "u@x.com", role, false, 1, "")
 		}
 		guarded.ServeHTTP(w, r)
 	}))
@@ -80,7 +80,7 @@ func TestRequireEnforce_RootBypass(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	wrapped := sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session.SetIdentity(r.Context(), 1, "root@x.com", "user", true, "") // role=user tapi isRoot
+		session.SetIdentity(r.Context(), 1, "root@x.com", "member", true, 1, "") // role=user tapi isRoot
 		guarded.ServeHTTP(w, r)
 	}))
 	rec := httptest.NewRecorder()

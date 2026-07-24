@@ -1,16 +1,35 @@
-# Hierarki role (RBAC1): child mewarisi izin parent.
-g, admin, user
-g, super_admin, admin
+# Model role 2-BIDANG (multi-tenancy). Dua tangga tegak-lurus disatukan lewat
+# hierarki g agar platform mewarisi izin tenant (operator bisa akses UI tenant
+# saat impersonate/bantu). CATATAN: Casbin CSV TAK mendukung komentar inline di
+# akhir baris g/p (jadi bagian nilai) — komentar HARUS di baris '#' tersendiri.
+#
+# TENANT:   member < admin < owner
+# PLATFORM: staff  < super_admin   (super_admin -> root = god-mode di matcher)
+
+# --- Hierarki (RBAC1): child mewarisi izin parent ---
+g, admin, member
+g, owner, admin
+# platform mewarisi izin tenant penuh (untuk bantu aktif saat impersonate):
+g, staff, owner
+g, super_admin, staff
+# god-mode super_admin via cabang || g(r.sub,"root") di matcher:
 g, super_admin, root
 
-# user: beranda /user.
-p, user, user:home, read
+# --- Tenant: beranda per-tingkat ---
+# member: beranda /user.
+p, member, user:home, read
 
-# admin: beranda /admin + panel users (admin mewarisi user:home lewat hierarki).
+# admin: beranda /admin + kelola member (mewarisi user:home lewat hierarki).
 p, admin, admin:home, read
 p, admin, admin:users, read
 p, admin, admin:users, create
 p, admin, admin:users:btn-delete, delete
 
-# /dev (dev:*): TANPA policy untuk role < super_admin. Hanya super_admin/root
-# lolos lewat cabang bypass `|| g(r.sub,"root")`. Panel developer = owner-only.
+# --- Platform: panel /dev (dev:*) ---
+# staff & super_admin lihat panel lintas-tenant. super_admin god-mode via cabang
+# matcher (root); staff butuh policy eksplisit (BUKAN root — akses terbatas).
+p, staff, dev:users, read
+
+# staff TAK BOLEH: hapus/suspend tenant, kelola staff lain — TANPA policy untuk
+# platform:tenants:delete / platform:staff:* (deny-default). Hanya super_admin
+# (root god-mode) yang lolos obj platform:* apa pun.

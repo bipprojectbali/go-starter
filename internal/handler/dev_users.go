@@ -27,7 +27,7 @@ func firstPageCursor() (pgtype.Timestamptz, int64) {
 // DevUsersList — GET /dev/users. Daftar user (keyset) untuk panel developer.
 func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	cursorAt, cursorID := firstPageCursor()
-	users, err := h.DB.ListUsers(r.Context(), db.ListUsersParams{
+	users, err := h.q(r.Context()).ListUsers(r.Context(), db.ListUsersParams{
 		CursorCreatedAt: cursorAt,
 		CursorID:        cursorID,
 		PageSize:        pageSize,
@@ -64,7 +64,7 @@ func (h *Handler) DevUserSetRole(w http.ResponseWriter, r *http.Request) {
 		h.devFlashErr(w, r, err)
 		return
 	}
-	if err := h.DB.UpdateUserRole(r.Context(), db.UpdateUserRoleParams{ID: targetID, Role: newRole}); err != nil {
+	if err := h.q(r.Context()).UpdateUserRole(r.Context(), db.UpdateUserRoleParams{ID: targetID, Role: newRole}); err != nil {
 		h.Log.Error("dev users: update role", "err", err)
 		h.devFlash(w, r, false, "Gagal menyimpan perubahan")
 		return
@@ -95,7 +95,7 @@ func (h *Handler) DevUserSetStatus(w http.ResponseWriter, r *http.Request) {
 		h.devFlashErr(w, r, err)
 		return
 	}
-	if err := h.DB.UpdateUserStatus(r.Context(), db.UpdateUserStatusParams{ID: targetID, Status: newStatus}); err != nil {
+	if err := h.q(r.Context()).UpdateUserStatus(r.Context(), db.UpdateUserStatusParams{ID: targetID, Status: newStatus}); err != nil {
 		h.Log.Error("dev users: update status", "err", err)
 		h.devFlash(w, r, false, "Gagal menyimpan perubahan")
 		return
@@ -119,7 +119,7 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 		h.devFlashErr(w, r, err)
 		return
 	}
-	if err := h.DB.SoftDeleteUser(r.Context(), targetID); err != nil {
+	if err := h.q(r.Context()).SoftDeleteUser(r.Context(), targetID); err != nil {
 		h.Log.Error("dev users: delete", "err", err)
 		h.devFlash(w, r, false, "Gagal menghapus user")
 		return
@@ -136,7 +136,7 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 // devRowUpdated me-render ulang baris user (kontrol menampilkan nilai baru) +
 // flash sukses. Ini yang menggantikan reload penuh: perubahan langsung terlihat.
 func (h *Handler) devRowUpdated(w http.ResponseWriter, r *http.Request, targetID int64, msg string) {
-	u, err := h.DB.GetUser(r.Context(), targetID)
+	u, err := h.q(r.Context()).GetUser(r.Context(), targetID)
 	if err != nil {
 		h.Log.Error("dev users: reload row", "err", err)
 		h.devFlash(w, r, false, "Tersimpan, tapi gagal memuat ulang baris")
@@ -207,7 +207,7 @@ func (h *Handler) loadActorTarget(ctx context.Context, targetID int64) (authz.Ac
 		Role:   authz.ParseRole(session.Role(ctx)),
 		IsRoot: session.IsRoot(ctx),
 	}
-	tu, err := h.DB.GetUser(ctx, targetID)
+	tu, err := h.q(ctx).GetUser(ctx, targetID)
 	if err != nil {
 		return actor, authz.Target{}, err
 	}
@@ -234,13 +234,23 @@ func (h *Handler) auditLog(ctx context.Context, actorID int64, action, targetTyp
 			raw = b
 		}
 	}
-	if _, err := h.DB.CreateAuditLog(ctx, db.CreateAuditLogParams{
-		ActorUserID: &actorID,
-		Action:      action,
-		TargetType:  targetType,
-		TargetID:    &targetID,
-		Metadata:    raw,
-	}); err != nil {
+	// Audit di tx WithSuper TERPISAH (bukan Scope tx) — fail-soft struktural:
+	// kegagalan tulis jejak TAK mengabort aksi utama (tx berbeda). tenant_id =
+	// tenant aktor (selalu >0; semua user punya tenant), jadi jejak ter-atribusi
+	// ke home-tenant aktor walau aksinya lintas-tenant (platform). Bypass RLS
+	// perlu karena aktor platform menulis audit untuk target di tenant lain.
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		_, e := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
+			ActorUserID: &actorID,
+			Action:      action,
+			TargetType:  targetType,
+			TargetID:    &targetID,
+			Metadata:    raw,
+			TenantID:    session.TenantID(ctx),
+		})
+		return e
+	})
+	if err != nil {
 		h.Log.Error("audit log", "action", action, "err", err) // jangan gagalkan aksi utama
 	}
 }

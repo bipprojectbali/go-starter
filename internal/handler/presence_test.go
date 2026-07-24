@@ -3,6 +3,8 @@ package handler
 import (
 	"testing"
 	"time"
+
+	"go_stater/internal/db"
 )
 
 // TestPresenceThrottle_Window: allow() menolak panggilan kedua dalam jendela
@@ -33,7 +35,7 @@ func TestRecordPresence_UpsertAggregates(t *testing.T) {
 	ctx := t.Context()
 
 	for i := 0; i < 3; i++ {
-		if err := env.h.DB.RecordPresence(ctx, uid); err != nil {
+		if err := env.q.RecordPresence(ctx, db.RecordPresenceParams{UserID: uid, TenantID: env.tenantID}); err != nil {
 			t.Fatalf("RecordPresence #%d: %v", i, err)
 		}
 	}
