@@ -76,9 +76,12 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 			shellSidebar(d),
 
 			// Konten. Margin kiri menyesuaikan lebar sidebar (rail saat collapsed).
+			// pt-16 di mobile memberi ruang untuk floating hamburger (top-4, fixed)
+			// agar tak menimpa judul konten; md: kembali ke padding normal (sidebar
+			// tetap tampil, hamburger hilang → tak perlu ruang ekstra).
 			h.Div(
 				h.Class("app-content flex min-h-screen flex-col"),
-				h.Main(h.Class("flex-1 p-6"), g.Group(content)),
+				h.Main(h.Class("flex-1 px-4 pb-6 pt-16 sm:px-6 md:p-6"), g.Group(content)),
 			),
 
 			// Modal konfirmasi logout (dipicu tombol Keluar).

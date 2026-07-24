@@ -37,6 +37,33 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
 - **Dua jalur render**: `renderPage` (Layout landing/app) vs `renderShell`
   (AppShell panel dgn sidebar). `headNodes()` dibagi keduanya (DRY).
 
+## Desain mobile-first (WAJIB — template ini di-clone)
+
+Setiap UI **wajib** enak dipakai di mobile, tablet, DAN desktop. Ini base template;
+kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
+"pokoknya responsif"):
+
+- **Arah mobile-first**: kelas dasar (TANPA prefix) = tampilan MOBILE; naikkan ke
+  atas dengan `sm:`/`md:`/`lg:`. Tailwind/daisyUI memang mobile-first (unprefixed =
+  semua lebar, prefix = min-width ke atas). JANGAN desain desktop-dulu lalu tambal
+  `max-md:` — itu melawan arah framework & rapuh. ✅ `grid-cols-1 md:grid-cols-2`
+  ❌ `grid-cols-2 max-md:grid-cols-1`.
+- **Breakpoint standar** Tailwind: `sm` 640 · `md` 768 · `lg` 1024. Sidebar =
+  drawer di `<md`, tetap di `md:` ke atas — **AppShell (`internal/ui/appshell.go`)
+  adalah pola acuan** (`-translate-x-full` + `md:translate-x-0`, toggle via signal).
+  Ikuti pola itu, jangan bikin mekanisme responsif baru.
+- **Nol overflow horizontal** di 320–375px. Grid/flex turun ke 1 kolom di mobile.
+  Konten lebar (angka panjang, URL) pakai `truncate`/`break-words`.
+- **Tabel = titik gagal #1 di mobile.** Tabel lebar (mis. `/dev/users`, `/dev/logs`)
+  WAJIB salah satu: bungkus `overflow-x-auto` (scroll horizontal terkurung, TAK
+  bocor ke halaman) ATAU pola card-stack di `<md`. Jangan biarkan `<table>` telanjang
+  mendorong lebar halaman.
+- **Tap target ≥ 44px** (tombol/link aksi) — daisyUI `.btn` sudah cukup; hati-hati
+  ikon-only kecil. **Input `text-base`** (≥16px) agar iOS tak auto-zoom saat fokus.
+- **VERIFIKASI 3 LEBAR WAJIB** sebelum lapor selesai untuk perubahan UI apa pun:
+  agent-browser `set_viewport` ke **375** (mobile), **768** (tablet), **1280**
+  (desktop) + screenshot tiap lebar. Bukti visual, bukan klaim "sudah responsif".
+
 ## Gotcha (mahal — jangan temukan ulang)
 
 1. **CSP wajib `unsafe-eval`.** Datastar mengevaluasi ekspresi `data-*` via
