@@ -68,6 +68,7 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 var (
 	adminNav = []ui.NavItem{
 		{Label: "Dashboard", Href: "/admin", Icon: lucide.LayoutDashboard(html.Class("size-4"))},
+		{Label: "Workspace", Href: "/admin/workspace", Icon: lucide.Building2(html.Class("size-4"))},
 	}
 	userNav = []ui.NavItem{
 		{Label: "Beranda", Href: "/user", Icon: lucide.House(html.Class("size-4"))},
@@ -118,14 +119,15 @@ func quickLinksFor(ctx context.Context) []ui.NavItem {
 func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, brand, currentPath string, nav []ui.NavItem, body g.Node) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	d := ui.ShellData{
-		Title:       title,
-		BrandLabel:  brand,
-		CurrentPath: currentPath,
-		UserEmail:   session.Email(r.Context()),
-		AvatarURL:   session.AvatarURL(r.Context()),
-		CSSPath:     cssPath,
-		Nav:         nav,
-		QuickLinks:  quickLinksFor(r.Context()),
+		Title:         title,
+		BrandLabel:    brand,
+		WorkspaceName: session.TenantName(r.Context()), // brand utama; "" utk platform → fallback BrandLabel
+		CurrentPath:   currentPath,
+		UserEmail:     session.Email(r.Context()),
+		AvatarURL:     session.AvatarURL(r.Context()),
+		CSSPath:       cssPath,
+		Nav:           nav,
+		QuickLinks:    quickLinksFor(r.Context()),
 	}
 	if err := ui.AppShell(d, body).Render(w); err != nil {
 		h.Log.Error("render shell", "path", r.URL.Path, "err", err)

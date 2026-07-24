@@ -15,7 +15,7 @@ func (e *testEnv) renderAs(role string, fn http.HandlerFunc) *httptest.ResponseR
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session.SetIdentity(r.Context(), 1, "u@x.com", role, false, 1, "")
+		session.SetIdentity(r.Context(), 1, "u@x.com", role, false, 1, "Acme", "")
 		fn(w, r)
 	}))
 	wrapped.ServeHTTP(rec, req)

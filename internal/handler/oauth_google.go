@@ -196,9 +196,15 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 			return err
 		}
 
-		// 3. User baru sepenuhnya dari Google → buat TENANT baru + user OWNER-nya
-		//    (1 user = 1 tenant, sama seperti register password).
-		t, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: claims.Email, Slug: tenantSlug(claims.Email)})
+		// 3. User baru sepenuhnya dari Google → buat WORKSPACE baru + user OWNER-nya
+		//    (1 user = 1 workspace). Nama = bagian email sebelum '@' (dirapikan user
+		//    via /admin/workspace); slug = unik auto-suffix.
+		name := emailLocal(claims.Email)
+		slug, err := uniqueSlug(ctx, q, slugify(name))
+		if err != nil {
+			return err
+		}
+		t, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: name, Slug: slug})
 		if err != nil {
 			return err
 		}

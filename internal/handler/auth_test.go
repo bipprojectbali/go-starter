@@ -14,7 +14,7 @@ func TestRegister_Success(t *testing.T) {
 	env, _ := setupTest(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"email":"baru@local","password":"rahasia123"}`))
+		strings.NewReader(`{"workspace":"Acme Corp","email":"baru@local","password":"rahasia123"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := env.do(req, env.h.Register)
 
@@ -38,12 +38,23 @@ func TestRegister_Success(t *testing.T) {
 	if u.PassHash == nil || !strings.HasPrefix(*u.PassHash, "$argon2id$") {
 		t.Errorf("password tidak di-hash argon2id: %v", u.PassHash)
 	}
+	// Workspace baru terbuat dgn NAMA input user (bukan email) + slug ter-slugify.
+	tn, err := env.q.GetTenant(t.Context(), u.TenantID)
+	if err != nil {
+		t.Fatalf("tenant tak tersimpan: %v", err)
+	}
+	if tn.Name != "Acme Corp" {
+		t.Errorf("nama workspace = input user, got %q", tn.Name)
+	}
+	if tn.Slug != "acme-corp" {
+		t.Errorf("slug ter-slugify dari nama, got %q", tn.Slug)
+	}
 }
 
 func TestRegister_ShortPassword(t *testing.T) {
 	env, _ := setupTest(t)
 	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"email":"x@local","password":"pendek"}`))
+		strings.NewReader(`{"workspace":"WS","email":"x@local","password":"pendek"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := env.do(req, env.h.Register)
 
@@ -52,11 +63,23 @@ func TestRegister_ShortPassword(t *testing.T) {
 	}
 }
 
+func TestRegister_MissingWorkspace(t *testing.T) {
+	env, _ := setupTest(t)
+	req := httptest.NewRequest(http.MethodPost, "/register",
+		strings.NewReader(`{"email":"x@local","password":"rahasia123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := env.do(req, env.h.Register)
+
+	if !strings.Contains(rec.Body.String(), "workspace wajib") {
+		t.Errorf("harus tolak nama workspace kosong:\n%s", rec.Body.String())
+	}
+}
+
 func TestRegister_DuplicateEmail(t *testing.T) {
 	env, _ := setupTest(t)
 	// user seed "test@local" sudah ada.
 	req := httptest.NewRequest(http.MethodPost, "/register",
-		strings.NewReader(`{"email":"test@local","password":"rahasia123"}`))
+		strings.NewReader(`{"workspace":"Dup","email":"test@local","password":"rahasia123"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := env.do(req, env.h.Register)
 

@@ -49,11 +49,18 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 		if u.AvatarUrl != nil {
 			avatar = *u.AvatarUrl
 		}
+		// Nama workspace segar dari DB (real-time: ganti nama langsung terlihat di
+		// brand sidebar). tenants TANPA RLS-policy → terbaca di tx ber-scope. Fail-
+		// soft: error → pakai nama tercache (jangan kosongkan brand karena glitch).
+		tenantName := session.TenantName(ctx)
+		if t, err := h.q(ctx).GetTenant(ctx, u.TenantID); err == nil {
+			tenantName = t.Name
+		}
 		// Tulis session hanya bila ada yang berubah (hindari commit tiap request).
 		if session.Role(ctx) != role || session.IsRoot(ctx) != isRoot ||
 			session.Email(ctx) != u.Email || session.AvatarURL(ctx) != avatar ||
-			session.TenantID(ctx) != u.TenantID {
-			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, u.TenantID, avatar)
+			session.TenantID(ctx) != u.TenantID || session.TenantName(ctx) != tenantName {
+			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, u.TenantID, tenantName, avatar)
 		}
 		next.ServeHTTP(w, r)
 	})

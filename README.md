@@ -69,12 +69,14 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 - **Model role 2-bidang** (multi-tenancy). Dua bidang tegak-lurus:
   - **PLATFORM** (lintas-tenant): `super_admin` (dari `SUPER_ADMIN_EMAILS`, immutable,
     nol baris DB) + `staff` (tabel `platform_staff`, mutable, akses terbatas).
-  - **TENANT** (isolasi RLS): `owner > admin > member`. **1 user = 1 tenant** —
-    register/login Google user baru = buat tenant baru + owner.
+  - **TENANT** (isolasi RLS): `owner > admin > member`. **1 user = 1 workspace** —
+    register (isi **Nama Workspace**) / login Google user baru = buat workspace baru + owner.
 - Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
   owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
 - Data tiap tenant terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
   `docs/decisions/0002`. Runtime app konek role `app_rw` (`APP_DATABASE_URL`).
+- **Workspace** = nama tampilan tenant (kode tetap `tenant`). Nama boleh duplikat,
+  slug unik & immutable (`acme`, `acme-2`). Owner ganti nama di `/admin/workspace`.
 
 ## Panel
 
@@ -85,6 +87,7 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `/dev/health` | platform, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
 | `/dev/erd` | platform, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
 | `/admin` | admin+ | dashboard admin (stub) |
+| `/admin/workspace` | owner ubah, admin+ lihat | pengaturan workspace (ganti nama) |
 | `/user` | user+ | beranda user (stub) |
 
 Panel dev-only (`/dev/health`, `/dev/erd`) tak terdaftar di production karena

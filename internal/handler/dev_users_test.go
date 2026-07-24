@@ -49,7 +49,7 @@ func (e *testEnv) doDevAction(actorID, targetID int64, form url.Values, fn http.
 	// scs LoadAndSave menurunkan context dari request masuk, jadi r sudah bawa
 	// chi param (dari base) + session sekaligus.
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		session.SetIdentity(r.Context(), actorID, "test@local", "super_admin", true, 1, "")
+		session.SetIdentity(r.Context(), actorID, "test@local", "super_admin", true, 1, "Acme", "")
 		fn(w, r.WithContext(withQueries(r.Context(), e.q))) // inject Queries (sim. Scope)
 	}))
 	wrapped.ServeHTTP(rec, base)

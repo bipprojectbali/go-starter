@@ -58,6 +58,11 @@ type Querier interface {
 	RecordPresence(ctx context.Context, arg RecordPresenceParams) error
 	RemovePlatformStaff(ctx context.Context, email string) error
 	SoftDeleteUser(ctx context.Context, id int64) error
+	// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...).
+	TenantSlugExists(ctx context.Context, slug string) (bool, error)
+	// Ganti NAMA tampilan workspace (owner-only, di-guard di handler). Slug SENGAJA
+	// tak diubah — immutable setelah dibuat (stabilitas URL; ganti display != ganti URL).
+	UpdateTenant(ctx context.Context, arg UpdateTenantParams) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error
 	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error

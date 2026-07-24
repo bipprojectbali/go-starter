@@ -67,3 +67,31 @@ func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, err
 	)
 	return i, err
 }
+
+const tenantSlugExists = `-- name: TenantSlugExists :one
+SELECT EXISTS (SELECT 1 FROM tenants WHERE slug = $1)::boolean
+`
+
+// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...).
+func (q *Queries) TenantSlugExists(ctx context.Context, slug string) (bool, error) {
+	row := q.db.QueryRow(ctx, tenantSlugExists, slug)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const updateTenant = `-- name: UpdateTenant :exec
+UPDATE tenants SET name = $2 WHERE id = $1
+`
+
+type UpdateTenantParams struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// Ganti NAMA tampilan workspace (owner-only, di-guard di handler). Slug SENGAJA
+// tak diubah — immutable setelah dibuat (stabilitas URL; ganti display != ganti URL).
+func (q *Queries) UpdateTenant(ctx context.Context, arg UpdateTenantParams) error {
+	_, err := q.db.Exec(ctx, updateTenant, arg.ID, arg.Name)
+	return err
+}

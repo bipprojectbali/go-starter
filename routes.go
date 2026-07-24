@@ -99,6 +99,11 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Use(h.TrackPresence)
 		r.Use(mw.RequireEnforce("admin:home", "read"))
 		r.Get("/", h.AdminHome)
+		// Pengaturan workspace: semua penghuni /admin boleh LIHAT (admin:home).
+		// Ganti nama = owner/platform saja — di-guard di handler (canEditWorkspace),
+		// bukan route, agar admin tetap bisa membuka halamannya (read-only).
+		r.Get("/workspace", h.WorkspaceSettings)
+		r.Post("/workspace", h.WorkspaceUpdate)
 	})
 
 	// Beranda /user — semua user login (admin/super mewarisi user:home).

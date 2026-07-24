@@ -20,14 +20,15 @@ type NavItem struct {
 // ShellData = konteks AppShell (panel /dev, /admin, /user). Terpisah dari
 // LayoutData (landing/login).
 type ShellData struct {
-	Title       string
-	BrandLabel  string // teks brand di sidebar (mis. "go_stater /dev")
-	CurrentPath string // untuk active-state menu
-	UserEmail   string
-	AvatarURL   string
-	CSSPath     string
-	Nav         []NavItem
-	QuickLinks  []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
+	Title         string
+	BrandLabel    string // konteks panel di sidebar (mis. "go_stater /dev")
+	WorkspaceName string // nama workspace (tenant) user — brand utama; "" utk platform tanpa konteks
+	CurrentPath   string // untuk active-state menu
+	UserEmail     string
+	AvatarURL     string
+	CSSPath       string
+	Nav           []NavItem
+	QuickLinks    []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
 }
 
 // AppShell membungkus konten dengan layout dashboard: sidebar (menu + brand +
@@ -87,6 +88,22 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 	})
 }
 
+// shellBrand merender blok brand di header sidebar: nama workspace sebagai baris
+// utama + konteks panel (BrandLabel, mis. "go_stater /admin") sebagai sub-label
+// kecil. Bila WorkspaceName kosong (platform tanpa konteks tenant), tampilkan
+// hanya BrandLabel (fallback perilaku lama). Kelas app-navlabel disembunyikan saat
+// rail collapsed (konsisten label lain).
+func shellBrand(d ShellData) g.Node {
+	if d.WorkspaceName == "" {
+		return h.Span(h.Class("app-brand flex-1 font-semibold truncate"), g.Text(d.BrandLabel))
+	}
+	return h.Div(
+		h.Class("app-brand flex-1 min-w-0 flex flex-col justify-center leading-tight"),
+		h.Span(h.Class("font-semibold truncate"), g.Text(d.WorkspaceName)),
+		h.Span(h.Class("app-navlabel text-xs text-base-content/60 truncate"), g.Text(d.BrandLabel)),
+	)
+}
+
 // shellSidebar = panel navigasi. Kolom flex: brand+toggle (atas), menu (tengah,
 // flex-1), footer user (bawah). Class `app-sidebar` dipakai CSS collapse rail.
 func shellSidebar(d ShellData) g.Node {
@@ -97,10 +114,11 @@ func shellSidebar(d ShellData) g.Node {
 		// (gotcha #5). Bandingkan data.Class mentah yang butuh kutip manual.
 		ClassOn("translate-x-0", "$sidebarOpen"),
 
-		// Header sidebar: brand + tombol collapse (desktop).
+		// Header sidebar: brand + tombol collapse (desktop). Brand = nama workspace
+		// (utama) + konteks panel (sub-label kecil). Platform tanpa nama → BrandLabel.
 		h.Div(
 			h.Class("h-16 flex items-center gap-2 px-4 border-b border-base-300"),
-			h.Span(h.Class("app-brand flex-1 font-semibold truncate"), g.Text(d.BrandLabel)),
+			shellBrand(d),
 			h.Button(
 				h.Type("button"),
 				h.Class("btn btn-ghost btn-sm hidden md:inline-flex"),

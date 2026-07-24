@@ -11,37 +11,55 @@ import (
 // Login merender halaman masuk. Tombol Google selalu tampil (jalur utama);
 // form email/password hanya bila showPassword (dev — password auth dev-only).
 func Login(showPassword bool) g.Node {
-	return authPage("Masuk", "/login", showPassword, "Belum punya akun?", "/register", "Daftar")
+	return authPage(authOpts{
+		title: "Masuk", action: "/login", showPassword: showPassword,
+		switchText: "Belum punya akun?", switchHref: "/register", switchLabel: "Daftar",
+	})
 }
 
 // Register merender halaman pendaftaran (dev-only; route-nya tak ada di prod).
+// showWorkspace: register mengumpulkan Nama Workspace (buat workspace baru).
 func Register() g.Node {
-	return authPage("Daftar", "/register", true, "Sudah punya akun?", "/login", "Masuk")
+	return authPage(authOpts{
+		title: "Daftar", action: "/register", showPassword: true, showWorkspace: true,
+		switchText: "Sudah punya akun?", switchHref: "/login", switchLabel: "Masuk",
+	})
+}
+
+// authOpts = parameter authPage (struct agar tak jadi daftar argumen panjang).
+type authOpts struct {
+	title, action                       string
+	showPassword, showWorkspace         bool
+	switchText, switchHref, switchLabel string
 }
 
 // authPage adalah kerangka bersama login & register: tombol Google + (opsional)
-// form password. action = endpoint POST form password.
-func authPage(title, action string, showPassword bool, switchText, switchHref, switchLabel string) g.Node {
+// form password (+ field Nama Workspace bila showWorkspace).
+func authPage(o authOpts) g.Node {
 	card := []g.Node{googleButton()}
-	if showPassword {
-		card = append(card, passwordDivider(), passwordFields(action, title))
+	if o.showPassword {
+		card = append(card, passwordDivider(), passwordFields(o.action, o.title, o.showWorkspace))
 	}
 
 	body := []g.Node{
-		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text(title)),
+		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text(o.title)),
 		ui.Card(card...),
 	}
 	// Tautan alih login/daftar hanya relevan saat form password aktif.
-	if showPassword {
+	if o.showPassword {
 		body = append(body, h.P(
 			h.Class("mt-4"),
-			g.Text(switchText+" "),
-			h.A(h.Href(switchHref), g.Text(switchLabel)),
+			g.Text(o.switchText+" "),
+			h.A(h.Href(o.switchHref), g.Text(o.switchLabel)),
 		))
 	}
 
+	signals := map[string]any{"email": "", "password": ""}
+	if o.showWorkspace {
+		signals["workspace"] = ""
+	}
 	return h.Div(
-		data.Signals(map[string]any{"email": "", "password": ""}),
+		data.Signals(signals),
 		g.Group(body),
 	)
 }
@@ -63,9 +81,23 @@ func passwordDivider() g.Node {
 	return h.P(h.Class("text-center text-sm text-base-content/70"), g.Text("atau"))
 }
 
-// passwordFields adalah form email/password (dev-only).
-func passwordFields(action, submitLabel string) g.Node {
-	return g.Group([]g.Node{
+// passwordFields adalah form email/password (dev-only). showWorkspace menambahkan
+// field "Nama Workspace" di paling atas (hanya di register — buat workspace baru).
+func passwordFields(action, submitLabel string, showWorkspace bool) g.Node {
+	fields := []g.Node{}
+	if showWorkspace {
+		fields = append(fields, h.Div(
+			h.Class("grid gap-2"),
+			ui.Label("Nama Workspace", h.For("workspace")),
+			ui.Input(
+				h.ID("workspace"),
+				h.Type("text"),
+				data.Bind("workspace"),
+				h.Placeholder("mis. Acme Corp"),
+			),
+		))
+	}
+	fields = append(fields,
 		h.Div(
 			h.Class("grid gap-2"),
 			ui.Label("Email", h.For("email")),
@@ -93,5 +125,6 @@ func passwordFields(action, submitLabel string) g.Node {
 		),
 		// Slot error kosong — di-patch jadi Alert berisi saat auth gagal.
 		ui.AlertSlot("auth-error"),
-	})
+	)
+	return g.Group(fields)
 }

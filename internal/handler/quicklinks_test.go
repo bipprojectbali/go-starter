@@ -26,7 +26,7 @@ func ctxWithRole(t *testing.T, role string) context.Context {
 	if err != nil {
 		t.Fatalf("session load: %v", err)
 	}
-	session.SetIdentity(ctx, 1, "u@x.com", role, false, 1, "")
+	session.SetIdentity(ctx, 1, "u@x.com", role, false, 1, "Acme", "")
 	return ctx
 }
 

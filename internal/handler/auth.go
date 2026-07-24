@@ -18,11 +18,17 @@ import (
 	g "maragu.dev/gomponents"
 )
 
-// credentials adalah bentuk signals yang dikirim form auth Datastar.
+// credentials adalah bentuk signals yang dikirim form auth Datastar. Workspace
+// hanya diisi di register (nama workspace baru); login mengabaikannya.
 type credentials struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Workspace string `json:"workspace"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
 }
+
+// maxWorkspaceNameLen membatasi panjang nama workspace (validasi input signal —
+// signal user-modifiable, WAJIB divalidasi backend, gotcha #15b).
+const maxWorkspaceNameLen = 60
 
 // LoginPage — GET /login (full page). Form password hanya di dev (devMode).
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +53,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(in.Email))
+	workspace := strings.TrimSpace(in.Workspace)
+	if workspace == "" {
+		h.authError(w, r, "Nama workspace wajib diisi")
+		return
+	}
+	if len(workspace) > maxWorkspaceNameLen {
+		h.authError(w, r, "Nama workspace maksimal 60 karakter")
+		return
+	}
 	if email == "" || in.Password == "" {
 		h.authError(w, r, "Email dan password wajib diisi")
 		return
@@ -63,14 +78,17 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register = buat TENANT baru + user OWNER-nya (1 user = 1 tenant). Pre-identity:
-	// tenant belum ada, jadi WithSuper (bypass RLS). Tenant + user dalam SATU tx →
-	// atomic (gagal di tengah tak meninggalkan tenant yatim). Slug dari email-local.
+	// Register = buat WORKSPACE (tenant) baru + user OWNER-nya (1 user = 1 workspace).
+	// Pre-identity: tenant belum ada → WithSuper (bypass RLS). Nama = input user;
+	// slug = unik auto-suffix (nama boleh duplikat, slug tidak). Tenant + user dalam
+	// SATU tx → atomic (gagal di tengah tak meninggalkan tenant yatim).
 	var user db.User
 	err = db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
-		t, e := q.CreateTenant(r.Context(), db.CreateTenantParams{
-			Name: email, Slug: tenantSlug(email),
-		})
+		slug, e := uniqueSlug(r.Context(), q, slugify(workspace))
+		if e != nil {
+			return e
+		}
+		t, e := q.CreateTenant(r.Context(), db.CreateTenantParams{Name: workspace, Slug: slug})
 		if e != nil {
 			return e
 		}
@@ -231,7 +249,19 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error
 	if u.AvatarUrl != nil {
 		avatar = *u.AvatarUrl
 	}
-	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, u.TenantID, avatar)
+	// Nama workspace untuk cache session (brand sidebar). Pre-identity → WithSuper.
+	// Fail-soft: gagal load → nama kosong (RefreshIdentity mengisi ulang tiap request).
+	tenantName := ""
+	if err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		t, e := q.GetTenant(r.Context(), u.TenantID)
+		if e == nil {
+			tenantName = t.Name
+		}
+		return e
+	}); err != nil {
+		h.Log.Warn("startIdentity: load tenant name", "err", err)
+	}
+	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, u.TenantID, tenantName, avatar)
 	// Jejak login (fail-soft) — untuk panel aktivitas. actor = user sendiri.
 	h.auditAuth(r.Context(), u.ID, "auth.login", method)
 	return nil
@@ -247,29 +277,4 @@ func (h *Handler) isStaff(ctx context.Context, email string) (bool, error) {
 		return e
 	})
 	return ok, err
-}
-
-// tenantSlug menurunkan slug URL-safe dari email (bagian sebelum '@', non-alnum
-// → '-'). Bukan jaminan unik — UNIQUE constraint slug yang menegakkan; tabrakan
-// slug = error create (ditangani sebagai "email sudah terdaftar" di Register).
-func tenantSlug(email string) string {
-	local := email
-	if i := strings.IndexByte(local, '@'); i >= 0 {
-		local = local[:i]
-	}
-	var b strings.Builder
-	for _, r := range local {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			b.WriteRune(r)
-		case r >= 'A' && r <= 'Z':
-			b.WriteRune(r + 32)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	if b.Len() == 0 {
-		return "tenant"
-	}
-	return b.String()
 }
