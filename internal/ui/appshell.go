@@ -131,10 +131,11 @@ func shellSidebar(d ShellData) g.Node {
 			),
 		),
 
-		// Menu (tengah, mengisi ruang).
+		// Menu (tengah, mengisi ruang). activeHref dihitung SEKALI (longest-match)
+		// agar hanya satu item menyala walau ada sub-route (mis. /admin/workspace).
 		h.Nav(
 			h.Class("flex-1 px-3 py-4 flex flex-col gap-1 overflow-y-auto"),
-			g.Map(d.Nav, func(it NavItem) g.Node { return navLink(it, d.CurrentPath) }),
+			navList(d.Nav, d.CurrentPath),
 		),
 
 		// Pintasan lintas-panel (sesuai role) — di atas blok user.
@@ -145,6 +146,13 @@ func shellSidebar(d ShellData) g.Node {
 	)
 }
 
+// navList merender daftar item + menandai satu yang aktif (longest-match dihitung
+// sekali, bukan per-item). Dipakai menu utama & quickLinks.
+func navList(items []NavItem, currentPath string) g.Node {
+	active := activeNavHref(items, currentPath)
+	return g.Map(items, func(it NavItem) g.Node { return navLink(it, active) })
+}
+
 // quickLinks merender pintasan lintas-panel (mis. ke /dev, /admin) sesuai role.
 // Kosong (nil) → tak render apa pun. Item aktif ditandai seperti navLink.
 func quickLinks(d ShellData) g.Node {
@@ -153,20 +161,53 @@ func quickLinks(d ShellData) g.Node {
 	}
 	return h.Div(
 		h.Class("border-t border-base-300 px-3 py-2 flex flex-col gap-1"),
-		g.Map(d.QuickLinks, func(it NavItem) g.Node { return navLink(it, d.CurrentPath) }),
+		navList(d.QuickLinks, d.CurrentPath),
 	)
 }
 
-// navLink = satu item menu. Active bila path cocok (exact atau prefix section).
-// title = tooltip (berguna saat rail collapsed, label tersembunyi).
-func navLink(it NavItem, currentPath string) g.Node {
-	active := it.Href == currentPath ||
-		(it.Href != "/" && strings.HasPrefix(currentPath, it.Href))
-	cls := "app-navlink flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-base-200"
+// activeNavHref mengembalikan href TUNGGAL yang aktif untuk currentPath dari
+// daftar nav: LONGEST-MATCH menang. "/admin/workspace" mengaktifkan Workspace
+// (href persis), BUKAN Dashboard (href "/admin") — dulu prefix telanjang bikin
+// keduanya menyala. Match = exact ATAU sub-path pada batas segmen (href+"/").
+// "" bila tak ada yang cocok.
+func activeNavHref(nav []NavItem, currentPath string) string {
+	best := ""
+	for _, it := range nav {
+		if it.Href == "/" {
+			if currentPath == "/" && len(best) == 0 {
+				best = "/"
+			}
+			continue
+		}
+		match := it.Href == currentPath || strings.HasPrefix(currentPath, it.Href+"/")
+		if match && len(it.Href) > len(best) {
+			best = it.Href
+		}
+	}
+	return best
+}
+
+// navLink = satu item menu. active bila href-nya = activeHref (dihitung sekali di
+// navList). title = tooltip (berguna saat rail collapsed, label tersembunyi).
+func navLink(it NavItem, activeHref string) g.Node {
+	active := it.Href == activeHref
+	// Base + garis kiri transparan (border-l-2 border-transparent) SELALU ada agar
+	// lebar/posisi item konsisten active vs non-active (tak bergeser 2px). Hover
+	// ditambah per-state agar tak konflik dengan bg active.
+	cls := "app-navlink flex items-center gap-3 rounded-md border-l-2 border-transparent px-3 py-2 text-sm"
 	if active {
-		// Active = primary solid → menonjol & adaptif di semua tema (kontras
-		// base-300 terlalu lemah di sebagian tema).
-		cls += " bg-primary text-primary-content font-medium"
+		// Active = SOFT: bg primary transparan tipis + garis kiri primary (aksen
+		// warna brand LEMBUT, tak mencolok) — TAPI teks = base-content (bukan
+		// text-primary). Alasan: sebagian tema punya primary sangat terang (cupcake
+		// oklch 85%) → text-primary di latar terang kontras lemah/tak terbaca.
+		// base-content dijamin kontras dgn base di SEMUA tema (token semantik daisyUI).
+		// Warna active tetap terasa dari bg+border, keterbacaan tetap AA. Hover naik
+		// tipis (masih transparan) — teks tak pernah hilang (beda dari bug lama:
+		// hover:bg-base-200 menimpa bg solid → teks putih di atas abu terang).
+		cls += " bg-primary/10 text-base-content font-medium border-primary hover:bg-primary/20"
+	} else {
+		// Non-active: hover netral (surface sedikit terangkat).
+		cls += " hover:bg-base-200"
 	}
 	attrs := []g.Node{h.Href(it.Href), h.Class(cls), h.Title(it.Label)}
 	if active {

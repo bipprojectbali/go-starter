@@ -53,6 +53,38 @@ func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {
 	}
 }
 
+// TestActiveNavHref: longest-match menang — sub-route TIDAK mengaktifkan parent
+// (regresi bug "/admin/workspace" bikin Dashboard + Workspace dua-duanya menyala).
+func TestActiveNavHref(t *testing.T) {
+	nav := []NavItem{
+		{Label: "Dashboard", Href: "/admin"},
+		{Label: "Workspace", Href: "/admin/workspace"},
+	}
+	cases := []struct{ path, want string }{
+		{"/admin", "/admin"},                       // exact → Dashboard
+		{"/admin/workspace", "/admin/workspace"},   // sub-route → Workspace SAJA (bukan /admin)
+		{"/admin/workspace/x", "/admin/workspace"}, // lebih dalam → tetap Workspace
+		{"/adminX", ""},                            // batas segmen: /adminX BUKAN di bawah /admin
+		{"/other", ""},                             // tak cocok
+	}
+	for _, c := range cases {
+		if got := activeNavHref(nav, c.path); got != c.want {
+			t.Errorf("activeNavHref(%q)=%q, want %q", c.path, got, c.want)
+		}
+	}
+}
+
+// TestActiveNavHref_Root: item "/" hanya aktif pada path persis "/" (tak cocok semua).
+func TestActiveNavHref_Root(t *testing.T) {
+	nav := []NavItem{{Label: "Home", Href: "/"}}
+	if got := activeNavHref(nav, "/"); got != "/" {
+		t.Errorf("root exact harus aktif, got %q", got)
+	}
+	if got := activeNavHref(nav, "/dev"); got != "" {
+		t.Errorf("root TAK boleh aktif di /dev, got %q", got)
+	}
+}
+
 func TestWhen(t *testing.T) {
 	var yes, no strings.Builder
 	When(true, g.Text("TAMPIL")).Render(&yes)
