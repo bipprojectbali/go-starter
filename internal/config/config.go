@@ -140,7 +140,7 @@ func LoadDotEnv(path string) error {
 		if !ok {
 			continue
 		}
-		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
+		key, val = strings.TrimSpace(key), unquote(strings.TrimSpace(val))
 		if _, exists := os.LookupEnv(key); !exists {
 			_ = os.Setenv(key, val)
 		}
@@ -149,6 +149,19 @@ func LoadDotEnv(path string) error {
 		return fmt.Errorf("scan %s: %w", path, err)
 	}
 	return nil
+}
+
+// unquote melepas SATU pasang kutip pembungkus ("..." atau '...') dari nilai .env
+// — perilaku dotenv standar. Tanpa ini, DATABASE_URL="postgres://..." dibaca
+// LITERAL berikut kutipnya → pgx gagal parse (database kosong). Kutip di tengah
+// nilai tak tersentuh; hanya pasangan pembungkus persis yang dilepas.
+func unquote(s string) string {
+	if len(s) >= 2 {
+		if c := s[0]; (c == '"' || c == '\'') && s[len(s)-1] == c {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 func getEnv(key, fallback string) string {
