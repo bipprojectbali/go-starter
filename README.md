@@ -1,11 +1,11 @@
-# go_stater
+# go_starter
 
 Starter web full-stack Go: **satu bahasa, satu binary, satu perintah build**.
 Cepat, ringan, modern (2026), agent-friendly. Output = single binary (static
 assets, migrations, dan template di-embed via `embed.FS`).
 
 > Runtime tetap butuh **PostgreSQL** + **Redis** — "nol artefak tambahan", bukan
-> "nol infra". Lihat [`STATER.md`](STATER.md) untuk spesifikasi & alasan arsitektur.
+> "nol infra". Lihat [`STARTER.md`](STARTER.md) untuk spesifikasi & alasan arsitektur.
 
 ## Stack
 
@@ -39,7 +39,7 @@ make setup
 cp .env.example .env
 
 # 3. Buat database dev & test
-createdb go_stater && createdb go_stater_test
+createdb go_starter && createdb go_starter_test
 
 # 4. Jalankan (live-reload; migrasi auto saat boot)
 make dev
@@ -134,7 +134,7 @@ static/            # aset vendored + generated (di-embed)
 ## Testing
 
 ```bash
-createdb go_stater_test
+createdb go_starter_test
 make test    # atau: make check (test + lint + build)
 ```
 

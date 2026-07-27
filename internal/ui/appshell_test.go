@@ -12,7 +12,7 @@ import (
 func renderShell(currentPath string) string {
 	d := ShellData{
 		Title:       "Dev",
-		BrandLabel:  "go_stater /dev",
+		BrandLabel:  "go_starter /dev",
 		CurrentPath: currentPath,
 		UserEmail:   "owner@x.com",
 		Nav: []NavItem{
@@ -34,7 +34,7 @@ func TestAppShell_ActiveLink(t *testing.T) {
 		t.Errorf("menu Users harus ada:\n%s", out)
 	}
 	// Konten & shell dasar.
-	for _, want := range []string{"konten", "go_stater /dev", "sidebarOpen", "Keluar"} {
+	for _, want := range []string{"konten", "go_starter /dev", "sidebarOpen", "Keluar"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("shell kurang %q", want)
 		}

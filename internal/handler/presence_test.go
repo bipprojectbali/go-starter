@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"go_stater/internal/db"
+	"go_starter/internal/db"
 )
 
 // TestPresenceThrottle_Window: allow() menolak panggilan kedua dalam jendela

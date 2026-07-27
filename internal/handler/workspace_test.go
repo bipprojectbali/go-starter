@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go_stater/internal/session"
+	"go_starter/internal/session"
 )
 
 // doWorkspace menjalankan handler workspace dgn session ber-role tertentu +

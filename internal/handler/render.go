@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/session"
-	"go_stater/internal/ui"
+	"go_starter/internal/authz"
+	"go_starter/internal/session"
+	"go_starter/internal/ui"
 
 	lucide "github.com/eduardolat/gomponents-lucide"
 	"github.com/starfederation/datastar-go/datastar"

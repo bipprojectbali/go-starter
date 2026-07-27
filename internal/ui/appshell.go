@@ -21,7 +21,7 @@ type NavItem struct {
 // LayoutData (landing/login).
 type ShellData struct {
 	Title         string
-	BrandLabel    string // konteks panel di sidebar (mis. "go_stater /dev")
+	BrandLabel    string // konteks panel di sidebar (mis. "go_starter /dev")
 	WorkspaceName string // nama workspace (tenant) user — brand utama; "" utk platform tanpa konteks
 	CurrentPath   string // untuk active-state menu
 	UserEmail     string
@@ -92,7 +92,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 }
 
 // shellBrand merender blok brand di header sidebar: nama workspace sebagai baris
-// utama + konteks panel (BrandLabel, mis. "go_stater /admin") sebagai sub-label
+// utama + konteks panel (BrandLabel, mis. "go_starter /admin") sebagai sub-label
 // kecil. Bila WorkspaceName kosong (platform tanpa konteks tenant), tampilkan
 // hanya BrandLabel (fallback perilaku lama). Kelas app-navlabel disembunyikan saat
 // rail collapsed (konsisten label lain).

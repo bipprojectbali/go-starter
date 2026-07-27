@@ -1,6 +1,6 @@
 # Changelog
 
-Semua perubahan penting pada go_stater dicatat di sini.
+Semua perubahan penting pada go_starter dicatat di sini.
 
 ## [Unreleased]
 
@@ -20,7 +20,7 @@ Semua perubahan penting pada go_stater dicatat di sini.
 - **Deploy produksi Docker + Portainer (aman-migrasi):** `Dockerfile` multi-stage (build Go statis `CGO_ENABLED=0` → runtime distroless non-root, ~33MB; `app.css`+`internal/db` sudah di git jadi tak perlu Tailwind/sqlc/Node di image), `.dockerignore` (buang `tailwindcss` 76MB + `app`). Subcommand **`app migrate`** — jalankan migrasi lalu exit (advisory lock, reuse `MigrateWithLock`); pakai `config.LoadMigrateConfig()` yang hanya butuh `DATABASE_URL` (bukan `MustLoad` yang mewajibkan `SESSION_KEY`/Google di prod). `docker-compose.yml` untuk stack Portainer: service `migrate` (one-shot, `restart: no`) + service `app` (`AUTO_MIGRATE=false`, `depends_on` `condition: service_completed_successfully`) — migrasi dipisah dari deploy app, fail-safe (migrate gagal → app tak start). Runbook di README §Deploy. `AUTO_MIGRATE` didokumentasikan: `true` dev, **`false` prod**.
 
 ### Removed
-- **Fitur Todos dihapus total:** route (`/todos`, POST/DELETE), handler (`todo.go`), view (`ui/pages/todo.go`), query (`queries/todos.sql`), dan tabel DB (`todos`, via migrasi `00006_drop_todos.sql`) — fitur contoh starter dari fase spike yang tak lagi dipakai. Policy Casbin `app:todos` dihapus. Beranda `/user` kini placeholder bersih (tanpa menu/teks Todos); brand `go_stater` menuju landing `/`. Helper `firstPageCursor` direlokasi ke `dev_users.go` (satu-satunya pemakai keyset pagination tersisa).
+- **Fitur Todos dihapus total:** route (`/todos`, POST/DELETE), handler (`todo.go`), view (`ui/pages/todo.go`), query (`queries/todos.sql`), dan tabel DB (`todos`, via migrasi `00006_drop_todos.sql`) — fitur contoh starter dari fase spike yang tak lagi dipakai. Policy Casbin `app:todos` dihapus. Beranda `/user` kini placeholder bersih (tanpa menu/teks Todos); brand `go_starter` menuju landing `/`. Helper `firstPageCursor` direlokasi ke `dev_users.go` (satu-satunya pemakai keyset pagination tersisa).
 
 ### Added
 - **Panel User Activity (`/dev/logs`):** dashboard pemantauan aktivitas user dengan filter **harian/mingguan/bulanan**. Menjawab "user aktif jam berapa s/d jam berapa" via **presence tracking**: middleware `TrackPresence` merekam jejak tiap request terautentikasi ke tabel `activity_presence` (bucket 15-menit, UPSERT `hits+1` — agregasi di level baris, BUKAN insert-per-request) + throttle in-process 60 dtk/user. Fail-soft (error rekam tak menggagalkan request user). Dashboard: KPI stat cards (user aktif, total aktivitas, jam tersibuk), bar chart aktivitas per-jam (harian) / line chart tren (mingguan-bulanan), tabel rentang aktivitas user, tabel event login/logout. Grafik pakai **ECharts vendored** (`static/echarts.min.js` 6.1.0) + init eksternal (`static/charts.js`) — option chart dirakit di Go, ditanam via `<script type="application/json">` (CSP-safe, TIDAK dieksekusi). Tersedia di produksi (super_admin). Timezone agregasi via `APP_TIMEZONE` (default `Asia/Jakarta`).

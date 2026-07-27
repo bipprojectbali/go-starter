@@ -1,4 +1,4 @@
-# Stack produksi go_stater untuk Portainer (Docker + Portainer).
+# Stack produksi go_starter untuk Portainer (Docker + Portainer).
 #
 # ALUR AMAN-MIGRASI:
 #   1. service `migrate` jalan sekali (`/app/app migrate`) → advisory lock 4242 →
@@ -12,7 +12,7 @@
 
 services:
   migrate:
-    image: ghcr.io/bipprojectbali/go-stater:prod-latest
+    image: ghcr.io/bipprojectbali/go-starter:prod-latest
     command: ["migrate"]          # → /app/app migrate lalu exit
     restart: "no"                 # one-shot; WAJIB "no" agar completed_successfully stabil
     environment:
@@ -23,7 +23,7 @@ services:
     #     condition: service_healthy
 
   app:
-    image: ghcr.io/bipprojectbali/go-stater:prod-latest
+    image: ghcr.io/bipprojectbali/go-starter:prod-latest
     restart: unless-stopped
     depends_on:
       migrate:
@@ -54,7 +54,7 @@ services:
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Opsi B — Postgres & Redis DI DALAM stack (uncomment bila TAK pakai DB eksternal).
-  # Lalu set DATABASE_URL=postgres://user:pass@postgres:5432/go_stater?sslmode=disable
+  # Lalu set DATABASE_URL=postgres://user:pass@postgres:5432/go_starter?sslmode=disable
   # dan REDIS_ADDR=redis:6379, plus tambah depends_on condition: service_healthy
   # di service migrate & app.
   # ═══════════════════════════════════════════════════════════════════════════

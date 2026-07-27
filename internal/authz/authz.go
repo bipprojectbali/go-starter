@@ -13,7 +13,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"go_stater/internal/session"
+	"go_starter/internal/session"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"

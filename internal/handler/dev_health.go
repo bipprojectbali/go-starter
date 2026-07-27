@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"os"
 
-	"go_stater/internal/health"
-	"go_stater/internal/ui/pages/dev"
+	"go_starter/internal/health"
+	"go_starter/internal/ui/pages/dev"
 )
 
 // DevHealth — GET /dev/health. Memindai kesehatan file sumber .go proyek dari
@@ -18,6 +18,6 @@ func (h *Handler) DevHealth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gagal memindai file", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "File Health", "go_stater /dev", "/dev/health", devNav(),
+	h.renderShell(w, r, "File Health", "go_starter /dev", "/dev/health", devNav(),
 		dev.HealthPage(res))
 }

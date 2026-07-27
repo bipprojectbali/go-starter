@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/db"
-	"go_stater/internal/session"
+	"go_starter/internal/authz"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
 )
 
 // scope.go — jantung anti-footgun multi-tenancy. Menggantikan h.DB (Queries

@@ -1,7 +1,7 @@
 
-# STATER.md — go_stater
+# STARTER.md — go_starter
 
-Spesifikasi starter template **`go_stater`** — web base super cepat, super ringan, modern (2026), agent-friendly, dengan output **single binary**.
+Spesifikasi starter template **`go_starter`** — web base super cepat, super ringan, modern (2026), agent-friendly, dengan output **single binary**.
 
 > Dokumen ini adalah single source of truth untuk membangun starter template.
 > Prinsip desain: **satu bahasa, satu binary, satu perintah build, error ditangkap compile-time semaksimal mungkin.**
@@ -87,9 +87,9 @@ Spesifikasi starter template **`go_stater`** — web base super cepat, super rin
 ## 3. Struktur Folder
 
 ```
-go_stater/
+go_starter/
 ├── CLAUDE.md                  # aturan main agent (lihat §7)
-├── STATER.md                  # dokumen ini
+├── STARTER.md                  # dokumen ini
 ├── Makefile                   # satu-satunya pintu workflow (lihat §6)
 ├── .air.toml                  # config live-reload dev
 ├── sqlc.yaml                  # config sqlc
@@ -660,7 +660,7 @@ ENTRYPOINT ["/app"]
 ```yaml
 services:
   app:
-    image: ghcr.io/<user>/go_stater:latest
+    image: ghcr.io/<user>/go_starter:latest
     restart: unless-stopped
     mem_limit: 128m
     cpus: 0.5

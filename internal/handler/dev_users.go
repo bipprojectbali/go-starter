@@ -8,10 +8,10 @@ import (
 	"strconv"
 	"strings"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/db"
-	"go_stater/internal/session"
-	"go_stater/internal/ui/pages/dev"
+	"go_starter/internal/authz"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
+	"go_starter/internal/ui/pages/dev"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -40,7 +40,7 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	// Aktor untuk menentukan kontrol mana yang boleh dirender (precompute).
 	actorRole := authz.ParseRole(session.Role(r.Context()))
 	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
-	h.renderShell(w, r, "Users", "go_stater /dev", "/dev/users", devNav(),
+	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(),
 		dev.UsersPage(toUserRows(users), canManageSuper))
 }
 

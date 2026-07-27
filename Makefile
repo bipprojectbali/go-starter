@@ -14,7 +14,7 @@ GOOSE := $(GOBIN)/goose
 AIR   := $(GOBIN)/air
 
 BINARY := app
-TEST_DATABASE_URL ?= postgres://bip@localhost:5432/go_stater_test?sslmode=disable
+TEST_DATABASE_URL ?= postgres://bip@localhost:5432/go_starter_test?sslmode=disable
 
 # Versi aset vendored (lihat static/VENDOR.md).
 TAILWIND_VERSION := v4.3.2
@@ -23,7 +23,7 @@ TAILWIND_TARGET := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shel
 
 ## help: tampilkan daftar perintah (default saat `make` tanpa argumen)
 help:
-	@echo "go_stater — perintah tersedia:"
+	@echo "go_starter — perintah tersedia:"
 	@echo ""
 	@grep -E '^## [a-z-]+:' $(MAKEFILE_LIST) | sed 's/## /  /' | awk -F': ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' | sed 's/^  //'
 	@echo ""

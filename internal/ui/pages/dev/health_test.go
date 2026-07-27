@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"go_stater/internal/health"
+	"go_starter/internal/health"
 )
 
 func sampleResult() health.Result {

@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"strings"
 
-	"go_stater/internal/auth"
-	"go_stater/internal/authz"
-	"go_stater/internal/db"
-	"go_stater/internal/session"
-	"go_stater/internal/ui/pages"
+	"go_starter/internal/auth"
+	"go_starter/internal/authz"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
+	"go_starter/internal/ui/pages"
 
 	"github.com/jackc/pgx/v5"
 )

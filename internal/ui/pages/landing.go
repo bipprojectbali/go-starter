@@ -13,7 +13,7 @@ func Landing(loggedIn bool, homePath string) g.Node {
 		h.Class("text-center py-16"),
 		h.H1(
 			h.Class("text-4xl font-bold tracking-tight mb-4"),
-			g.Text("go_stater"),
+			g.Text("go_starter"),
 		),
 		h.P(
 			h.Class("text-lg text-base-content/70 mb-8 max-w-md mx-auto"),

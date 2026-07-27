@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"go_stater/internal/db"
+	"go_starter/internal/db"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

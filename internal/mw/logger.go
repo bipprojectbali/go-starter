@@ -8,7 +8,7 @@ import (
 
 // statusRecorder membungkus ResponseWriter untuk menangkap status code.
 // PENTING: implement Unwrap() agar http.ResponseController (dipakai Datastar SSE
-// untuk Flush) bisa menembus ke writer asli — lihat bug scs+SSE di STATER §4.9.
+// untuk Flush) bisa menembus ke writer asli — lihat bug scs+SSE di STARTER §4.9.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int

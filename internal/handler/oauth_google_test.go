@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"testing"
 
-	"go_stater/internal/db"
-	"go_stater/internal/oauth"
-	"go_stater/internal/session"
+	"go_starter/internal/db"
+	"go_starter/internal/oauth"
+	"go_starter/internal/session"
 )
 
 // errEmailNotVerified mensimulasikan penolakan VerifyIDToken saat email_verified=false.

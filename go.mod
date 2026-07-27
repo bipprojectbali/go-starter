@@ -1,4 +1,4 @@
-module go_stater
+module go_starter
 
 go 1.26.4
 

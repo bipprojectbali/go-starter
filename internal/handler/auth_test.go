@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"go_stater/internal/auth"
-	"go_stater/internal/db"
+	"go_starter/internal/auth"
+	"go_starter/internal/db"
 )
 
 // postForm membangun request POST form-encoded (native form, bukan JSON/Datastar).

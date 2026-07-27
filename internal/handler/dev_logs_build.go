@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"go_stater/internal/activity"
-	"go_stater/internal/db"
-	"go_stater/internal/ui/pages/dev"
+	"go_starter/internal/activity"
+	"go_starter/internal/db"
+	"go_starter/internal/ui/pages/dev"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )

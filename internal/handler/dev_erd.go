@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"go_stater/internal/erd"
-	"go_stater/internal/ui/pages/dev"
+	"go_starter/internal/erd"
+	"go_starter/internal/ui/pages/dev"
 )
 
 // DevERD — GET /dev/erd. Memvisualisasikan relasi tabel (ERD) dari katalog
@@ -16,6 +16,6 @@ func (h *Handler) DevERD(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gagal membaca skema", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "Database ERD", "go_stater /dev", "/dev/erd", devNav(),
+	h.renderShell(w, r, "Database ERD", "go_starter /dev", "/dev/erd", devNav(),
 		dev.ERDPage(schema.Mermaid(), len(schema.Tables)))
 }

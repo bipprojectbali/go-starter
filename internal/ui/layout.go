@@ -64,7 +64,7 @@ func nav(userEmail, avatarURL string) g.Node {
 		data.Signals(map[string]any{"logoutConfirm": false}),
 		h.Div(
 			h.Class("mx-auto max-w-2xl p-4 flex items-center justify-between"),
-			h.A(h.Href("/"), h.Class("font-semibold"), g.Text("go_stater")),
+			h.A(h.Href("/"), h.Class("font-semibold"), g.Text("go_starter")),
 			h.Div(
 				h.Class("flex items-center gap-3"),
 				ThemeToggle(),

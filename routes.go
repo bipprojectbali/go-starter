@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"go_stater/internal/handler"
-	"go_stater/internal/mw"
+	"go_starter/internal/handler"
+	"go_starter/internal/mw"
 
 	"github.com/go-chi/chi/v5"
 )

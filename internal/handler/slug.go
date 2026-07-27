@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go_stater/internal/db"
+	"go_starter/internal/db"
 )
 
 // slug.go — turunkan slug workspace (tenant) yang URL-safe & UNIK dari nama.

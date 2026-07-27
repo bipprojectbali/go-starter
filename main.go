@@ -1,4 +1,4 @@
-// Command go_stater — entry point: config, wiring, start server.
+// Command go_starter — entry point: config, wiring, start server.
 package main
 
 import (
@@ -14,13 +14,13 @@ import (
 	"time"
 	_ "time/tzdata" // embed database tzdata: LoadLocation gagal di container minimal (CGO_ENABLED=0) tanpa ini
 
-	"go_stater/internal/assets"
-	"go_stater/internal/authz"
-	"go_stater/internal/config"
-	"go_stater/internal/database"
-	"go_stater/internal/handler"
-	"go_stater/internal/oauth"
-	"go_stater/internal/session"
+	"go_starter/internal/assets"
+	"go_starter/internal/authz"
+	"go_starter/internal/config"
+	"go_starter/internal/database"
+	"go_starter/internal/handler"
+	"go_starter/internal/oauth"
+	"go_starter/internal/session"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

@@ -4,7 +4,7 @@ Status: Diterima (2026-07-24)
 
 ## Konteks
 
-`go_stater` jadi base template untuk SaaS multi-tenant (satu deployment, banyak
+`go_starter` jadi base template untuk SaaS multi-tenant (satu deployment, banyak
 organisasi/klien, tiap klien hanya lihat datanya). Semula single-tenant: data
 terikat `user_id`, role global `user < admin < super_admin`, tanpa `tenant_id`.
 Menambah multi-tenancy = keputusan fondasi yang menyentuh setiap tabel/query/

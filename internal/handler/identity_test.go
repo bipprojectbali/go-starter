@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"go_stater/internal/db"
-	"go_stater/internal/session"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
 )
 
 // runRefresh menjalankan RefreshIdentity dengan session yang HANYA berisi userID

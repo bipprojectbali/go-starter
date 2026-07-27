@@ -4,7 +4,7 @@ package mw
 import (
 	"net/http"
 
-	"go_stater/internal/session"
+	"go_starter/internal/session"
 
 	"github.com/starfederation/datastar-go/datastar"
 )

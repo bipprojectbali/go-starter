@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/session"
+	"go_starter/internal/authz"
+	"go_starter/internal/session"
 )
 
 // renderAs menjalankan handler shell dalam session dengan role tertentu.
@@ -29,7 +29,7 @@ func TestAdminHome_Renders(t *testing.T) {
 		t.Fatalf("AdminHome harus 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Dashboard Admin", "go_stater /admin", "aria-current"} {
+	for _, want := range []string{"Dashboard Admin", "go_starter /admin", "aria-current"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("admin shell kurang %q", want)
 		}

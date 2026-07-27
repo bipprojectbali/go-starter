@@ -3,7 +3,7 @@ package mw
 import (
 	"net/http"
 
-	"go_stater/internal/authz"
+	"go_starter/internal/authz"
 
 	"github.com/starfederation/datastar-go/datastar"
 )

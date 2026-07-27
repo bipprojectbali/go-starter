@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"go_stater/internal/health"
+	"go_starter/internal/health"
 
 	g "maragu.dev/gomponents"
 	h "maragu.dev/gomponents/html"

@@ -122,7 +122,7 @@ func ClearOAuthFlow(ctx context.Context) {
 // SECARA MANUAL. WAJIB dipanggil SEBELUM membuka stream Datastar (NewSSE),
 // karena NewSSE langsung flush header via http.ResponseController yang meng-Unwrap
 // pembungkus scs — sehingga cookie dari LoadAndSave tidak akan pernah terkirim.
-// Lihat catatan bug di STATER §4.6.
+// Lihat catatan bug di STARTER §4.6.
 func WriteCookie(ctx context.Context, w http.ResponseWriter) error {
 	token, expiry, err := mgr.Commit(ctx)
 	if err != nil {

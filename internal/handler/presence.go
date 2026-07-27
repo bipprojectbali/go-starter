@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"go_stater/internal/db"
-	"go_stater/internal/session"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
 )
 
 // presenceThrottle = jendela minimum antar-UPSERT presence per user. Bucket DB

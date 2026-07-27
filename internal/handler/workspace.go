@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"strings"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/db"
-	"go_stater/internal/session"
-	"go_stater/internal/ui"
-	"go_stater/internal/ui/pages/panel"
+	"go_starter/internal/authz"
+	"go_starter/internal/db"
+	"go_starter/internal/session"
+	"go_starter/internal/ui"
+	"go_starter/internal/ui/pages/panel"
 
 	"github.com/starfederation/datastar-go/datastar"
 	g "maragu.dev/gomponents"
@@ -41,7 +41,7 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "Workspace", "go_stater /admin", "/admin/workspace", adminNav,
+	h.renderShell(w, r, "Workspace", "go_starter /admin", "/admin/workspace", adminNav,
 		panel.Workspace(t.Name, t.Slug, canEditWorkspace(ctx)))
 }
 

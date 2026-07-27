@@ -1,6 +1,6 @@
-# CLAUDE.md — panduan agen untuk go_stater
+# CLAUDE.md — panduan agen untuk go_starter
 
-Panduan spesifik proyek untuk agen. Baca ini + [`STATER.md`](STATER.md) (spec &
+Panduan spesifik proyek untuk agen. Baca ini + [`STARTER.md`](STARTER.md) (spec &
 alasan arsitektur) sebelum kode. README untuk cara pakai; file ini untuk
 konvensi + **gotcha yang mahal ditemukan ulang**.
 

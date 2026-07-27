@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"go_stater/internal/authz"
-	"go_stater/internal/session"
+	"go_starter/internal/authz"
+	"go_starter/internal/session"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/alexedwards/scs/v2/memstore"

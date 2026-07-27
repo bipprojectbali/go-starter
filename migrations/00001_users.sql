@@ -3,7 +3,7 @@
 CREATE TABLE users (
     id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email      TEXT NOT NULL UNIQUE,
-    -- hash argon2id (bukan bcrypt) — lihat STATER §2.1 #13
+    -- hash argon2id (bukan bcrypt) — lihat STARTER §2.1 #13
     pass_hash  TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

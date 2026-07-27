@@ -4,7 +4,7 @@ package dev
 import (
 	"strconv"
 
-	"go_stater/internal/ui"
+	"go_starter/internal/ui"
 
 	g "maragu.dev/gomponents"
 	data "maragu.dev/gomponents-datastar"

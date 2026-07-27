@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"go_stater/internal/db"
+	"go_starter/internal/db"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )

@@ -3,7 +3,7 @@ package handler
 import (
 	"testing"
 
-	"go_stater/internal/db"
+	"go_starter/internal/db"
 )
 
 func TestSlugify(t *testing.T) {
