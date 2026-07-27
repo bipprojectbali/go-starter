@@ -12,26 +12,19 @@ import (
 )
 
 const createOAuthUser = `-- name: CreateOAuthUser :one
-INSERT INTO users (email, email_verified, avatar_url, tenant_id, role)
-VALUES ($1, true, $2, $3, $4)
-RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id
+INSERT INTO users (email, email_verified, avatar_url)
+VALUES ($1, true, $2)
+RETURNING id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota
 `
 
 type CreateOAuthUserParams struct {
 	Email     string  `json:"email"`
 	AvatarUrl *string `json:"avatar_url"`
-	TenantID  int64   `json:"tenant_id"`
-	Role      string  `json:"role"`
 }
 
 // User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createOAuthUser,
-		arg.Email,
-		arg.AvatarUrl,
-		arg.TenantID,
-		arg.Role,
-	)
+	row := q.db.QueryRow(ctx, createOAuthUser, arg.Email, arg.AvatarUrl)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -39,37 +32,29 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
-		&i.Role,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
-		&i.TenantID,
+		&i.WorkspaceQuota,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, pass_hash, tenant_id, role)
-VALUES ($1, $2, $3, $4)
-RETURNING id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id
+INSERT INTO users (email, pass_hash)
+VALUES ($1, $2)
+RETURNING id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota
 `
 
 type CreateUserParams struct {
 	Email    string  `json:"email"`
 	PassHash *string `json:"pass_hash"`
-	TenantID int64   `json:"tenant_id"`
-	Role     string  `json:"role"`
 }
 
-// tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
-// tenant dari tenant yang baru dibuat.
+// users = tabel GLOBAL (identitas murni, TANPA tenant/role — keduanya pindah ke
+// memberships). Keanggotaan dibuat terpisah via CreateMembership dalam tx sama.
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser,
-		arg.Email,
-		arg.PassHash,
-		arg.TenantID,
-		arg.Role,
-	)
+	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PassHash)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -77,17 +62,16 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
-		&i.Role,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
-		&i.TenantID,
+		&i.WorkspaceQuota,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users WHERE id = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -99,17 +83,16 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
-		&i.Role,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
-		&i.TenantID,
+		&i.WorkspaceQuota,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users WHERE email = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users WHERE email = $1 AND deleted_at IS NULL
 `
 
 // Soft-delete gotcha: user terhapus tak boleh login.
@@ -122,17 +105,16 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.PassHash,
 		&i.CreatedAt,
 		&i.EmailVerified,
-		&i.Role,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
-		&i.TenantID,
+		&i.WorkspaceQuota,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, pass_hash, created_at, email_verified, role, status, avatar_url, deleted_at, tenant_id FROM users
+SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users
 WHERE deleted_at IS NULL
   AND (created_at, id) < ($1::timestamptz, $2::bigint)
 ORDER BY created_at DESC, id DESC
@@ -161,11 +143,10 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.PassHash,
 			&i.CreatedAt,
 			&i.EmailVerified,
-			&i.Role,
 			&i.Status,
 			&i.AvatarUrl,
 			&i.DeletedAt,
-			&i.TenantID,
+			&i.WorkspaceQuota,
 		); err != nil {
 			return nil, err
 		}
@@ -201,17 +182,18 @@ func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarPara
 	return err
 }
 
-const updateUserRole = `-- name: UpdateUserRole :exec
-UPDATE users SET role = $2 WHERE id = $1 AND deleted_at IS NULL
+const updateUserQuota = `-- name: UpdateUserQuota :exec
+UPDATE users SET workspace_quota = $2 WHERE id = $1 AND deleted_at IS NULL
 `
 
-type UpdateUserRoleParams struct {
-	ID   int64  `json:"id"`
-	Role string `json:"role"`
+type UpdateUserQuotaParams struct {
+	ID             int64 `json:"id"`
+	WorkspaceQuota int32 `json:"workspace_quota"`
 }
 
-func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {
-	_, err := q.db.Exec(ctx, updateUserRole, arg.ID, arg.Role)
+// Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+func (q *Queries) UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error {
+	_, err := q.db.Exec(ctx, updateUserQuota, arg.ID, arg.WorkspaceQuota)
 	return err
 }
 

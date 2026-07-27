@@ -52,10 +52,22 @@ func DeleteAction(url string) string { return "@delete('" + url + "')" }
 // pola lama: <form><select class="select select-sm" name=... data-on:change="@post(...,
 // {contentType: 'form'})">opts...</select></form>.
 func FormPostSelect(postURL, name string, opts ...g.Node) g.Node {
+	return FormPostSelectWith(postURL, name, nil, opts...)
+}
+
+// FormPostSelectWith = FormPostSelect + field TERSEMBUNYI ikut terkirim (mis.
+// tenant_id saat role per-workspace). hidden: nama→nilai. Tetap satu <form> yang
+// dirender helper → gotcha #6 tetap mustahil terjadi.
+func FormPostSelectWith(postURL, name string, hidden map[string]string, opts ...g.Node) g.Node {
 	attrs := []g.Node{
 		h.Class("select select-sm"),
 		h.Name(name),
 		data.On("change", "@post('"+postURL+"', {contentType: 'form'})"),
 	}
-	return h.FormEl(h.Select(append(attrs, opts...)...))
+	nodes := make([]g.Node, 0, len(hidden)+1)
+	for k, v := range hidden {
+		nodes = append(nodes, h.Input(h.Type("hidden"), h.Name(k), h.Value(v)))
+	}
+	nodes = append(nodes, h.Select(append(attrs, opts...)...))
+	return h.FormEl(nodes...)
 }

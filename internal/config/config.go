@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -35,6 +36,12 @@ type Config struct {
 	// aktif" di panel logs). Data disimpan UTC; TZ ini hanya untuk konversi saat
 	// baca. APP_TIMEZONE (IANA, mis. "Asia/Jakarta"). Divalidasi saat load.
 	AppTimezone string
+
+	// MaxWorkspacesPerUser = kuota DEFAULT workspace yang boleh DIMILIKI (role
+	// owner) tiap user; dipakai saat user dibuat. Kolom users.workspace_quota
+	// menyimpannya per-user agar platform bisa override tanpa ubah env (lever
+	// monetisasi: free/pro/enterprise). MAX_WORKSPACES_PER_USER, default 3.
+	MaxWorkspacesPerUser int
 }
 
 // Location mem-parse AppTimezone jadi *time.Location. Sudah divalidasi di
@@ -70,17 +77,18 @@ func (c *Config) IsProduction() bool { return c.Env == "production" }
 // menyebabkan panic saat startup, bukan error senyap di request pertama.
 func MustLoad() *Config {
 	c := &Config{
-		Port:               getEnv("PORT", "8080"),
-		DatabaseURL:        mustEnv("DATABASE_URL"),
-		AppDatabaseURL:     getEnv("APP_DATABASE_URL", ""),
-		RedisAddr:          mustEnv("REDIS_ADDR"),
-		Env:                getEnv("ENV", "dev"),
-		AutoMigrate:        getEnv("AUTO_MIGRATE", "true") == "true",
-		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
-		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:  getEnv("GOOGLE_REDIRECT_URL", ""),
-		SuperAdminEmails:   parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
-		AppTimezone:        getEnv("APP_TIMEZONE", "Asia/Jakarta"),
+		Port:                 getEnv("PORT", "8080"),
+		DatabaseURL:          mustEnv("DATABASE_URL"),
+		AppDatabaseURL:       getEnv("APP_DATABASE_URL", ""),
+		RedisAddr:            mustEnv("REDIS_ADDR"),
+		Env:                  getEnv("ENV", "dev"),
+		AutoMigrate:          getEnv("AUTO_MIGRATE", "true") == "true",
+		GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", ""),
+		GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", ""),
+		SuperAdminEmails:     parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
+		AppTimezone:          getEnv("APP_TIMEZONE", "Asia/Jakarta"),
+		MaxWorkspacesPerUser: getEnvInt("MAX_WORKSPACES_PER_USER", 3),
 	}
 	// Validasi TZ fail-fast: nama IANA salah → panic saat startup, bukan error
 	// senyap saat render panel logs. (tzdata di-embed via import di main.)
@@ -169,6 +177,20 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvInt membaca env sebagai int positif. Kosong / tak valid / <=0 → fallback
+// (jangan biarkan salah ketik jadi kuota 0 yang mengunci semua user).
+func getEnvInt(key string, fallback int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 // parseEmailList memecah string comma-separated jadi slice email lower-case,

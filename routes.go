@@ -104,7 +104,37 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		// bukan route, agar admin tetap bisa membuka halamannya (read-only).
 		r.Get("/workspace", h.WorkspaceSettings)
 		r.Post("/workspace", h.WorkspaceUpdate)
+
+		// Anggota workspace (model membership). Lihat = admin+; ubah/keluarkan/
+		// undang = owner/admin (di-guard handler via canManageMembers).
+		r.Get("/members", h.MembersPage)
+		r.Post("/members/{id}/role", h.MemberSetRole)
+		r.Post("/members/{id}/remove", h.MemberRemove)
+		r.Post("/members/invite", h.InviteCreate)
+		r.Post("/members/invite/{id}/delete", h.InviteDelete)
 	})
+
+	// Workspace: pindah & buat baru. Butuh login TAPI di luar grup /admin —
+	// /workspace/new adalah tujuan Scope saat user belum punya workspace sama
+	// sekali (jadi TIDAK boleh butuh scope tenant yang belum ada).
+	r.Group(func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Use(h.Scope)
+		r.Use(h.RefreshIdentity)
+		r.Post("/workspace/switch", h.WorkspaceSwitch)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		// TANPA Scope: user tanpa workspace tak punya tenant untuk di-scope.
+		// Handler pakai db.WithSuper langsung (membership belum ada).
+		r.Get("/workspace/new", h.WorkspaceNewPage)
+		r.Post("/workspace/new", h.WorkspaceCreate)
+	})
+
+	// Undangan — PUBLIK (penerima belum tentu punya akun). Tanpa Scope: penerima
+	// belum jadi anggota workspace mana pun saat membuka tautan.
+	r.Get("/invite/{token}", h.InvitePage)
+	r.Post("/invite/{token}/accept", h.InviteAccept)
 
 	// Beranda /user — semua user login (admin/super mewarisi user:home).
 	r.Route("/user", func(r chi.Router) {

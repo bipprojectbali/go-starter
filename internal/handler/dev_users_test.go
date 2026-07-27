@@ -30,10 +30,7 @@ func setupDevUsers(t *testing.T) (*testEnv, int64, int64) {
 	authz.Init(e)
 
 	// User biasa (target).
-	target, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "target@local", PassHash: ptr("x"), TenantID: env.tenantID, Role: "member"})
-	if err != nil {
-		t.Fatalf("seed target: %v", err)
-	}
+	target := env.seedMember(t, "target@local", "member", 0)
 	return env, superID, target.ID
 }
 
@@ -60,10 +57,14 @@ func TestDevUserSetRole_Success(t *testing.T) {
 	env, superID, targetID := setupDevUsers(t)
 	// Aksi kini balas SSE (200), bukan redirect. Sukses diverifikasi lewat efek
 	// DB + isi flash, bukan status code.
-	rec := env.doDevAction(superID, targetID, url.Values{"role": {"admin"}}, env.h.DevUserSetRole)
-	u, _ := env.q.GetUser(t.Context(), targetID)
-	if u.Role != "admin" {
-		t.Errorf("role harus admin, got %q", u.Role)
+	rec := env.doDevAction(superID, targetID, url.Values{
+		"role": {"admin"}, "tenant": {itoa(env.tenantID)},
+	}, env.h.DevUserSetRole)
+	m, err := env.q.GetMembership(t.Context(), db.GetMembershipParams{
+		UserID: targetID, TenantID: env.tenantID,
+	})
+	if err != nil || m.Role != "admin" {
+		t.Errorf("role di workspace harus admin, got %q (err=%v)", m.Role, err)
 	}
 	if !strings.Contains(rec.Body.String(), "Role diubah ke admin") {
 		t.Errorf("flash sukses harus ada:\n%s", rec.Body.String())
@@ -80,10 +81,14 @@ func TestDevUserSetRole_ProtectRootEnv(t *testing.T) {
 	// Target = super-admin itu sendiri (root env) → tak bisa diturunkan. Kirim role
 	// VALID (member) agar lolos validasi & benar-benar menguji guard root-protect
 	// (bukan tertahan "role tidak valid"). users.role tetap "owner" (nilai seed).
-	rec := env.doDevAction(superID, superID, url.Values{"role": {"member"}}, env.h.DevUserSetRole)
-	u, _ := env.q.GetUser(t.Context(), superID)
-	if u.Role != "owner" {
-		t.Errorf("role root tak boleh berubah dari nilai DB seed (owner), got %q", u.Role)
+	rec := env.doDevAction(superID, superID, url.Values{
+		"role": {"member"}, "tenant": {itoa(env.tenantID)},
+	}, env.h.DevUserSetRole)
+	m, err := env.q.GetMembership(t.Context(), db.GetMembershipParams{
+		UserID: superID, TenantID: env.tenantID,
+	})
+	if err != nil || m.Role != "owner" {
+		t.Errorf("role root tak boleh berubah dari seed (owner), got %q (err=%v)", m.Role, err)
 	}
 	// Flash menolak (root env).
 	if !strings.Contains(rec.Body.String(), "root") {

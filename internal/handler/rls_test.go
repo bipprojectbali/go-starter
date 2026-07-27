@@ -13,23 +13,18 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// listAll = ListUsers halaman pertama penuh (cursor maks). Dipakai test RLS untuk
-// query TANPA filter tenant eksplisit — RLS yang menyaring.
-func listAll(ctx context.Context, q *db.Queries) ([]db.User, error) {
-	at, id := firstPageCursor()
-	return q.ListUsers(ctx, db.ListUsersParams{CursorCreatedAt: at, CursorID: id, PageSize: 100})
-}
-
 // rls_test.go — bukti isolasi RLS SESUNGGUHNYA. Test lain konek superuser (bypass
 // RLS diam-diam, cuma uji logika). Di sini pool tiap koneksi `SET ROLE app_rw`
 // (NOBYPASSRLS) via AfterConnect → policy tenant_isolation BENAR-BENAR mengikat,
 // persis seperti runtime produksi (APP_DATABASE_URL = role app_rw).
 //
-// Ini test paling penting untuk template: membuktikan "lupa WHERE tenant_id"
-// tetap 0 baris (DB yang menolak), bukan kebocoran.
+// CATATAN model membership: tabel `users` kini GLOBAL (identitas lintas-workspace)
+// → KELUAR dari RLS. Probe isolasi memakai `audit_logs` yang masih ber-tenant_id
+// + policy. Ini tetap menguji hal yang sama: baris ber-tenant tak bocor lintas
+// workspace, dan "lupa WHERE tenant_id" tetap 0 baris karena DB yang menolak.
 
 // rlsPool membuka pool yang meng-`SET ROLE app_rw` di tiap koneksi. Skip bila
-// TEST_DATABASE_URL kosong atau role app_rw tak ada (migrasi 00007 belum jalan).
+// TEST_DATABASE_URL kosong atau role app_rw tak ada (migrasi belum jalan).
 func rlsPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -40,7 +35,7 @@ func rlsPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("parse dsn: %v", err)
 	}
-	// SET ROLE app_rw menonaktifkan bypassrls milik superuser koneksi → RLS aktif.
+	// SET ROLE app_rw menonaktifkan bypassrls superuser koneksi → RLS aktif.
 	// Transaction-local GUC (WithTenant/WithSuper) tetap berlaku di atas role ini.
 	cfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
 		_, err := c.Exec(ctx, "SET ROLE app_rw")
@@ -50,19 +45,19 @@ func rlsPool(t *testing.T) *pgxpool.Pool {
 	if err != nil {
 		t.Fatalf("pool: %v", err)
 	}
-	// Pastikan app_rw benar-benar non-bypass (kalau migrasi belum jalan → skip).
 	var bypass bool
 	if err := pool.QueryRow(context.Background(),
 		"SELECT rolbypassrls FROM pg_roles WHERE rolname='app_rw'").Scan(&bypass); err != nil {
 		pool.Close()
-		t.Skipf("role app_rw tak ditemukan (migrasi 00007?): %v", err)
+		t.Skipf("role app_rw tak ditemukan (migrasi?): %v", err)
 	}
 	t.Cleanup(pool.Close)
 	return pool
 }
 
-// seedTwoTenants menyeed 2 tenant + 1 user owner masing-masing, memakai OWNER
-// pool (superuser, bypass) agar seed tak terhalang RLS. Mengembalikan (idA, idB).
+// seedTwoTenants menyeed 2 workspace + 1 user owner masing-masing + SATU baris
+// audit per workspace (probe isolasi). Pakai OWNER pool (superuser, bypass) agar
+// seed tak terhalang RLS. Mengembalikan (idA, idB).
 func seedTwoTenants(t *testing.T) (int64, int64) {
 	t.Helper()
 	dsn := os.Getenv("TEST_DATABASE_URL")
@@ -73,7 +68,7 @@ func seedTwoTenants(t *testing.T) (int64, int64) {
 	defer ownerPool.Close()
 	ctx := context.Background()
 	if _, err := ownerPool.Exec(ctx,
-		"TRUNCATE activity_presence, audit_logs, oauth_accounts, users, tenants RESTART IDENTITY CASCADE"); err != nil {
+		"TRUNCATE activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	q := db.New(ownerPool)
@@ -85,154 +80,191 @@ func seedTwoTenants(t *testing.T) (int64, int64) {
 	if err != nil {
 		t.Fatalf("tenant B: %v", err)
 	}
-	if _, err := q.CreateUser(ctx, db.CreateUserParams{Email: "a1@ta", PassHash: ptr("x"), TenantID: ta.ID, Role: "owner"}); err != nil {
+	// users GLOBAL + membership per workspace.
+	ua, err := q.CreateUser(ctx, db.CreateUserParams{Email: "a1@ta", PassHash: ptr("x")})
+	if err != nil {
 		t.Fatalf("user A: %v", err)
 	}
-	if _, err := q.CreateUser(ctx, db.CreateUserParams{Email: "b1@tb", PassHash: ptr("x"), TenantID: tb.ID, Role: "owner"}); err != nil {
+	ub, err := q.CreateUser(ctx, db.CreateUserParams{Email: "b1@tb", PassHash: ptr("x")})
+	if err != nil {
 		t.Fatalf("user B: %v", err)
+	}
+	for _, m := range []db.CreateMembershipParams{
+		{UserID: ua.ID, TenantID: ta.ID, Role: "owner"},
+		{UserID: ub.ID, TenantID: tb.ID, Role: "owner"},
+	} {
+		if _, err := q.CreateMembership(ctx, m); err != nil {
+			t.Fatalf("membership: %v", err)
+		}
+	}
+	// Probe ber-RLS: satu audit log per workspace.
+	for _, a := range []db.CreateAuditLogParams{
+		{ActorUserID: &ua.ID, Action: "seed.a", TargetType: "test", TargetID: &ua.ID, Metadata: []byte("{}"), TenantID: ta.ID},
+		{ActorUserID: &ub.ID, Action: "seed.b", TargetType: "test", TargetID: &ub.ID, Metadata: []byte("{}"), TenantID: tb.ID},
+	} {
+		if _, err := q.CreateAuditLog(ctx, a); err != nil {
+			t.Fatalf("audit seed: %v", err)
+		}
 	}
 	return ta.ID, tb.ID
 }
 
-// TestRLS_TenantIsolation: WithTenant(A) HANYA melihat baris tenant A — walau
+// auditActions mengembalikan action semua audit log yang TERLIHAT — sengaja TANPA
+// filter tenant, jadi RLS yang menyaring.
+func auditActions(ctx context.Context, q *db.Queries) ([]string, error) {
+	rows, err := q.ListAuditLogs(ctx, 100)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Action)
+	}
+	return out, nil
+}
+
+// TestRLS_TenantIsolation: WithTenant(A) HANYA melihat baris workspace A — walau
 // query TANPA WHERE tenant_id. Ini inti defense-in-depth.
 func TestRLS_TenantIsolation(t *testing.T) {
 	pool := rlsPool(t)
 	idA, idB := seedTwoTenants(t)
 	ctx := context.Background()
 
-	// Sebagai tenant A: ListUsers (tak ada filter tenant di query) → hanya A.
-	var gotA []db.User
+	var gotA []string
 	if err := db.WithTenant(ctx, pool, idA, func(q *db.Queries) error {
-		u, e := listAll(ctx, q)
-		gotA = u
+		a, e := auditActions(ctx, q)
+		gotA = a
 		return e
 	}); err != nil {
 		t.Fatalf("WithTenant A: %v", err)
 	}
-	if len(gotA) != 1 || gotA[0].Email != "a1@ta" {
-		t.Fatalf("tenant A harus lihat HANYA a1@ta, got %+v", emails(gotA))
+	if len(gotA) != 1 || gotA[0] != "seed.a" {
+		t.Fatalf("workspace A harus lihat HANYA seed.a, got %v", gotA)
 	}
 
-	// Sebagai tenant B: hanya B.
-	var gotB []db.User
+	var gotB []string
 	if err := db.WithTenant(ctx, pool, idB, func(q *db.Queries) error {
-		u, e := listAll(ctx, q)
-		gotB = u
+		b, e := auditActions(ctx, q)
+		gotB = b
 		return e
 	}); err != nil {
 		t.Fatalf("WithTenant B: %v", err)
 	}
-	if len(gotB) != 1 || gotB[0].Email != "b1@tb" {
-		t.Fatalf("tenant B harus lihat HANYA b1@tb, got %+v", emails(gotB))
+	if len(gotB) != 1 || gotB[0] != "seed.b" {
+		t.Fatalf("workspace B harus lihat HANYA seed.b, got %v", gotB)
 	}
 }
 
-// TestRLS_SuperBypass: WithSuper melihat SEMUA tenant (jalur platform).
+// TestRLS_SuperBypass: WithSuper melihat SEMUA workspace (jalur platform).
 func TestRLS_SuperBypass(t *testing.T) {
 	pool := rlsPool(t)
 	seedTwoTenants(t)
 	ctx := context.Background()
 
-	var all []db.User
+	var all []string
 	if err := db.WithSuper(ctx, pool, func(q *db.Queries) error {
-		u, e := listAll(ctx, q)
-		all = u
+		a, e := auditActions(ctx, q)
+		all = a
 		return e
 	}); err != nil {
 		t.Fatalf("WithSuper: %v", err)
 	}
 	if len(all) != 2 {
-		t.Fatalf("super harus lihat 2 user (semua tenant), got %d: %v", len(all), emails(all))
+		t.Fatalf("super harus lihat 2 audit (semua workspace), got %d: %v", len(all), all)
 	}
 }
 
-// TestRLS_WithCheckRejectsCrossTenant: INSERT baris tenant B saat scope tenant A
-// DITOLAK oleh WITH CHECK (tak bisa menanam data ke tenant lain).
+// TestRLS_WithCheckRejectsCrossTenant: INSERT baris workspace B saat scope A
+// DITOLAK oleh WITH CHECK (tak bisa menanam data ke workspace lain).
 func TestRLS_WithCheckRejectsCrossTenant(t *testing.T) {
 	pool := rlsPool(t)
 	idA, idB := seedTwoTenants(t)
 	ctx := context.Background()
 
 	err := db.WithTenant(ctx, pool, idA, func(q *db.Queries) error {
-		// Coba buat user di tenant B sementara scope = A → WITH CHECK menolak.
-		_, e := q.CreateUser(ctx, db.CreateUserParams{
-			Email: "evil@tb", PassHash: ptr("x"), TenantID: idB, Role: "member",
+		actor := int64(1)
+		_, e := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
+			ActorUserID: &actor, Action: "evil", TargetType: "test",
+			TargetID: &actor, Metadata: []byte("{}"), TenantID: idB, // ← workspace lain
 		})
 		return e
 	})
 	if err == nil {
-		t.Fatal("INSERT lintas-tenant (B saat scope A) HARUS ditolak WITH CHECK, tapi sukses")
+		t.Fatal("INSERT lintas-workspace HARUS ditolak WITH CHECK, tapi sukses")
 	}
-	// Pastikan pesan RLS (row-level security), bukan error lain.
 	if !containsRLSViolation(err) {
 		t.Fatalf("error harus pelanggaran RLS, got: %v", err)
 	}
 }
 
-// TestRLS_PoolLeakIsolation: request tenant A lalu tenant B pada POOL yang sama
-// (koneksi bisa dipakai ulang) → B tak melihat A. set_config(...,true)
-// transaction-local mencegah kebocoran GUC antar-peminjam pool.
+// TestRLS_PoolLeakIsolation: request workspace A lalu B pada POOL yang sama →
+// B tak melihat A. set_config(...,true) transaction-local mencegah kebocoran GUC.
 func TestRLS_PoolLeakIsolation(t *testing.T) {
 	pool := rlsPool(t)
 	idA, idB := seedTwoTenants(t)
 	ctx := context.Background()
 
-	// Banyak iterasi bergantian A/B menaikkan peluang reuse koneksi yang sama.
 	for i := 0; i < 10; i++ {
-		var nA int
+		var nA, nB int
 		if err := db.WithTenant(ctx, pool, idA, func(q *db.Queries) error {
-			u, e := listAll(ctx, q)
-			nA = len(u)
+			a, e := auditActions(ctx, q)
+			nA = len(a)
 			return e
 		}); err != nil {
 			t.Fatalf("iter %d A: %v", i, err)
 		}
-		var nB int
 		if err := db.WithTenant(ctx, pool, idB, func(q *db.Queries) error {
-			u, e := listAll(ctx, q)
-			nB = len(u)
+			b, e := auditActions(ctx, q)
+			nB = len(b)
 			return e
 		}); err != nil {
 			t.Fatalf("iter %d B: %v", i, err)
 		}
 		if nA != 1 || nB != 1 {
-			t.Fatalf("iter %d: GUC bocor antar-peminjam pool (nA=%d nB=%d, keduanya harus 1)", i, nA, nB)
+			t.Fatalf("iter %d: GUC bocor antar-peminjam pool (nA=%d nB=%d, harus 1)", i, nA, nB)
 		}
 	}
 }
 
-// TestRLS_NoGUCDeniesAll: tanpa GUC tenant sama sekali (bukan WithTenant/WithSuper)
-// → deny-default (0 baris). Membuktikan policy tak fail-open.
+// TestRLS_NoGUCDeniesAll: tanpa GUC sama sekali → deny-default (0 baris).
+// Membuktikan policy tak fail-open.
 func TestRLS_NoGUCDeniesAll(t *testing.T) {
 	pool := rlsPool(t)
 	seedTwoTenants(t)
 	ctx := context.Background()
 
-	// Query langsung tanpa set_config apa pun (role app_rw, RLS aktif) → 0 baris.
 	var n int
-	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&n); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM audit_logs").Scan(&n); err != nil {
 		t.Fatalf("count: %v", err)
 	}
 	if n != 0 {
-		t.Fatalf("tanpa GUC tenant, RLS harus deny-default (0 baris), got %d", n)
+		t.Fatalf("tanpa GUC, RLS harus deny-default (0 baris), got %d", n)
+	}
+}
+
+// TestUsersTableIsGlobal: users KELUAR dari RLS (identitas lintas-workspace) —
+// terlihat penuh walau tanpa GUC. Ini KESENGAJAAN model membership, bukan bocor:
+// isolasi data ada di tabel ber-tenant_id (audit_logs dkk), dan akses workspace
+// ditentukan memberships.
+func TestUsersTableIsGlobal(t *testing.T) {
+	pool := rlsPool(t)
+	seedTwoTenants(t)
+	ctx := context.Background()
+
+	var n int
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM users").Scan(&n); err != nil {
+		t.Fatalf("count users: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("users global harus terlihat semua (2), got %d", n)
 	}
 }
 
 // --- helper ---
 
-func emails(us []db.User) []string {
-	out := make([]string, len(us))
-	for i, u := range us {
-		out[i] = u.Email
-	}
-	return out
-}
-
 // containsRLSViolation melaporkan apakah err = pelanggaran RLS Postgres.
-// SQLSTATE 42501 = insufficient_privilege (dipakai untuk "new row violates
-// row-level security policy" pada WITH CHECK). Cocokkan via pgconn.PgError
-// (bukan string) agar tahan perubahan wording.
+// SQLSTATE 42501 = insufficient_privilege ("new row violates row-level security
+// policy"). Cocokkan via pgconn.PgError (bukan string) agar tahan perubahan wording.
 func containsRLSViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "42501"

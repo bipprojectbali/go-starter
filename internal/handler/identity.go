@@ -44,7 +44,9 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 			return
 		}
 
-		role := h.resolveRole(ctx, h.q(ctx), u)
+		// Workspace aktif sudah DIVALIDASI middleware Scope (anggota terverifikasi).
+		tenantID := session.TenantID(ctx)
+		role := h.resolveRole(ctx, h.q(ctx), u, tenantID)
 		avatar := ""
 		if u.AvatarUrl != nil {
 			avatar = *u.AvatarUrl
@@ -53,14 +55,14 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 		// brand sidebar). tenants TANPA RLS-policy → terbaca di tx ber-scope. Fail-
 		// soft: error → pakai nama tercache (jangan kosongkan brand karena glitch).
 		tenantName := session.TenantName(ctx)
-		if t, err := h.q(ctx).GetTenant(ctx, u.TenantID); err == nil {
+		if t, err := h.q(ctx).GetTenant(ctx, tenantID); err == nil {
 			tenantName = t.Name
 		}
 		// Tulis session hanya bila ada yang berubah (hindari commit tiap request).
 		if session.Role(ctx) != role || session.IsRoot(ctx) != isRoot ||
 			session.Email(ctx) != u.Email || session.AvatarURL(ctx) != avatar ||
-			session.TenantID(ctx) != u.TenantID || session.TenantName(ctx) != tenantName {
-			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, u.TenantID, tenantName, avatar)
+			session.TenantName(ctx) != tenantName {
+			session.SetIdentity(ctx, u.ID, u.Email, role, isRoot, tenantID, tenantName, avatar)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -70,13 +72,16 @@ func (h *Handler) RefreshIdentity(next http.Handler) http.Handler {
 //
 //	super_admin — email di SUPER_ADMIN_EMAILS (env-only, immutable, menang atas apa pun)
 //	staff       — email terdaftar di platform_staff (support platform, mutable)
-//	<u.Role>    — role tenant (owner/admin/member) dari kolom users.role
+//	<membership> — role TENANT (owner/admin/member) di WORKSPACE AKTIF
 //
-// Platform role di-overlay di sini, TAK disimpan di users.role (kolom itu CHECK
-// owner/admin/member). q HARUS bisa membaca platform_staff — tabel itu TANPA RLS
-// (platform-scope), jadi terbaca di WithTenant maupun WithSuper tx. Lookup staff
-// fail-soft: error DB → fallback ke role tenant (jangan kunci user karena glitch).
-func (h *Handler) resolveRole(ctx context.Context, q *db.Queries, u db.User) string {
+// Role tenant kini PER-WORKSPACE (tabel memberships), bukan properti user: orang
+// yang sama bisa owner di satu workspace & member di workspace lain. Platform role
+// di-overlay di sini, tak pernah disimpan di DB sebagai role tenant.
+//
+// q HARUS bisa membaca platform_staff & memberships — keduanya TANPA RLS, jadi
+// terbaca di WithTenant maupun WithSuper tx. Fail-soft: error DB → role terendah
+// (member), jangan naikkan otoritas karena glitch.
+func (h *Handler) resolveRole(ctx context.Context, q *db.Queries, u db.User, tenantID int64) string {
 	if isSuperAdminEmail(u.Email) {
 		return authz.RoleNameSuperAdmin // env override menang atas semua
 	}
@@ -85,5 +90,11 @@ func (h *Handler) resolveRole(ctx context.Context, q *db.Queries, u db.User) str
 	} else if ok {
 		return authz.RoleNameStaff
 	}
-	return u.Role
+	m, err := q.GetMembership(ctx, db.GetMembershipParams{UserID: u.ID, TenantID: tenantID})
+	if err != nil {
+		// Tak ada membership (mis. baru dicabut) → otoritas terendah, BUKAN naik.
+		h.Log.Warn("resolveRole: membership tak ditemukan", "user_id", u.ID, "tenant_id", tenantID)
+		return authz.RoleNameMember
+	}
+	return m.Role
 }

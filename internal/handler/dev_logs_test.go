@@ -54,7 +54,8 @@ func TestPresenceByHour_TimezoneShift(t *testing.T) {
 func TestPresenceKPIs_SumsAndDistinct(t *testing.T) {
 	env, uid := setupTest(t)
 	ctx := t.Context()
-	u2, err := env.q.CreateUser(ctx, db.CreateUserParams{Email: "u2@local", PassHash: ptr("x"), TenantID: env.tenantID, Role: "member"})
+	u2 := env.seedMember(t, "u2@local", "member", 0)
+	var err error
 	if err != nil {
 		t.Fatalf("seed u2: %v", err)
 	}

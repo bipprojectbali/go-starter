@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 
 	lucide "github.com/eduardolat/gomponents-lucide"
@@ -22,13 +23,26 @@ type NavItem struct {
 type ShellData struct {
 	Title         string
 	BrandLabel    string // konteks panel di sidebar (mis. "go_starter /dev")
-	WorkspaceName string // nama workspace (tenant) user — brand utama; "" utk platform tanpa konteks
+	WorkspaceName string // nama workspace AKTIF — brand utama; "" utk platform tanpa konteks
 	CurrentPath   string // untuk active-state menu
 	UserEmail     string
 	AvatarURL     string
 	CSSPath       string
 	Nav           []NavItem
 	QuickLinks    []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
+
+	// Workspaces = semua workspace milik user (model membership). >1 → brand jadi
+	// dropdown switcher. ActiveTenantID menandai yang sedang dipakai.
+	Workspaces         []WorkspaceOption
+	ActiveTenantID     int64
+	CanCreateWorkspace bool // kuota belum penuh → tampilkan "Buat workspace baru"
+}
+
+// WorkspaceOption = satu workspace di switcher sidebar.
+type WorkspaceOption struct {
+	TenantID int64
+	Name     string
+	Role     string
 }
 
 // AppShell membungkus konten dengan layout dashboard: sidebar (menu + brand +
@@ -100,11 +114,72 @@ func shellBrand(d ShellData) g.Node {
 	if d.WorkspaceName == "" {
 		return h.Span(h.Class("app-brand flex-1 font-semibold truncate"), g.Text(d.BrandLabel))
 	}
-	return h.Div(
-		h.Class("app-brand flex-1 min-w-0 flex flex-col justify-center leading-tight"),
+	label := h.Div(
+		h.Class("min-w-0 flex flex-col justify-center leading-tight text-left"),
 		h.Span(h.Class("font-semibold truncate"), g.Text(d.WorkspaceName)),
 		h.Span(h.Class("app-navlabel text-xs text-base-content/60 truncate"), g.Text(d.BrandLabel)),
 	)
+	// Satu workspace & tak bisa buat baru → teks biasa (tak perlu dropdown).
+	if len(d.Workspaces) <= 1 && !d.CanCreateWorkspace {
+		return h.Div(h.Class("app-brand flex-1 min-w-0"), label)
+	}
+	return h.Div(h.Class("app-brand flex-1 min-w-0"), workspaceSwitcher(d, label))
+}
+
+// workspaceSwitcher = dropdown pindah workspace (model membership: satu user bisa
+// anggota banyak workspace). Pola <details> CSS-only sama seperti themeDropdown —
+// CSP-safe, tanpa inline JS. Pindah = native form POST → 303 (gotcha #16: redirect
+// via SSE menyuntik <script> yang diblokir CSP).
+func workspaceSwitcher(d ShellData, label g.Node) g.Node {
+	items := make([]g.Node, 0, len(d.Workspaces)+1)
+	for _, ws := range d.Workspaces {
+		items = append(items, workspaceSwitchItem(ws, ws.TenantID == d.ActiveTenantID))
+	}
+	if d.CanCreateWorkspace {
+		items = append(items,
+			h.Li(h.Class("border-t border-base-300 mt-1 pt-1"),
+				h.A(h.Href("/workspace/new"), h.Class("gap-2"),
+					lucide.Plus(h.Class("size-4")),
+					g.Text("Buat workspace baru"),
+				),
+			),
+		)
+	}
+	return h.Details(
+		h.Class("dropdown w-full"),
+		h.Summary(
+			h.Class("btn btn-ghost btn-sm w-full justify-between gap-1 px-1 h-auto py-1"),
+			g.Attr("aria-label", "Ganti workspace"),
+			label,
+			lucide.ChevronsUpDown(h.Class("size-4 shrink-0 opacity-60")),
+		),
+		h.Ul(
+			h.Class("dropdown-content menu bg-base-100 border border-base-300 rounded-box z-50 mt-2 w-56 p-2 shadow-lg"),
+			g.Group(items),
+		),
+	)
+}
+
+// workspaceSwitchItem = satu workspace di dropdown. Aktif → ditandai + tak bisa
+// diklik (sudah di sana). Lainnya = tombol submit form POST /workspace/switch.
+func workspaceSwitchItem(ws WorkspaceOption, active bool) g.Node {
+	name := h.Div(
+		h.Class("flex flex-col items-start leading-tight min-w-0"),
+		h.Span(h.Class("truncate"), g.Text(ws.Name)),
+		h.Span(h.Class("text-xs text-base-content/60"), g.Text(ws.Role)),
+	)
+	if active {
+		return h.Li(h.Div(
+			h.Class("flex items-center justify-between gap-2 bg-primary/10 rounded-md"),
+			name,
+			lucide.Check(h.Class("size-4 shrink-0 text-primary")),
+		))
+	}
+	return h.Li(h.FormEl(
+		h.Method("post"), h.Action("/workspace/switch"),
+		h.Input(h.Type("hidden"), h.Name("tenant"), h.Value(strconv.FormatInt(ws.TenantID, 10))),
+		h.Button(h.Type("submit"), h.Class("btn btn-ghost btn-sm w-full justify-start font-normal"), name),
+	))
 }
 
 // shellSidebar = panel navigasi. Kolom flex: brand+toggle (atas), menu (tengah,

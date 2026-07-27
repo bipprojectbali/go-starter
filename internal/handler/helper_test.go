@@ -48,20 +48,24 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	t.Cleanup(pool.Close)
 
 	q := db.New(pool)
-	// tenants ikut dibersihkan (FK dari users). RESTART IDENTITY agar id deterministik.
-	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, oauth_accounts, users, tenants RESTART IDENTITY CASCADE"); err != nil {
+	// memberships & invites ikut dibersihkan (model membership). RESTART IDENTITY
+	// agar id deterministik.
+	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	tenant, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: "Test", Slug: "test"})
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
-	u, err := q.CreateUser(ctx, db.CreateUserParams{
-		Email: "test@local", PassHash: ptr("x"),
-		TenantID: tenant.ID, Role: "owner",
-	})
+	// users kini GLOBAL (tanpa tenant/role); keanggotaan lewat memberships.
+	u, err := q.CreateUser(ctx, db.CreateUserParams{Email: "test@local", PassHash: ptr("x")})
 	if err != nil {
 		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{
+		UserID: u.ID, TenantID: tenant.ID, Role: "owner",
+	}); err != nil {
+		t.Fatalf("seed membership: %v", err)
 	}
 
 	// Session manager pakai memstore agar test tak butuh Redis.
@@ -72,6 +76,47 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 
 	h := &Handler{Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	return &testEnv{h: h, sm: sm, q: q, tenantID: tenant.ID}, u.ID
+}
+
+// seedMember membuat user + membership di tenant tertentu (pola berulang di test
+// setelah model membership: user global, keanggotaan terpisah). role default
+// "member" bila kosong. tenantID 0 → pakai tenant seed env.
+func (e *testEnv) seedMember(t *testing.T, email, role string, tenantID int64) db.User {
+	t.Helper()
+	ctx := t.Context()
+	if tenantID == 0 {
+		tenantID = e.tenantID
+	}
+	if role == "" {
+		role = "member"
+	}
+	u, err := e.q.CreateUser(ctx, db.CreateUserParams{Email: email, PassHash: ptr("x")})
+	if err != nil {
+		t.Fatalf("seed user %s: %v", email, err)
+	}
+	if _, err := e.q.CreateMembership(ctx, db.CreateMembershipParams{
+		UserID: u.ID, TenantID: tenantID, Role: role,
+	}); err != nil {
+		t.Fatalf("seed membership %s: %v", email, err)
+	}
+	return u
+}
+
+// sessionCtx membungkus context ber-session aktif (scs butuh request melewati
+// LoadAndSave agar Put/Get bekerja).
+type sessionCtx struct{ ctx context.Context }
+
+// withSession menjalankan fn dalam context ber-session dengan userID tertentu —
+// untuk menguji fungsi yang membaca/menulis session TANPA lewat handler HTTP.
+func (e *testEnv) withSession(t *testing.T, userID int64, fn func(sessionCtx)) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	h := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		session.SetUserID(ctx, userID)
+		fn(sessionCtx{ctx: ctx})
+	}))
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 }
 
 // doAuthed menjalankan handler dalam konteks session dengan user login. scs butuh

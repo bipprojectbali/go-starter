@@ -25,6 +25,10 @@ func (e *testEnv) runRefresh(t *testing.T, userID int64, setupSuper func(string)
 	rec := httptest.NewRecorder()
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		session.SetUserID(r.Context(), userID) // HANYA userID — role kosong (session lama)
+		// Workspace aktif: di produksi ditetapkan middleware Scope SEBELUM
+		// RefreshIdentity (yang lalu meresolusi role DI workspace itu). Test
+		// mensimulasikan urutan yang sama.
+		session.SetActiveTenant(r.Context(), e.tenantID, "Test")
 		// Inject Queries ber-scope (RefreshIdentity pakai h.q) — sim. Scope middleware.
 		r = r.WithContext(withQueries(r.Context(), e.q))
 		e.h.RefreshIdentity(final).ServeHTTP(w, r)
@@ -35,8 +39,10 @@ func (e *testEnv) runRefresh(t *testing.T, userID int64, setupSuper func(string)
 
 func TestRefreshIdentity_SelfHealMissingRole(t *testing.T) {
 	env, uid := setupTest(t)
-	// Seed test@local role = "admin" di DB (role tenant valid).
-	if err := env.q.UpdateUserRole(t.Context(), db.UpdateUserRoleParams{ID: uid, Role: "admin"}); err != nil {
+	// Role kini per-WORKSPACE: set lewat membership (bukan kolom users).
+	if err := env.q.UpdateMemberRole(t.Context(), db.UpdateMemberRoleParams{
+		UserID: uid, TenantID: env.tenantID, Role: "admin",
+	}); err != nil {
 		t.Fatalf("set role: %v", err)
 	}
 	rec, role := env.runRefresh(t, uid, func(string) bool { return false })

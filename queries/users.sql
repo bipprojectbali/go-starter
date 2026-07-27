@@ -1,14 +1,14 @@
 -- name: CreateUser :one
--- tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
--- tenant dari tenant yang baru dibuat.
-INSERT INTO users (email, pass_hash, tenant_id, role)
-VALUES ($1, $2, $3, $4)
+-- users = tabel GLOBAL (identitas murni, TANPA tenant/role — keduanya pindah ke
+-- memberships). Keanggotaan dibuat terpisah via CreateMembership dalam tx sama.
+INSERT INTO users (email, pass_hash)
+VALUES ($1, $2)
 RETURNING *;
 
 -- name: CreateOAuthUser :one
 -- User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
-INSERT INTO users (email, email_verified, avatar_url, tenant_id, role)
-VALUES ($1, true, $2, $3, $4)
+INSERT INTO users (email, email_verified, avatar_url)
+VALUES ($1, true, $2)
 RETURNING *;
 
 -- name: GetUserByEmail :one
@@ -22,8 +22,9 @@ SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL;
 -- URL avatar Google berubah saat user ganti foto → update tiap login.
 UPDATE users SET avatar_url = $2 WHERE id = $1;
 
--- name: UpdateUserRole :exec
-UPDATE users SET role = $2 WHERE id = $1 AND deleted_at IS NULL;
+-- name: UpdateUserQuota :exec
+-- Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+UPDATE users SET workspace_quota = $2 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: UpdateUserStatus :exec
 UPDATE users SET status = $2 WHERE id = $1 AND deleted_at IS NULL;

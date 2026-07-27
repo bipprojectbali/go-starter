@@ -13,12 +13,21 @@ import (
 
 // UserRow = data satu baris user untuk tabel (view model, bukan db.User).
 type UserRow struct {
-	ID        int64
-	Email     string
-	Role      string
-	Status    string
-	AvatarURL string
-	IsRoot    bool // super-admin env (kontrol dinonaktifkan)
+	ID         int64
+	Email      string
+	Status     string
+	AvatarURL  string
+	IsRoot     bool            // super-admin env (kontrol dinonaktifkan)
+	Workspaces []WorkspaceRole // keanggotaan: role PER-workspace (model membership)
+	Quota      int             // kuota workspace yang boleh dimiliki user
+}
+
+// WorkspaceRole = satu keanggotaan user (workspace + role di dalamnya). Role kini
+// per-workspace, jadi panel platform menampilkan/mengubah per baris ini.
+type WorkspaceRole struct {
+	TenantID int64
+	Name     string
+	Role     string
 }
 
 // UsersPage merender tabel user + kontrol role/status/hapus. canManageSuper =
@@ -31,10 +40,10 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 		h.Div(h.ID("flash"), h.Class("fixed bottom-4 right-4 z-50"),
 			g.Attr("style", "pointer-events:none")),
 		h.Div(
-			h.Class("card bg-base-100 border border-base-300"),
+			h.Class("card bg-base-100 border border-base-300 min-w-0"),
 			h.Div(
-				h.Class("card-body overflow-x-auto"),
-				h.Table(
+				h.Class("card-body min-w-0"),
+				ui.TableScroll(h.Table(
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
@@ -43,7 +52,7 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 						),
 					),
 					h.TBody(g.Map(rows, func(u UserRow) g.Node { return UserRowNode(u, canManageSuper) })),
-				),
+				)),
 			),
 		),
 	)
@@ -72,22 +81,41 @@ func UserRowNode(u UserRow, canManageSuper bool) g.Node {
 	)
 }
 
-// roleControl = dropdown ubah role via Datastar SSE. Root env → badge (immutable).
+// roleControl merender SATU baris kontrol per WORKSPACE tempat user jadi anggota
+// (role kini per-workspace, bukan properti user). Root env → badge (immutable).
+// Tanpa keanggotaan → penanda "—" (user ada, tapi belum/tak lagi di workspace mana pun).
 func roleControl(u UserRow, canManageSuper bool) g.Node {
 	if u.IsRoot {
-		return badge(u.Role, "")
+		return badge("root (semua workspace)", "")
 	}
+	if len(u.Workspaces) == 0 {
+		return h.Span(h.Class("text-base-content/50 text-sm"), g.Text("—"))
+	}
+	items := make([]g.Node, 0, len(u.Workspaces))
+	for _, ws := range u.Workspaces {
+		items = append(items, h.Div(
+			h.Class("flex items-center gap-2"),
+			h.Span(h.Class("text-xs text-base-content/70 truncate max-w-[10rem]"), g.Text(ws.Name)),
+			workspaceRoleSelect(u.ID, ws),
+		))
+	}
+	return h.Div(h.Class("flex flex-col gap-1"), g.Group(items))
+}
+
+// workspaceRoleSelect = dropdown ubah role user DI SATU workspace. tenant dikirim
+// sebagai hidden field (handler butuh tahu workspace mana). Balasan SSE me-render
+// ulang baris + toast (tanpa reload).
+func workspaceRoleSelect(userID int64, ws WorkspaceRole) g.Node {
 	opts := []g.Node{
-		roleOption("user", u.Role),
-		roleOption("admin", u.Role),
+		roleOption("member", ws.Role),
+		roleOption("admin", ws.Role),
+		roleOption("owner", ws.Role),
 	}
-	if canManageSuper {
-		opts = append(opts, roleOption("super_admin", u.Role))
-	}
-	// FormPostSelect merender <select> + <form> pembungkusnya sebagai satu node →
-	// @post form-valued tanpa <form> mustahil (gotcha #6). Balasan SSE me-render
-	// ulang baris + toast (tanpa reload).
-	return ui.FormPostSelect("/dev/users/"+strconv.FormatInt(u.ID, 10)+"/role", "role", g.Group(opts))
+	return ui.FormPostSelectWith(
+		"/dev/users/"+strconv.FormatInt(userID, 10)+"/role", "role",
+		map[string]string{"tenant": strconv.FormatInt(ws.TenantID, 10)},
+		g.Group(opts),
+	)
 }
 
 func roleOption(val, current string) g.Node {

@@ -44,7 +44,8 @@ func (h *Handler) q(ctx context.Context) *db.Queries {
 func (h *Handler) Scope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		if session.UserID(ctx) == 0 {
+		uid := session.UserID(ctx)
+		if uid == 0 {
 			next.ServeHTTP(w, r) // anonim — tak ada scope (route terproteksi butuh RequireAuth)
 			return
 		}
@@ -52,18 +53,70 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
 			return nil
 		}
-		var err error
+		// Platform (super_admin/staff) lintas-tenant → bypass RLS, tak perlu membership.
 		if isPlatformRole(session.Role(ctx)) {
-			err = db.WithSuper(ctx, h.Pool, run)
-		} else {
-			err = db.WithTenant(ctx, h.Pool, session.TenantID(ctx), run)
+			if err := db.WithSuper(ctx, h.Pool, run); err != nil {
+				h.Log.Error("scope: tx super", "err", err)
+			}
+			return
 		}
-		if err != nil {
+
+		// Tenant user: VALIDASI keanggotaan sebelum membuka tx ber-tenant. Session
+		// user-controlled → tanpa cek ini, tenantID sembarang bisa dipaksa.
+		tenantID, ok := h.resolveActiveTenant(ctx, uid)
+		if !ok {
+			// Belum punya workspace sama sekali (mis. membership terakhir dicabut)
+			// → arahkan buat workspace baru. Bukan error: keadaan sah di model ini.
+			http.Redirect(w, r, "/workspace/new", http.StatusSeeOther)
+			return
+		}
+		if err := db.WithTenant(ctx, h.Pool, tenantID, run); err != nil {
 			// Commit/begin gagal SETELAH response ditulis handler — tak bisa ubah
 			// status. Log saja (fail-visible). Isolasi tetap terjaga (tx rollback).
-			h.Log.Error("scope: tx", "err", err)
+			h.Log.Error("scope: tx tenant", "err", err)
 		}
 	})
+}
+
+// resolveActiveTenant mengembalikan workspace aktif yang SUDAH TERVALIDASI milik
+// user. Alur: pakai tenant di session bila user memang anggotanya; kalau tidak
+// (session basi / dipaksa / baru login) → jatuh ke workspace pertama user dan
+// simpan sebagai aktif. false bila user tak punya workspace sama sekali.
+//
+// Dibaca lewat WithSuper karena memberships SENGAJA tanpa RLS: query ini justru
+// yang MENENTUKAN tenant — tak bisa bergantung GUC yang belum di-set (chicken-and-
+// egg). Keamanan dari filter user_id = uid sesi, bukan RLS.
+func (h *Handler) resolveActiveTenant(ctx context.Context, uid int64) (int64, bool) {
+	want := session.TenantID(ctx)
+	var (
+		okTenant int64
+		okName   string
+		found    bool
+	)
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		if want != 0 {
+			if _, e := q.GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: want}); e == nil {
+				okTenant, found = want, true
+				return nil // session valid — tak perlu query lagi
+			}
+		}
+		ms, e := q.ListMembershipsByUser(ctx, uid)
+		if e != nil {
+			return e
+		}
+		if len(ms) > 0 {
+			okTenant, okName, found = ms[0].TenantID, ms[0].Name, true
+		}
+		return nil
+	})
+	if err != nil {
+		h.Log.Error("scope: resolve tenant", "user_id", uid, "err", err)
+		return 0, false
+	}
+	if found && okTenant != want {
+		session.SetActiveTenant(ctx, okTenant, okName) // fallback → simpan
+	}
+	return okTenant, found
 }
 
 // isPlatformRole melaporkan apakah role = operator platform (bypass RLS).

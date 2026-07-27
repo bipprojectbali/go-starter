@@ -78,12 +78,18 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register = buat WORKSPACE (tenant) baru + user OWNER-nya (1 user = 1 workspace).
+	// Register = buat USER (identitas global) + WORKSPACE pertama + MEMBERSHIP owner.
 	// Pre-identity: tenant belum ada → WithSuper (bypass RLS). Nama = input user;
-	// slug = unik auto-suffix (nama boleh duplikat, slug tidak). Tenant + user dalam
-	// SATU tx → atomic (gagal di tengah tak meninggalkan tenant yatim).
+	// slug = unik auto-suffix (nama boleh duplikat, slug tidak). Ketiganya dalam
+	// SATU tx → atomic (gagal di tengah tak meninggalkan user/tenant yatim).
 	var user db.User
+	var tenantID int64
 	err = db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		u, e := q.CreateUser(r.Context(), db.CreateUserParams{Email: email, PassHash: &hash})
+		if e != nil {
+			return e
+		}
+		user = u
 		slug, e := uniqueSlug(r.Context(), q, slugify(workspace))
 		if e != nil {
 			return e
@@ -92,9 +98,9 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			return e
 		}
-		user, e = q.CreateUser(r.Context(), db.CreateUserParams{
-			Email: email, PassHash: &hash,
-			TenantID: t.ID, Role: authz.RoleNameOwner,
+		tenantID = t.ID
+		_, e = q.CreateMembership(r.Context(), db.CreateMembershipParams{
+			UserID: u.ID, TenantID: t.ID, Role: authz.RoleNameOwner,
 		})
 		return e
 	})
@@ -105,11 +111,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startIdentity(r, user, "password"); err != nil {
+	if err := h.startIdentity(r, user, "password", tenantID); err != nil {
 		h.Log.Error("register: start identity", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	h.acceptPendingInvite(r) // datang lewat tautan undangan? langsung gabung
 	// Native redirect (bukan SSE): scs LoadAndSave commit cookie otomatis — tak
 	// perlu WriteCookie manual (itu hanya utk jalur NewSSE yang bypass scs).
 	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
@@ -162,7 +169,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.startIdentity(r, user, "password"); err != nil {
+	if err := h.startIdentity(r, user, "password", 0); err != nil {
 		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
 			http.Redirect(w, r, "/login?err=inactive", http.StatusSeeOther)
 			return
@@ -171,6 +178,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	h.acceptPendingInvite(r) // datang lewat tautan undangan? langsung gabung
 	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
 }
 
@@ -195,10 +203,15 @@ var (
 )
 
 // startIdentity memutar token session (anti fixation), lalu menyimpan identitas
-// lengkap: role EFEKTIF (env super-admin override kolom DB) + gate status.
-// Root env kebal gate status (owner tak bisa dikunci). Dipakai password login
-// & Google callback. method ("password"/"google") dicatat di audit auth.login.
-func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error {
+// lengkap: workspace AKTIF + role EFEKTIF di workspace itu + gate status. Root env
+// kebal gate status. Dipakai password login & Google callback. method
+// ("password"/"google") dicatat di audit auth.login.
+//
+// preferTenant: workspace yang ingin diaktifkan (mis. baru dibuat saat register).
+// 0 = pilih workspace pertama user. Bila user tak punya workspace sama sekali,
+// session tetap dibuat dgn tenant 0 — middleware Scope yang mengarahkan ke
+// /workspace/new (keadaan sah di model membership).
+func (h *Handler) startIdentity(r *http.Request, u db.User, method string, preferTenant int64) error {
 	isRoot := isSuperAdminEmail(u.Email)
 
 	// Gate status — root lolos (tak bisa dikunci lewat status DB).
@@ -211,11 +224,38 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error
 		}
 	}
 
-	// Role efektif 2-bidang: env super_admin > staff (platform_staff) > role tenant.
-	// Lookup staff via WithSuper (pre-identity, platform_staff tanpa RLS). Fail-soft.
-	role := u.Role
+	// Workspace aktif + role tenant di dalamnya. Pre-identity (belum ada tx ber-
+	// scope) → WithSuper; memberships/platform_staff memang tanpa RLS.
+	var (
+		tenantID   int64
+		tenantName string
+		tenantRole = authz.RoleNameMember
+	)
+	if err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		ms, e := q.ListMembershipsByUser(r.Context(), u.ID)
+		if e != nil || len(ms) == 0 {
+			return e // tanpa workspace → tenant tetap 0 (Scope arahkan buat baru)
+		}
+		pick := ms[0] // default: workspace pertama (terlama)
+		if preferTenant != 0 {
+			for _, m := range ms {
+				if m.TenantID == preferTenant {
+					pick = m
+					break
+				}
+			}
+		}
+		tenantID, tenantName, tenantRole = pick.TenantID, pick.Name, pick.Role
+		return nil
+	}); err != nil {
+		h.Log.Warn("startIdentity: load memberships", "err", err)
+	}
+
+	// Role efektif 2-bidang: env super_admin > staff (platform_staff) > role tenant
+	// di workspace aktif. Lookup staff fail-soft.
+	role := tenantRole
 	if isRoot {
-		role = authz.RoleNameSuperAdmin // env override apa pun nilai kolom DB
+		role = authz.RoleNameSuperAdmin // env override menang atas semua
 	} else if staff, err := h.isStaff(r.Context(), u.Email); err == nil && staff {
 		role = authz.RoleNameStaff
 	}
@@ -227,19 +267,7 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string) error
 	if u.AvatarUrl != nil {
 		avatar = *u.AvatarUrl
 	}
-	// Nama workspace untuk cache session (brand sidebar). Pre-identity → WithSuper.
-	// Fail-soft: gagal load → nama kosong (RefreshIdentity mengisi ulang tiap request).
-	tenantName := ""
-	if err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
-		t, e := q.GetTenant(r.Context(), u.TenantID)
-		if e == nil {
-			tenantName = t.Name
-		}
-		return e
-	}); err != nil {
-		h.Log.Warn("startIdentity: load tenant name", "err", err)
-	}
-	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, u.TenantID, tenantName, avatar)
+	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, tenantID, tenantName, avatar)
 	// Jejak login (fail-soft) — untuk panel aktivitas. actor = user sendiri.
 	h.auditAuth(r.Context(), u.ID, "auth.login", method)
 	return nil

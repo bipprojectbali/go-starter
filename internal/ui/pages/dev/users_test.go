@@ -9,12 +9,14 @@ import (
 // <form>. @post {contentType:'form'} mencari form TERDEKAT untuk kirim value —
 // tanpa form, tak ada value terkirim (perubahan role gagal senyap).
 func TestUserRow_SelectWrappedInForm(t *testing.T) {
-	row := UserRow{ID: 7, Email: "u@x.com", Role: "user", Status: "active"}
+	row := UserRow{ID: 7, Email: "u@x.com", Status: "active",
+		Workspaces: []WorkspaceRole{{TenantID: 1, Name: "Acme", Role: "member"}}}
 	var sb strings.Builder
 	UserRowNode(row, true).Render(&sb)
 	out := sb.String()
 
-	if !strings.Contains(out, `<form><select class="select select-sm" name="role"`) {
+	if !strings.Contains(out, `<form><input type="hidden" name="tenant"`) ||
+		!strings.Contains(out, `<select class="select select-sm" name="role"`) {
 		t.Errorf("select role harus dibungkus <form> (contentType:form butuh form):\n%s", out)
 	}
 	if !strings.Contains(out, `<form><select class="select select-sm" name="status"`) {
@@ -28,7 +30,7 @@ func TestUserRow_SelectWrappedInForm(t *testing.T) {
 
 // TestUserRow_RootImmutable: root env → badge (bukan dropdown), tanpa tombol hapus.
 func TestUserRow_RootImmutable(t *testing.T) {
-	row := UserRow{ID: 1, Email: "root@x.com", Role: "super_admin", Status: "active", IsRoot: true}
+	row := UserRow{ID: 1, Email: "root@x.com", Status: "active", IsRoot: true}
 	var sb strings.Builder
 	UserRowNode(row, true).Render(&sb)
 	out := sb.String()

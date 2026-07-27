@@ -40,8 +40,9 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	// Aktor untuk menentukan kontrol mana yang boleh dirender (precompute).
 	actorRole := authz.ParseRole(session.Role(r.Context()))
 	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
+	byUser := h.membershipsByUser(r.Context(), users) // satu query batch (anti N+1)
 	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(),
-		dev.UsersPage(toUserRows(users), canManageSuper))
+		dev.UsersPage(toUserRows(users, byUser), canManageSuper))
 }
 
 // DevUserSetRole — POST /dev/users/{id}/role. Ubah role (di-guard + audit).
@@ -55,7 +56,14 @@ func (h *Handler) DevUserSetRole(w http.ResponseWriter, r *http.Request) {
 		h.devFlash(w, r, false, "Role tidak valid")
 		return
 	}
-	actor, target, err := h.loadActorTarget(r.Context(), targetID)
+	// Role kini PER-WORKSPACE → butuh tenant mana. Form mengirimnya (panel /dev
+	// menampilkan satu baris per membership).
+	tenantID, err := strconv.ParseInt(r.FormValue("tenant"), 10, 64)
+	if err != nil || tenantID == 0 {
+		h.devFlash(w, r, false, "Workspace tidak valid")
+		return
+	}
+	actor, target, err := h.loadActorTarget(r.Context(), targetID, tenantID)
 	if err != nil {
 		h.devFlashErr(w, r, err)
 		return
@@ -64,12 +72,21 @@ func (h *Handler) DevUserSetRole(w http.ResponseWriter, r *http.Request) {
 		h.devFlashErr(w, r, err)
 		return
 	}
-	if err := h.q(r.Context()).UpdateUserRole(r.Context(), db.UpdateUserRoleParams{ID: targetID, Role: newRole}); err != nil {
+	// Cegah workspace YATIM: menurunkan owner terakhir → ditolak.
+	if target.Role == authz.RoleOwner && newRole != authz.RoleNameOwner {
+		if n, e := h.q(r.Context()).CountTenantOwners(r.Context(), tenantID); e == nil && n <= 1 {
+			h.devFlash(w, r, false, "Tak bisa menurunkan owner terakhir workspace")
+			return
+		}
+	}
+	if err := h.q(r.Context()).UpdateMemberRole(r.Context(), db.UpdateMemberRoleParams{
+		UserID: targetID, TenantID: tenantID, Role: newRole,
+	}); err != nil {
 		h.Log.Error("dev users: update role", "err", err)
 		h.devFlash(w, r, false, "Gagal menyimpan perubahan")
 		return
 	}
-	h.audit(r.Context(), actor.ID, "user.role.update", targetID, map[string]string{"to": newRole})
+	h.audit(r.Context(), actor.ID, "member.role.update", targetID, map[string]string{"to": newRole})
 	h.devRowUpdated(w, r, targetID, "Role diubah ke "+newRole)
 }
 
@@ -86,7 +103,7 @@ func (h *Handler) DevUserSetStatus(w http.ResponseWriter, r *http.Request) {
 		h.devFlash(w, r, false, "Status tidak valid")
 		return
 	}
-	actor, target, err := h.loadActorTarget(r.Context(), targetID)
+	actor, target, err := h.loadActorTarget(r.Context(), targetID, session.TenantID(r.Context()))
 	if err != nil {
 		h.devFlashErr(w, r, err)
 		return
@@ -110,7 +127,7 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	actor, target, err := h.loadActorTarget(r.Context(), targetID)
+	actor, target, err := h.loadActorTarget(r.Context(), targetID, session.TenantID(r.Context()))
 	if err != nil {
 		h.devFlashErr(w, r, err)
 		return
@@ -144,7 +161,8 @@ func (h *Handler) devRowUpdated(w http.ResponseWriter, r *http.Request, targetID
 	}
 	canManageSuper := session.IsRoot(r.Context()) ||
 		authz.ParseRole(session.Role(r.Context())) >= authz.RoleSuperAdmin
-	row := toUserRows([]db.User{u})[0]
+	one := []db.User{u}
+	row := toUserRows(one, h.membershipsByUser(r.Context(), one))[0]
 
 	sse := datastar.NewSSE(w, r)
 	var sb strings.Builder
@@ -201,7 +219,8 @@ func (h *Handler) parseTargetID(w http.ResponseWriter, r *http.Request) (int64, 
 }
 
 // loadActorTarget membangun Actor (dari session) & Target (dari DB) untuk guard.
-func (h *Handler) loadActorTarget(ctx context.Context, targetID int64) (authz.Actor, authz.Target, error) {
+// tenantID = workspace tempat role target dinilai (role kini per-workspace).
+func (h *Handler) loadActorTarget(ctx context.Context, targetID, tenantID int64) (authz.Actor, authz.Target, error) {
 	actor := authz.Actor{
 		ID:     session.UserID(ctx),
 		Role:   authz.ParseRole(session.Role(ctx)),
@@ -211,9 +230,15 @@ func (h *Handler) loadActorTarget(ctx context.Context, targetID int64) (authz.Ac
 	if err != nil {
 		return actor, authz.Target{}, err
 	}
+	// Role target = role di WORKSPACE tsb (kini per-workspace, bukan properti user).
+	// Tak punya membership di sana → otoritas terendah (member), bukan naik.
+	role := authz.RoleMember
+	if m, e := h.q(ctx).GetMembership(ctx, db.GetMembershipParams{UserID: targetID, TenantID: tenantID}); e == nil {
+		role = authz.ParseRole(m.Role)
+	}
 	target := authz.Target{
 		ID:          tu.ID,
-		Role:        authz.ParseRole(tu.Role),
+		Role:        role,
 		IsEnvSuperA: isSuperAdminEmail(tu.Email),
 	}
 	return actor, target, nil
@@ -266,7 +291,11 @@ func (h *Handler) auditAuth(ctx context.Context, userID int64, action, method st
 }
 
 // toUserRows memetakan db.User → dev.UserRow (view), menandai root env.
-func toUserRows(users []db.User) []dev.UserRow {
+// toUserRows memetakan db.User + membership-nya → dev.UserRow (view). Role kini
+// PER-WORKSPACE: tiap user membawa daftar workspace tempat ia jadi anggota, jadi
+// panel platform bisa mengubah role di workspace mana pun. byUser = hasil
+// ListMembershipsForUsers (satu query batch — hindari N+1, Rule 13).
+func toUserRows(users []db.User, byUser map[int64][]dev.WorkspaceRole) []dev.UserRow {
 	rows := make([]dev.UserRow, 0, len(users))
 	for _, u := range users {
 		avatar := ""
@@ -274,21 +303,40 @@ func toUserRows(users []db.User) []dev.UserRow {
 			avatar = *u.AvatarUrl
 		}
 		isRoot := isSuperAdminEmail(u.Email)
-		// Tampilkan role EFEKTIF: super-admin env override kolom DB (yang bisa
-		// saja masih "user" karena role env tak pernah ditulis ke DB). Tanpa ini
-		// tabel menyesatkan — root tampak "user".
-		role := u.Role
-		if isRoot {
-			role = authz.RoleNameSuperAdmin
-		}
 		rows = append(rows, dev.UserRow{
-			ID:        u.ID,
-			Email:     u.Email,
-			Role:      role,
-			Status:    u.Status,
-			AvatarURL: avatar,
-			IsRoot:    isRoot,
+			ID:         u.ID,
+			Email:      u.Email,
+			Status:     u.Status,
+			AvatarURL:  avatar,
+			IsRoot:     isRoot,
+			Workspaces: byUser[u.ID],
+			Quota:      int(u.WorkspaceQuota),
 		})
 	}
 	return rows
+}
+
+// membershipsByUser menjalankan SATU query batch untuk semua user lalu
+// mengelompokkannya per user_id (hindari N+1). Error → map kosong (fail-soft:
+// tabel tetap tampil, kolom workspace saja yang kosong).
+func (h *Handler) membershipsByUser(ctx context.Context, users []db.User) map[int64][]dev.WorkspaceRole {
+	ids := make([]int64, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+	}
+	out := make(map[int64][]dev.WorkspaceRole, len(users))
+	if len(ids) == 0 {
+		return out
+	}
+	rows, err := h.q(ctx).ListMembershipsForUsers(ctx, ids)
+	if err != nil {
+		h.Log.Error("dev users: list memberships", "err", err)
+		return out
+	}
+	for _, m := range rows {
+		out[m.UserID] = append(out[m.UserID], dev.WorkspaceRole{
+			TenantID: m.TenantID, Name: m.Name, Role: m.Role,
+		})
+	}
+	return out
 }

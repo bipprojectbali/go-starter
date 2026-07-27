@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"go_starter/internal/authz"
+	"go_starter/internal/db"
 	"go_starter/internal/session"
 	"go_starter/internal/ui"
 
@@ -68,6 +69,7 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 var (
 	adminNav = []ui.NavItem{
 		{Label: "Dashboard", Href: "/admin", Icon: lucide.LayoutDashboard(html.Class("size-4"))},
+		{Label: "Anggota", Href: "/admin/members", Icon: lucide.Users(html.Class("size-4"))},
 		{Label: "Workspace", Href: "/admin/workspace", Icon: lucide.Building2(html.Class("size-4"))},
 	}
 	userNav = []ui.NavItem{
@@ -118,20 +120,61 @@ func quickLinksFor(ctx context.Context) []ui.NavItem {
 // di sidebar, currentPath untuk active-state, nav = menu panel.
 func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, brand, currentPath string, nav []ui.NavItem, body g.Node) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	workspaces, canCreate := h.workspaceOptions(r.Context())
 	d := ui.ShellData{
-		Title:         title,
-		BrandLabel:    brand,
-		WorkspaceName: session.TenantName(r.Context()), // brand utama; "" utk platform → fallback BrandLabel
-		CurrentPath:   currentPath,
-		UserEmail:     session.Email(r.Context()),
-		AvatarURL:     session.AvatarURL(r.Context()),
-		CSSPath:       cssPath,
-		Nav:           nav,
-		QuickLinks:    quickLinksFor(r.Context()),
+		Title:              title,
+		BrandLabel:         brand,
+		WorkspaceName:      session.TenantName(r.Context()), // brand utama; "" utk platform → fallback BrandLabel
+		CurrentPath:        currentPath,
+		UserEmail:          session.Email(r.Context()),
+		AvatarURL:          session.AvatarURL(r.Context()),
+		CSSPath:            cssPath,
+		Nav:                nav,
+		QuickLinks:         quickLinksFor(r.Context()),
+		Workspaces:         workspaces,
+		ActiveTenantID:     session.TenantID(r.Context()),
+		CanCreateWorkspace: canCreate,
 	}
 	if err := ui.AppShell(d, body).Render(w); err != nil {
 		h.Log.Error("render shell", "path", r.URL.Path, "err", err)
 	}
+}
+
+// workspaceOptions memuat daftar workspace user (untuk switcher sidebar) +
+// apakah ia masih boleh membuat workspace baru (kuota). Fail-soft: error → daftar
+// kosong & tak bisa buat (sidebar tetap tampil, brand jadi teks biasa).
+// memberships TANPA RLS → aman dibaca lewat h.q(ctx) di scope mana pun.
+func (h *Handler) workspaceOptions(ctx context.Context) ([]ui.WorkspaceOption, bool) {
+	uid := session.UserID(ctx)
+	if uid == 0 {
+		return nil, false
+	}
+	// Render TIDAK boleh panic karena wiring: sebagian halaman (mis. hasil test /
+	// route tanpa Scope) tak punya Queries ber-scope. Tanpa itu, switcher cukup
+	// tak ditampilkan — bukan alasan menggagalkan seluruh halaman.
+	q, ok := ctx.Value(scopeCtxKey{}).(*db.Queries)
+	if !ok || q == nil {
+		return nil, false
+	}
+	rows, err := q.ListMembershipsByUser(ctx, uid)
+	if err != nil {
+		h.Log.Error("shell: list workspaces", "err", err)
+		return nil, false
+	}
+	out := make([]ui.WorkspaceOption, 0, len(rows))
+	owned := 0
+	for _, m := range rows {
+		out = append(out, ui.WorkspaceOption{TenantID: m.TenantID, Name: m.Name, Role: m.Role})
+		if m.Role == authz.RoleNameOwner {
+			owned++
+		}
+	}
+	// Kuota per-user (kolom users.workspace_quota; default dari env saat user dibuat).
+	quota := 0
+	if u, e := q.GetUser(ctx, uid); e == nil {
+		quota = int(u.WorkspaceQuota)
+	}
+	return out, owned < quota
 }
 
 // patch mengirim satu atau lebih fragment gomponents ke browser via Datastar SSE

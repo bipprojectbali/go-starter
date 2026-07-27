@@ -27,6 +27,26 @@ type AuditLog struct {
 	TenantID    int64              `json:"tenant_id"`
 }
 
+type Invite struct {
+	ID         int64              `json:"id"`
+	TenantID   int64              `json:"tenant_id"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	Token      string             `json:"token"`
+	InvitedBy  *int64             `json:"invited_by"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type Membership struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	TenantID  int64              `json:"tenant_id"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type OauthAccount struct {
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`
@@ -51,14 +71,13 @@ type Tenant struct {
 }
 
 type User struct {
-	ID            int64              `json:"id"`
-	Email         string             `json:"email"`
-	PassHash      *string            `json:"pass_hash"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	EmailVerified bool               `json:"email_verified"`
-	Role          string             `json:"role"`
-	Status        string             `json:"status"`
-	AvatarUrl     *string            `json:"avatar_url"`
-	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
-	TenantID      int64              `json:"tenant_id"`
+	ID             int64              `json:"id"`
+	Email          string             `json:"email"`
+	PassHash       *string            `json:"pass_hash"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	EmailVerified  bool               `json:"email_verified"`
+	Status         string             `json:"status"`
+	AvatarUrl      *string            `json:"avatar_url"`
+	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
+	WorkspaceQuota int32              `json:"workspace_quota"`
 }

@@ -118,7 +118,8 @@ func TestGoogleCallback_NewUser(t *testing.T) {
 func TestGoogleCallback_AutoLinkExistingEmail(t *testing.T) {
 	env, _ := setupTest(t)
 	// Buat dulu akun password (dev) dengan email sama.
-	existing, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "dev@gmail.com", PassHash: ptr("$argon2id$x"), TenantID: env.tenantID, Role: "member"})
+	existing := env.seedMember(t, "dev@gmail.com", "member", 0)
+	var err error
 	if err != nil {
 		t.Fatalf("seed existing: %v", err)
 	}
@@ -183,7 +184,7 @@ func TestGoogleCallback_NonceForwarded(t *testing.T) {
 func TestLogin_GoogleOnlyAccountRejected(t *testing.T) {
 	env, _ := setupTest(t)
 	// User Google-only (tanpa pass_hash).
-	if _, err := env.q.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com", TenantID: env.tenantID, Role: "member"}); err != nil {
+	if _, err := env.q.CreateOAuthUser(t.Context(), db.CreateOAuthUserParams{Email: "googleonly@gmail.com"}); err != nil {
 		t.Fatalf("seed google user: %v", err)
 	}
 	rec := env.do(postForm("/login", url.Values{

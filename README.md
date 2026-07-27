@@ -21,7 +21,7 @@ assets, migrations, dan template di-embed via `embed.FS`).
 | Session | [scs](https://github.com/alexedwards/scs) + [rueidis](https://github.com/redis/rueidis) (Redis store) |
 | Auth | Password (argon2id, dev-only) + Google OAuth/OIDC |
 | Otorisasi | [Casbin](https://casbin.org) RBAC — 2 bidang: platform (super_admin/staff) · tenant (owner/admin/member) |
-| Multi-tenancy | Postgres RLS (isolasi per-tenant, defense-in-depth) — lihat `docs/decisions/0002` |
+| Multi-tenancy | Postgres RLS + membership (1 user ↔ banyak workspace) — `docs/decisions/0002`, `0003` |
 
 ## Prasyarat
 
@@ -61,6 +61,8 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | prod | OAuth Google (wajib di production) |
 | `SUPER_ADMIN_EMAILS` | — | email super-admin "root", dipisah koma |
 | `APP_TIMEZONE` | — | zona waktu (IANA) agregasi panel aktivitas, default `Asia/Jakarta` |
+| `MAX_WORKSPACES_PER_USER` | — | kuota workspace per user (default `3`); diundang tak memakan kuota |
+| `APP_DATABASE_URL` | — | DSN role `app_rw` (RLS mengikat); fallback `DATABASE_URL` |
 
 ## Autentikasi & role
 
@@ -69,11 +71,18 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 - **Model role 2-bidang** (multi-tenancy). Dua bidang tegak-lurus:
   - **PLATFORM** (lintas-tenant): `super_admin` (dari `SUPER_ADMIN_EMAILS`, immutable,
     nol baris DB) + `staff` (tabel `platform_staff`, mutable, akses terbatas).
-  - **TENANT** (isolasi RLS): `owner > admin > member`. **1 user = 1 workspace** —
-    register (isi **Nama Workspace**) / login Google user baru = buat workspace baru + owner.
+  - **WORKSPACE** (isolasi RLS): `owner > admin > member` — role **per-workspace**.
+- **Satu user, banyak workspace** (model membership, seperti Slack/Notion/GitHub):
+  register (isi **Nama Workspace**) otomatis membuat workspace pertama + jadi owner;
+  user bisa membuat workspace lain (dibatasi `MAX_WORKSPACES_PER_USER`) **dan**
+  diundang membantu workspace orang lain dengan role berbeda. Pindah workspace lewat
+  dropdown di sidebar. Lihat `docs/decisions/0003`.
+- **Undangan**: owner/admin mengundang lewat email di `/admin/members` → tautan
+  bertoken (berlaku 7 hari, sekali pakai). Penerima yang belum punya akun otomatis
+  bergabung setelah register. *Pengiriman email belum otomatis — tautan disalin manual.*
 - Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
   owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
-- Data tiap tenant terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
+- Data tiap workspace terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
   `docs/decisions/0002`. Runtime app konek role `app_rw` (`APP_DATABASE_URL`).
 - **Workspace** = nama tampilan tenant (kode tetap `tenant`). Nama boleh duplikat,
   slug unik & immutable (`acme`, `acme-2`). Owner ganti nama di `/admin/workspace`.
@@ -87,7 +96,10 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `/dev/health` | platform, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
 | `/dev/erd` | platform, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
 | `/admin` | admin+ | dashboard admin (stub) |
+| `/admin/members` | owner/admin kelola, admin+ lihat | anggota workspace + undangan |
 | `/admin/workspace` | owner ubah, admin+ lihat | pengaturan workspace (ganti nama) |
+| `/workspace/new` | semua user login | buat workspace baru (dibatasi kuota) |
+| `/invite/{token}` | publik | terima undangan bergabung |
 | `/user` | user+ | beranda user (stub) |
 
 Panel dev-only (`/dev/health`, `/dev/erd`) tak terdaftar di production karena

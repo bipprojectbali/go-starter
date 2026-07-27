@@ -18,6 +18,7 @@ const (
 	keyTenantID      = "tenantID"      // tenant user (multi-tenancy; 0 = platform/anonim)
 	keyTenantName    = "tenantName"    // nama workspace (cache utk brand sidebar; bukan PII)
 	keyAvatarURL     = "avatarURL"     // foto Google untuk nav
+	keyPendingInvite = "pendingInvite" // token undangan yg menunggu login/register
 	keyOAuthState    = "oauthState"    // anti-CSRF token flow OAuth
 	keyOAuthNonce    = "oauthNonce"    // anti-replay id_token
 	keyOAuthVerifier = "oauthVerifier" // PKCE code verifier
@@ -52,9 +53,14 @@ func UserID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyUserID) }
 func SetUserID(ctx context.Context, id int64) { mgr.Put(ctx, keyUserID, id) }
 
 // SetIdentity menyimpan identitas login lengkap ke session sekaligus: id, email,
-// role (subject Casbin), isRoot (super-admin env), tenantID, tenantName (nama
-// workspace), dan avatar. Disimpan saat login agar handler/middleware/render tak
-// perlu hit DB per-request. tenantID menggerakkan Scope (RLS) — platform user pakai 0.
+// role EFEKTIF di workspace aktif (subject Casbin), isRoot (super-admin env),
+// tenantID = WORKSPACE AKTIF, tenantName, dan avatar. Disimpan saat login agar
+// handler/middleware/render tak perlu hit DB per-request.
+//
+// PENTING (model membership): tenantID bukan "tenant milik user" melainkan
+// workspace yang sedang DIPILIH — satu user bisa anggota banyak workspace. Nilai
+// ini TIDAK boleh dipercaya begitu saja: middleware Scope memvalidasinya terhadap
+// tabel memberships sebelum membuka tx ber-tenant (anti tenant-forcing).
 func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, tenantID int64, tenantName, avatarURL string) {
 	mgr.Put(ctx, keyUserID, id)
 	mgr.Put(ctx, keyEmail, email)
@@ -65,8 +71,16 @@ func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool,
 	mgr.Put(ctx, keyAvatarURL, avatarURL)
 }
 
-// TenantID mengembalikan tenant user login (0 bila belum login / platform user).
+// TenantID mengembalikan WORKSPACE AKTIF user login (0 bila belum login / belum
+// punya workspace). Divalidasi terhadap memberships oleh middleware Scope.
 func TenantID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyTenantID) }
+
+// SetActiveTenant memindahkan workspace aktif (switcher sidebar / fallback Scope).
+// Pemanggil WAJIB sudah memverifikasi keanggotaan user di tenant tsb.
+func SetActiveTenant(ctx context.Context, tenantID int64, name string) {
+	mgr.Put(ctx, keyTenantID, tenantID)
+	mgr.Put(ctx, keyTenantName, name)
+}
 
 // TenantName mengembalikan nama workspace user login (kosong bila belum login).
 func TenantName(ctx context.Context) string { return mgr.GetString(ctx, keyTenantName) }
@@ -74,6 +88,17 @@ func TenantName(ctx context.Context) string { return mgr.GetString(ctx, keyTenan
 // SetTenantName memperbarui nama workspace di session (dipakai saat ganti nama
 // agar brand sidebar langsung segar tanpa re-login).
 func SetTenantName(ctx context.Context, name string) { mgr.Put(ctx, keyTenantName, name) }
+
+// PendingInvite mengembalikan token undangan yang menunggu (user membuka link
+// invite sebelum punya akun/login). "" bila tak ada.
+func PendingInvite(ctx context.Context) string { return mgr.GetString(ctx, keyPendingInvite) }
+
+// PutPendingInvite menyimpan token undangan agar bisa diterima otomatis setelah
+// register/login selesai.
+func PutPendingInvite(ctx context.Context, token string) { mgr.Put(ctx, keyPendingInvite, token) }
+
+// ClearPendingInvite menghapus token undangan (setelah diterima / dibatalkan).
+func ClearPendingInvite(ctx context.Context) { mgr.Remove(ctx, keyPendingInvite) }
 
 // Email mengembalikan email user login (kosong bila belum login).
 func Email(ctx context.Context) string { return mgr.GetString(ctx, keyEmail) }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"go_starter/internal/authz"
@@ -125,7 +126,7 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if err := h.startIdentity(r, user, "google"); err != nil {
+	if err := h.startIdentity(r, user, "google", 0); err != nil {
 		if errors.Is(err, errAccountBlocked) || errors.Is(err, errAccountDisabled) {
 			// Akun tak aktif — tolak, arahkan ke login dgn pesan.
 			session.ClearOAuthFlow(ctx)
@@ -176,12 +177,21 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		}
 
 		// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + avatar.
-		//    oauth_account mewarisi tenant_id user (jaga konsistensi scope RLS).
+		//    oauth_account ber-tenant_id (RLS) → pakai workspace PERTAMA user. User
+		//    kini bisa anggota banyak workspace; tautan OAuth cukup di satu workspace
+		//    (identitas login global, bukan per-workspace).
 		user, err := q.GetUserByEmail(ctx, claims.Email)
 		switch {
 		case err == nil:
+			ms, e := q.ListMembershipsByUser(ctx, user.ID)
+			if e != nil {
+				return e
+			}
+			if len(ms) == 0 {
+				return fmt.Errorf("oauth link: user %d tanpa workspace", user.ID)
+			}
 			if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{
-				UserID: user.ID, Provider: provider, ProviderUid: claims.Sub, TenantID: user.TenantID,
+				UserID: user.ID, Provider: provider, ProviderUid: claims.Sub, TenantID: ms[0].TenantID,
 			}); err != nil {
 				return err
 			}
@@ -196,10 +206,16 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 			return err
 		}
 
-		// 3. User baru sepenuhnya dari Google → buat WORKSPACE baru + user OWNER-nya
-		//    (1 user = 1 workspace). Nama = bagian email sebelum '@' (dirapikan user
-		//    via /admin/workspace); slug = unik auto-suffix.
+		// 3. User baru sepenuhnya dari Google → buat USER + WORKSPACE pertama +
+		//    MEMBERSHIP owner (sama seperti register password). Nama workspace =
+		//    bagian email sebelum '@' (dirapikan user via /admin/workspace).
 		name := emailLocal(claims.Email)
+		newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{
+			Email: claims.Email, AvatarUrl: avatar,
+		})
+		if err != nil {
+			return err
+		}
 		slug, err := uniqueSlug(ctx, q, slugify(name))
 		if err != nil {
 			return err
@@ -208,10 +224,9 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		if err != nil {
 			return err
 		}
-		newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{
-			Email: claims.Email, AvatarUrl: avatar, TenantID: t.ID, Role: authz.RoleNameOwner,
-		})
-		if err != nil {
+		if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{
+			UserID: newUser.ID, TenantID: t.ID, Role: authz.RoleNameOwner,
+		}); err != nil {
 			return err
 		}
 		if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{

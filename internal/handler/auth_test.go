@@ -44,8 +44,15 @@ func TestRegister_Success(t *testing.T) {
 	if u.PassHash == nil || !strings.HasPrefix(*u.PassHash, "$argon2id$") {
 		t.Errorf("password tidak di-hash argon2id: %v", u.PassHash)
 	}
-	// Workspace baru terbuat dgn NAMA input user (bukan email) + slug ter-slugify.
-	tn, err := env.q.GetTenant(t.Context(), u.TenantID)
+	// Workspace baru terbuat + user jadi OWNER-nya lewat membership (model baru).
+	ms, err := env.q.ListMembershipsByUser(t.Context(), u.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("membership owner harus terbuat: %v (n=%d)", err, len(ms))
+	}
+	if ms[0].Role != "owner" {
+		t.Errorf("pendaftar harus jadi owner, got %q", ms[0].Role)
+	}
+	tn, err := env.q.GetTenant(t.Context(), ms[0].TenantID)
 	if err != nil {
 		t.Fatalf("tenant tak tersimpan: %v", err)
 	}
@@ -95,8 +102,12 @@ func TestRegister_DuplicateEmail(t *testing.T) {
 func TestLogin_Success(t *testing.T) {
 	env, _ := setupTest(t)
 	hash, _ := auth.HashPassword("rahasia123")
-	if _, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"}); err != nil {
+	lu, err := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "login@local", PassHash: &hash})
+	if err != nil {
 		t.Fatalf("seed: %v", err)
+	}
+	if _, err := env.q.CreateMembership(t.Context(), db.CreateMembershipParams{UserID: lu.ID, TenantID: env.tenantID, Role: "member"}); err != nil {
+		t.Fatalf("seed membership: %v", err)
 	}
 
 	rec := env.do(postForm("/login", url.Values{
@@ -118,7 +129,8 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	env, _ := setupTest(t)
 	hash, _ := auth.HashPassword("benar")
-	env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash, TenantID: env.tenantID, Role: "member"})
+	wu, _ := env.q.CreateUser(t.Context(), db.CreateUserParams{Email: "u@local", PassHash: &hash})
+	env.q.CreateMembership(t.Context(), db.CreateMembershipParams{UserID: wu.ID, TenantID: env.tenantID, Role: "member"})
 
 	rec := env.do(postForm("/login", url.Values{
 		"email": {"u@local"}, "password": {"salah"},

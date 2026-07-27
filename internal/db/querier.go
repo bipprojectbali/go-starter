@@ -9,17 +9,42 @@ import (
 )
 
 type Querier interface {
+	// Tandai terpakai (one-time). Guard accepted_at IS NULL → race dua klik tak
+	// menghasilkan dua membership (UNIQUE di memberships jadi jaring kedua).
+	AcceptInvite(ctx context.Context, token string) error
 	AddPlatformStaff(ctx context.Context, email string) (PlatformStaff, error)
+	// Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
+	// membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
+	CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error)
+	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
+	// (workspace tanpa owner = yatim).
+	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
 	// Jejak aksi admin. metadata TANPA PII (id saja, bukan email/nama).
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
+	// Undangan bergabung ke workspace. token = rahasia URL (crypto/rand hex via
+	// oauth.NewState). email boleh milik orang yang BELUM punya akun.
+	CreateInvite(ctx context.Context, arg CreateInviteParams) (Invite, error)
+	// Jadikan user anggota workspace dgn role tertentu. Dipakai: register/OAuth (owner
+	// workspace pertama), buat workspace baru (owner), terima invite (admin/member).
+	CreateMembership(ctx context.Context, arg CreateMembershipParams) (Membership, error)
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
 	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
 	// Buat tenant baru (dipanggil saat register/oauth user baru — 1 user = 1 tenant).
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
-	// tenant_id WAJIB di INSERT (RLS WITH CHECK). Pemanggil (register) sudah tahu
-	// tenant dari tenant yang baru dibuat.
+	// users = tabel GLOBAL (identitas murni, TANPA tenant/role — keduanya pindah ke
+	// memberships). Keanggotaan dibuat terpisah via CreateMembership dalam tx sama.
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	// Batalkan undangan yang belum diterima.
+	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error
+	// Keluarkan anggota dari workspace (atau user keluar sendiri).
+	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
+	// Jalur PUBLIK (/invite/{token}) — penerima belum tentu login/anggota. Validasi
+	// kedaluwarsa & sudah-dipakai dilakukan di handler agar pesannya spesifik.
+	GetInviteByToken(ctx context.Context, token string) (GetInviteByTokenRow, error)
+	// Validasi keanggotaan — dipakai middleware Scope SEBELUM membuka tx ber-tenant
+	// (memastikan tenant aktif di session memang milik user; anti tenant-forcing).
+	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
 	GetTenant(ctx context.Context, id int64) (Tenant, error)
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
@@ -33,6 +58,17 @@ type Querier interface {
 	ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
 	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
+	// Undangan PENDING satu workspace (panel anggota) — yang sudah diterima disaring.
+	ListInvitesByTenant(ctx context.Context, tenantID int64) ([]Invite, error)
+	// Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk email
+	// tampilan — users kini tabel global (tanpa RLS), jadi filter tenant di sini.
+	ListMembersByTenant(ctx context.Context, tenantID int64) ([]ListMembersByTenantRow, error)
+	// Daftar workspace milik user (untuk switcher sidebar). Urut terlama dulu agar
+	// workspace pertama (dari register) jadi default stabil.
+	ListMembershipsByUser(ctx context.Context, userID int64) ([]ListMembershipsByUserRow, error)
+	// Membership BANYAK user sekaligus (panel /dev: tampilkan workspace+role tiap
+	// user). Satu query untuk semua id → hindari N+1 (Rule 13).
+	ListMembershipsForUsers(ctx context.Context, userIds []int64) ([]ListMembershipsForUsersRow, error)
 	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
 	ListPlatformStaff(ctx context.Context) ([]PlatformStaff, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
@@ -60,12 +96,14 @@ type Querier interface {
 	SoftDeleteUser(ctx context.Context, id int64) error
 	// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...).
 	TenantSlugExists(ctx context.Context, slug string) (bool, error)
+	UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error
 	// Ganti NAMA tampilan workspace (owner-only, di-guard di handler). Slug SENGAJA
 	// tak diubah — immutable setelah dibuat (stabilitas URL; ganti display != ganti URL).
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error
-	UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error
+	// Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error
 }
 
