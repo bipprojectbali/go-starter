@@ -54,10 +54,22 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
   Ikuti pola itu, jangan bikin mekanisme responsif baru.
 - **Nol overflow horizontal** di 320–375px. Grid/flex turun ke 1 kolom di mobile.
   Konten lebar (angka panjang, URL) pakai `truncate`/`break-words`.
-- **Tabel = titik gagal #1 di mobile.** Tabel lebar (mis. `/dev/users`, `/dev/logs`)
-  WAJIB salah satu: bungkus `overflow-x-auto` (scroll horizontal terkurung, TAK
-  bocor ke halaman) ATAU pola card-stack di `<md`. Jangan biarkan `<table>` telanjang
-  mendorong lebar halaman.
+- **Tabel = titik gagal #1 di mobile → pakai `ui.TableScroll`.** Bungkus SETIAP
+  `<table>` dengan helper itu; ada test regresi (`internal/ui/tablescroll_test.go`)
+  yang menolak `h.Table(` tanpa pembungkus. Dua hal WAJIB bersamaan & mudah lupa:
+  (a) `overflow-x-auto` di pembungkus **langsung** tabel — dipasang di `.card-body`
+  TIDAK menahan (flex-col; min-content tabel tetap menular ke atas), dan (b)
+  `min-w-0` — card/flex-item default `min-width:auto` sehingga MENOLAK menyusut,
+  bikin overflow mubazir. Terukur: satu tabel telanjang membuat `/admin/members`
+  meluber 439px di viewport 375px (H1 pun ikut melar — gejalanya menyesatkan,
+  tampak seperti bug teks).
+- **Baris tombol horizontal wajib `flex-wrap`.** Prev/next + angka halaman tak muat
+  di 375px; tanpa wrap ia mendorong halaman (kejadian di `/dev/health` — `flex-wrap`
+  di wrapper luar TIDAK menurun ke baris dalam).
+- **Cara mendiagnosis overflow** (jangan menebak elemen mana): ukur di browser —
+  `document.documentElement.scrollWidth` vs `clientWidth`, lalu daftar elemen dengan
+  `getBoundingClientRect().right > vw` yang **tak** punya `closest('.overflow-x-auto')`.
+  Yang di dalam kontainer scroll BUKAN pelanggaran; yang di luar itulah pelakunya.
 - **Tap target ≥ 44px** (tombol/link aksi) — daisyUI `.btn` sudah cukup; hati-hati
   ikon-only kecil. **Input `text-base`** (≥16px) agar iOS tak auto-zoom saat fokus.
 - **VERIFIKASI 3 LEBAR WAJIB** sebelum lapor selesai untuk perubahan UI apa pun:
@@ -158,10 +170,12 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
     `<script>` inline tetap diblokir — jadi menambah `unsafe-inline` BUKAN solusi
     (melemahkan CSP; lihat § Batasan).
 
-## Multi-tenancy (RLS + role 2-bidang) — keputusan 0002
+## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002 & 0003
 
 Isolasi tenant ditegakkan **Postgres RLS**, bukan cuma `WHERE tenant_id` di app.
-Baca `docs/decisions/0002` untuk alasan lengkap. Gotcha yang mahal ditemukan ulang:
+Keanggotaan = model **membership** (satu user boleh di banyak workspace dgn role
+berbeda) — `docs/decisions/0003` men-supersede "1 user = 1 tenant" di 0002.
+Gotcha yang mahal ditemukan ulang:
 
 - **`h.q(ctx)`, JANGAN `h.DB`** (dihapus). `h.q` ambil `*db.Queries` ber-tenant dari
   middleware `Scope`. Lupa Scope = **panic keras** (bug wiring ketahuan seketika),
@@ -176,14 +190,27 @@ Baca `docs/decisions/0002` untuk alasan lengkap. Gotcha yang mahal ditemukan ula
   owner/superuser, RLS TAK berlaku (bocor senyap). Dual-DSN: `DATABASE_URL` (owner:
   migrate+boot) vs `APP_DATABASE_URL` (runtime).
 - **super_admin = ENV-ONLY, nol baris DB.** Role efektif di-overlay `RefreshIdentity`
-  per-request (env-check → `platform_staff` lookup → `users.role`). JANGAN tulis
-  `super_admin`/`staff` ke `users.role` (CHECK hanya `owner/admin/member`). Tak ada
-  `PromoteSuperAdmins` (dihapus). `platform_staff` TANPA RLS (platform-scope) → terbaca
-  di WithTenant maupun WithSuper.
-- **1 user = 1 tenant.** Register/OAuth user baru = buat tenant baru + owner (atomik
-  dalam `WithSuper` tx). `tenant_id` di SEMUA user (NOT NULL) termasuk platform —
-  bypass ditentukan role, bukan `tenant_id==0` (hindari FK violation + audit tetap
-  ter-atribusi ke home-tenant).
+  per-request (env-check → `platform_staff` lookup → `memberships.role` di workspace
+  AKTIF). `platform_staff` TANPA RLS (platform-scope) → terbaca di WithTenant maupun
+  WithSuper. Tak ada `PromoteSuperAdmins` (dihapus).
+- **MEMBERSHIP: 1 user ↔ banyak workspace.** Role ada di `memberships` (user × tenant
+  × role), BUKAN di `users` — orang yang sama bisa owner di A & member di B. `users`
+  kini tabel **GLOBAL** (identitas murni): tanpa `tenant_id`/`role`, **KELUAR dari
+  RLS**. Konsekuensi: `ListUsers` (panel /dev) lintas-workspace — itu route platform;
+  daftar anggota workspace pakai `ListMembersByTenant`.
+- **`memberships`/`invites` TANPA RLS — SENGAJA.** Keduanya dibaca justru untuk
+  MENENTUKAN scope (chicken-and-egg: tak bisa bergantung GUC yang belum di-set), dan
+  invite dibuka di jalur publik. Keamanan dari filter query (`WHERE user_id = <uid
+  sesi>` / token rahasia), bukan RLS.
+- **`Scope` MEMVALIDASI keanggotaan** sebelum `WithTenant` (`resolveActiveTenant`):
+  tenant di session itu user-controlled — tanpa cek ini user bisa memaksa workspace
+  orang lain. Tak valid → fallback workspace pertama; tanpa workspace → `/workspace/new`.
+  Validasi HARUS di Scope, bukan RefreshIdentity (yang jalan setelah scope terpilih).
+- **Kuota workspace**: `users.workspace_quota` (default env `MAX_WORKSPACES_PER_USER`).
+  Yang dihitung hanya workspace ber-role **owner** — diundang jadi member/admin tak
+  memakan kuota. `CountTenantOwners` mencegah owner terakhir diturunkan (workspace yatim).
+- **Register/OAuth = user + workspace + membership owner** dalam SATU tx `WithSuper`
+  (atomik). `startIdentity(preferTenant)` memilih workspace aktif.
 - **Audit di tx `WithSuper` TERPISAH** dari Scope tx (fail-soft struktural: gagal
   audit tak abort aksi utama). `tenant_id` audit = tenant aktor.
 - **Test isolasi RLS** (`rls_test.go`) konek `app_rw` non-superuser via `SET ROLE` di

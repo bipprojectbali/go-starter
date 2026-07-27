@@ -3,6 +3,8 @@ package dev
 import (
 	"strconv"
 
+	"go_starter/internal/ui"
+
 	g "maragu.dev/gomponents"
 	h "maragu.dev/gomponents/html"
 )
@@ -170,16 +172,16 @@ func tableCard(title string, headers []string, body []g.Node, empty string) g.No
 		for _, hd := range headers {
 			ths = append(ths, h.Th(h.Class("py-2 pr-4 font-medium"), g.Text(hd)))
 		}
-		content = h.Table(
+		content = ui.TableScroll(h.Table(
 			h.Class("w-full text-sm"),
 			h.THead(h.Tr(ths...)),
 			h.TBody(g.Group(body)),
-		)
+		))
 	}
 	return h.Div(
-		h.Class("card bg-base-100 border border-base-300 mb-4"),
+		h.Class("card bg-base-100 border border-base-300 mb-4 min-w-0"),
 		h.Div(
-			h.Class("card-body overflow-x-auto"),
+			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-2"), g.Text(title)),
 			content,
 		),

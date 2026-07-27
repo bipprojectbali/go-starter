@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go_starter/internal/health"
+	"go_starter/internal/ui"
 
 	g "maragu.dev/gomponents"
 	h "maragu.dev/gomponents/html"
@@ -30,10 +31,10 @@ func HealthPage(res health.Result) g.Node {
 		healthSummary(summary, summaryVariant),
 		healthToolbar(res),
 		h.Div(
-			h.Class("card bg-base-100 border border-base-300 mt-4"),
+			h.Class("card bg-base-100 border border-base-300 mt-4 min-w-0"),
 			h.Div(
-				h.Class("card-body overflow-x-auto"),
-				h.Table(
+				h.Class("card-body min-w-0"),
+				ui.TableScroll(h.Table(
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
@@ -45,7 +46,7 @@ func HealthPage(res health.Result) g.Node {
 						),
 					),
 					h.TBody(g.Map(res.Reports, healthRow)),
-				),
+				)),
 			),
 		),
 		healthPagination(),
@@ -125,14 +126,17 @@ func healthPagination() g.Node {
 	return h.Div(
 		h.Class("mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"),
 		h.Span(h.ID("health-page-info"), h.Class("text-base-content/70")),
+		// flex-wrap di BARIS TOMBOL, bukan hanya di wrapper luar: prev + angka
+		// halaman + next tak muat satu baris di 375px dan akan mendorong lebar
+		// halaman bila tak boleh membungkus (konvensi mobile-first).
 		h.Div(
-			h.Class("flex items-center gap-1"),
+			h.Class("flex flex-wrap items-center gap-1"),
 			h.Button(h.Type("button"), h.ID("health-prev"),
 				h.Class("btn btn-outline btn-sm"),
 				g.Text("Sebelumnya")),
 			// Tombol angka halaman — diisi client-side (jumlah halaman berubah
 			// saat filter aktif, jadi tak bisa di-render server).
-			h.Div(h.ID("health-pages"), h.Class("flex items-center gap-1")),
+			h.Div(h.ID("health-pages"), h.Class("flex flex-wrap items-center gap-1")),
 			h.Button(h.Type("button"), h.ID("health-next"),
 				h.Class("btn btn-outline btn-sm"),
 				g.Text("Berikutnya")),

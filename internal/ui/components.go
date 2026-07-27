@@ -110,6 +110,21 @@ func Card(children ...g.Node) g.Node {
 	)
 }
 
+// TableScroll membungkus <table> agar scroll horizontalnya TERKURUNG, tak
+// mendorong lebar halaman di mobile (konvensi mobile-first).
+//
+// Dua hal WAJIB bersamaan, dan keduanya mudah lupa (terukur: tanpa ini halaman
+// members meluber 439px di viewport 375px):
+//  1. overflow-x-auto pada pembungkus LANGSUNG tabel — bukan pada `.card-body`.
+//     `.card-body` flex-col; overflow di sana tak menahan min-content tabel.
+//  2. min-w-0 — kartu/flex-item default `min-width:auto` sehingga MENOLAK
+//     menyusut di bawah min-content anaknya; overflow jadi mubazir.
+//
+// Pakai helper ini, jangan tulis `overflow-x-auto` manual di card-body.
+func TableScroll(table g.Node) g.Node {
+	return h.Div(h.Class("overflow-x-auto min-w-0 w-full"), table)
+}
+
 // Input adalah field teks daisyUI. `.input` daisyUI sudah punya border + tinggi;
 // tambahkan w-full agar field mengisi lebar kontainer (default daisyUI = auto).
 // attrs untuk data-bind, placeholder, dll.
