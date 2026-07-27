@@ -79,7 +79,13 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
   dropdown di sidebar. Lihat `docs/decisions/0003`.
 - **Undangan**: owner/admin mengundang lewat email di `/admin/members` → tautan
   bertoken (berlaku 7 hari, sekali pakai). Penerima yang belum punya akun otomatis
-  bergabung setelah register. *Pengiriman email belum otomatis — tautan disalin manual.*
+  bergabung setelah register.
+- **Notifikasi** (`/notifications`, ada di semua panel): undangan masuk muncul
+  sendiri di sini — penerima yang **sudah punya akun tak perlu tautan sama sekali**,
+  cukup klik Terima/Tolak. Ditambah kabar keanggotaan (role diubah, dikeluarkan).
+  Badge di sidebar menghitung yang belum dibaca + undangan yang belum ditindak.
+  *Email keluar belum otomatis — untuk penerima yang BELUM punya akun, tautan di
+  `/admin/members` masih disalin manual.*
 - Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
   owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
 - Data tiap workspace terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
@@ -98,6 +104,7 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `/admin` | admin+ | dashboard admin (stub) |
 | `/admin/members` | owner/admin kelola, admin+ lihat | anggota workspace + undangan |
 | `/admin/workspace` | owner ubah, admin+ lihat | pengaturan workspace (ganti nama) |
+| `/notifications` | semua user login | undangan masuk + kabar keanggotaan (lintas-workspace) |
 | `/workspace/new` | semua user login | buat workspace baru (dibatasi kuota) |
 | `/invite/{token}` | publik | terima undangan bergabung |
 | `/user` | user+ | beranda user (stub) |

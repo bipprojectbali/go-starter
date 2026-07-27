@@ -31,11 +31,24 @@ type ShellData struct {
 	Nav           []NavItem
 	QuickLinks    []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
 
+	// Notifications = entri Notifikasi + jumlah yang perlu perhatian. Blok
+	// TERSENDIRI, bukan bagian Nav/QuickLinks: notifikasi milik USER (bisa datang
+	// dari workspace mana pun, termasuk yang belum ia masuki), sedangkan Nav =
+	// menu panel dan QuickLinks = pintasan PINDAH panel. nil → tak dirender.
+	Notifications *NavBadge
+
 	// Workspaces = semua workspace milik user (model membership). >1 → brand jadi
 	// dropdown switcher. ActiveTenantID menandai yang sedang dipakai.
 	Workspaces         []WorkspaceOption
 	ActiveTenantID     int64
 	CanCreateWorkspace bool // kuota belum penuh → tampilkan "Buat workspace baru"
+}
+
+// NavBadge = entri menu dengan penghitung. Count 0 → badge disembunyikan (angka
+// nol bukan informasi; hanya menambah bising).
+type NavBadge struct {
+	Item  NavItem
+	Count int64
 }
 
 // WorkspaceOption = satu workspace di switcher sidebar.
@@ -213,6 +226,9 @@ func shellSidebar(d ShellData) g.Node {
 			navList(d.Nav, d.CurrentPath),
 		),
 
+		// Notifikasi — blok sendiri di atas pintasan panel (lihat ShellData).
+		notifBlock(d),
+
 		// Pintasan lintas-panel (sesuai role) — di atas blok user.
 		quickLinks(d),
 
@@ -237,6 +253,33 @@ func quickLinks(d ShellData) g.Node {
 	return h.Div(
 		h.Class("border-t border-base-300 px-3 py-2 flex flex-col gap-1"),
 		navList(d.QuickLinks, d.CurrentPath),
+	)
+}
+
+// notifBlock merender entri Notifikasi + badge jumlah. nil → tak render apa pun.
+// Memakai navLink yang sama dengan menu lain agar active-state & hover identik;
+// badge ditempel sebagai saudara, bukan cabang render terpisah.
+func notifBlock(d ShellData) g.Node {
+	if d.Notifications == nil {
+		return g.Text("")
+	}
+	it := d.Notifications.Item
+	active := ""
+	if it.Href == d.CurrentPath || strings.HasPrefix(d.CurrentPath, it.Href+"/") {
+		active = it.Href
+	}
+	badge := g.Node(g.Text(""))
+	if d.Notifications.Count > 0 {
+		// app-navlabel: ikut disembunyikan saat sidebar collapse jadi rail ikon
+		// (CSS yang sama dengan label menu) — badge tak menggantung sendirian.
+		badge = h.Span(
+			h.Class("app-navlabel badge badge-primary badge-sm ml-auto"),
+			g.Text(strconv.FormatInt(d.Notifications.Count, 10)),
+		)
+	}
+	return h.Div(
+		h.Class("border-t border-base-300 px-3 py-2 flex flex-col gap-1"),
+		h.Div(h.Class("flex items-center"), navLinkWith(it, active, badge)),
 	)
 }
 
@@ -265,6 +308,13 @@ func activeNavHref(nav []NavItem, currentPath string) string {
 // navLink = satu item menu. active bila href-nya = activeHref (dihitung sekali di
 // navList). title = tooltip (berguna saat rail collapsed, label tersembunyi).
 func navLink(it NavItem, activeHref string) g.Node {
+	return navLinkWith(it, activeHref, nil)
+}
+
+// navLinkWith = navLink + node tambahan di ujung kanan (mis. badge jumlah).
+// Satu implementasi styling untuk semua item menu: varian ber-badge tak bisa
+// menyimpang dari yang polos.
+func navLinkWith(it NavItem, activeHref string, trailing g.Node) g.Node {
 	active := it.Href == activeHref
 	// Base + garis kiri transparan (border-l-2 border-transparent) SELALU ada agar
 	// lebar/posisi item konsisten active vs non-active (tak bergeser 2px). Hover
@@ -293,6 +343,9 @@ func navLink(it NavItem, activeHref string) g.Node {
 		children = append(children, it.Icon)
 	}
 	children = append(children, h.Span(h.Class("app-navlabel truncate"), g.Text(it.Label)))
+	if trailing != nil {
+		children = append(children, trailing)
+	}
 	return h.A(append(attrs, children...)...)
 }
 

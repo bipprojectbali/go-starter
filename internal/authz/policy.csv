@@ -19,6 +19,11 @@ g, super_admin, root
 # member: beranda /user.
 p, member, user:home, read
 
+# notifikasi = milik SETIAP user login (undangan bisa datang dari workspace mana
+# pun, termasuk yang belum ia masuki). Cukup diberikan ke member — semua role di
+# atasnya mewarisi lewat rantai g.
+p, member, notif:home, read
+
 # admin: beranda /admin + kelola member (mewarisi user:home lewat hierarki).
 p, admin, admin:home, read
 p, admin, admin:users, read

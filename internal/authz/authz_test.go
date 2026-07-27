@@ -41,6 +41,15 @@ func TestPolicy_Enforcement(t *testing.T) {
 		{"owner", "user:home", "read", true, "owner warisi member"},
 		{"super_admin", "user:home", "read", true, "super_admin warisi semua"},
 
+		// Notifikasi = milik SETIAP user login. Undangan bisa datang dari workspace
+		// mana pun, jadi tak boleh terbatas satu tingkat role — semua tingkat wajib
+		// lolos lewat rantai g dari member.
+		{"member", "notif:home", "read", true, "member boleh notifikasi"},
+		{"admin", "notif:home", "read", true, "admin warisi notifikasi"},
+		{"owner", "notif:home", "read", true, "owner warisi notifikasi"},
+		{"staff", "notif:home", "read", true, "staff warisi notifikasi (via owner)"},
+		{"super_admin", "notif:home", "read", true, "super_admin lolos notifikasi"},
+
 		// admin panel (tenant).
 		{"admin", "admin:users", "read", true, "admin baca users"},
 		{"admin", "admin:users:btn-delete", "delete", true, "admin hapus (glob keyMatch)"},

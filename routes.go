@@ -136,6 +136,21 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.Get("/invite/{token}", h.InvitePage)
 	r.Post("/invite/{token}/accept", h.InviteAccept)
 
+	// Notifikasi — LINTAS-PANEL (bukan milik /admin maupun /user): undangan bisa
+	// datang dari workspace yang belum jadi milik user. Scope tetap dipasang agar
+	// shell (switcher workspace) punya Queries ber-scope; data notifikasinya
+	// sendiri dibaca via db.WithSuper karena lintas-workspace.
+	r.Route("/notifications", func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Use(h.Scope)
+		r.Use(h.RefreshIdentity)
+		r.Use(h.TrackPresence)
+		r.Use(mw.RequireEnforce("notif:home", "read"))
+		r.Get("/", h.NotificationsPage)
+		r.Post("/invite/{token}/accept", h.NotificationAccept)
+		r.Post("/invite/{token}/decline", h.NotificationDecline)
+	})
+
 	// Beranda /user — semua user login (admin/super mewarisi user:home).
 	r.Route("/user", func(r chi.Router) {
 		r.Use(mw.RequireAuth)

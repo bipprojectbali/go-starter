@@ -23,6 +23,20 @@ func (q *Queries) AcceptInvite(ctx context.Context, token string) error {
 	return err
 }
 
+const countPendingInvitesByEmail = `-- name: CountPendingInvitesByEmail :one
+SELECT count(*)::bigint FROM invites
+WHERE lower(email) = $1 AND accepted_at IS NULL AND expires_at > now()
+`
+
+// Bagian "perlu tindakan" dari badge. Undangan pending SENGAJA tak pernah
+// ter-auto-read: ia tugas, bukan kabar — lihat MarkNotificationsRead.
+func (q *Queries) CountPendingInvitesByEmail(ctx context.Context, email string) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingInvitesByEmail, email)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createInvite = `-- name: CreateInvite :one
 INSERT INTO invites (tenant_id, email, role, token, invited_by, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -64,6 +78,25 @@ func (q *Queries) CreateInvite(ctx context.Context, arg CreateInviteParams) (Inv
 	return i, err
 }
 
+const declineInvite = `-- name: DeclineInvite :exec
+DELETE FROM invites
+WHERE token = $1 AND lower(email) = $2 AND accepted_at IS NULL
+`
+
+type DeclineInviteParams struct {
+	Token string `json:"token"`
+	Email string `json:"email"`
+}
+
+// Tolak undangan (sisi PENERIMA). Kunci ganda token + email: penerima tak punya
+// scope ke workspace pengundang, jadi DeleteInvite (yang butuh tenant_id) tak
+// bisa dipakai. Mencocokkan email mencegah pemegang token menolak undangan
+// milik orang lain.
+func (q *Queries) DeclineInvite(ctx context.Context, arg DeclineInviteParams) error {
+	_, err := q.db.Exec(ctx, declineInvite, arg.Token, arg.Email)
+	return err
+}
+
 const deleteInvite = `-- name: DeleteInvite :exec
 DELETE FROM invites WHERE id = $1 AND tenant_id = $2
 `
@@ -73,7 +106,7 @@ type DeleteInviteParams struct {
 	TenantID int64 `json:"tenant_id"`
 }
 
-// Batalkan undangan yang belum diterima.
+// Batalkan undangan yang belum diterima (sisi PENGUNDANG, di panel anggota).
 func (q *Queries) DeleteInvite(ctx context.Context, arg DeleteInviteParams) error {
 	_, err := q.db.Exec(ctx, deleteInvite, arg.ID, arg.TenantID)
 	return err
@@ -147,6 +180,63 @@ func (q *Queries) ListInvitesByTenant(ctx context.Context, tenantID int64) ([]In
 			&i.AcceptedAt,
 			&i.ExpiresAt,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingInvitesByEmail = `-- name: ListPendingInvitesByEmail :many
+SELECT i.id, i.tenant_id, i.email, i.role, i.token, i.invited_by, i.accepted_at, i.expires_at, i.created_at, t.name AS tenant_name
+FROM invites i
+JOIN tenants t ON t.id = i.tenant_id
+WHERE lower(i.email) = $1 AND i.accepted_at IS NULL AND i.expires_at > now()
+ORDER BY i.created_at DESC
+`
+
+type ListPendingInvitesByEmailRow struct {
+	ID         int64              `json:"id"`
+	TenantID   int64              `json:"tenant_id"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	Token      string             `json:"token"`
+	InvitedBy  *int64             `json:"invited_by"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	TenantName string             `json:"tenant_name"`
+}
+
+// Undangan yang ditujukan ke SATU ORANG (halaman notifikasi). Dicari per-email,
+// bukan user_id: saat diundang penerima belum tentu punya akun.
+//
+// lower(email) = $1 — pemanggil WAJIB mengirim email yang sudah di-lowercase
+// (pola auth.go/invite.go). Ditopang index partial idx_invites_email.
+func (q *Queries) ListPendingInvitesByEmail(ctx context.Context, email string) ([]ListPendingInvitesByEmailRow, error) {
+	rows, err := q.db.Query(ctx, listPendingInvitesByEmail, email)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingInvitesByEmailRow{}
+	for rows.Next() {
+		var i ListPendingInvitesByEmailRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.Email,
+			&i.Role,
+			&i.Token,
+			&i.InvitedBy,
+			&i.AcceptedAt,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.TenantName,
 		); err != nil {
 			return nil, err
 		}

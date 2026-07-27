@@ -47,6 +47,16 @@ type Membership struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type Notification struct {
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	TenantID  *int64             `json:"tenant_id"`
+	Kind      string             `json:"kind"`
+	Payload   []byte             `json:"payload"`
+	ReadAt    pgtype.Timestamptz `json:"read_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type OauthAccount struct {
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`

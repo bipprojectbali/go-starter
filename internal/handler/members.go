@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"net/http"
 
 	"go_starter/internal/authz"
@@ -12,16 +11,6 @@ import (
 
 // members.go — kelola ANGGOTA workspace aktif (model membership). Dipisah dari
 // workspace.go (pengaturan nama) agar tiap file di bawah batas handler 150 baris.
-
-// canManageMembers melaporkan apakah aktor boleh mengelola anggota workspace:
-// owner/admin tenant, atau platform (super_admin/staff yang membantu).
-func canManageMembers(ctx context.Context) bool {
-	if session.IsRoot(ctx) {
-		return true
-	}
-	role := session.Role(ctx)
-	return role == authz.RoleNameOwner || role == authz.RoleNameAdmin || isPlatformRole(role)
-}
 
 // MembersPage — GET /admin/members. Daftar anggota + undangan pending.
 func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +92,9 @@ func (h *Handler) MemberSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(ctx, actor.ID, "member.role.update", targetID, map[string]string{"to": newRole})
+	// Beri tahu yang bersangkutan — perubahan role mengubah apa yang bisa ia
+	// lakukan, jadi ia berhak tahu tanpa harus menyadarinya sendiri.
+	h.notify(ctx, targetID, tenantID, "member.role.changed", notifPayload{Role: newRole})
 	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
 }
 
@@ -142,5 +134,9 @@ func (h *Handler) MemberRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(ctx, actor.ID, "member.remove", targetID, nil)
+	// Notifikasi ditulis SETELAH membership dihapus — sengaja: baris notifikasi
+	// hanya ber-FK ke tenants (bukan memberships), jadi tetap ada & terbaca oleh
+	// mantan anggota yang sudah tak punya akses ke workspace itu.
+	h.notify(ctx, targetID, tenantID, "member.removed", notifPayload{})
 	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
 }

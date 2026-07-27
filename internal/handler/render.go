@@ -131,6 +131,7 @@ func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, bra
 		CSSPath:            cssPath,
 		Nav:                nav,
 		QuickLinks:         quickLinksFor(r.Context()),
+		Notifications:      h.notifBadge(r.Context()),
 		Workspaces:         workspaces,
 		ActiveTenantID:     session.TenantID(r.Context()),
 		CanCreateWorkspace: canCreate,

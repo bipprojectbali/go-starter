@@ -48,9 +48,9 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	t.Cleanup(pool.Close)
 
 	q := db.New(pool)
-	// memberships & invites ikut dibersihkan (model membership). RESTART IDENTITY
-	// agar id deterministik.
-	if _, err := pool.Exec(ctx, "TRUNCATE activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
+	// memberships, invites & notifications ikut dibersihkan. RESTART IDENTITY agar
+	// id deterministik.
+	if _, err := pool.Exec(ctx, "TRUNCATE notifications, activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	tenant, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: "Test", Slug: "test"})

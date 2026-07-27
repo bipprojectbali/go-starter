@@ -198,6 +198,14 @@ Gotcha yang mahal ditemukan ulang:
   kini tabel **GLOBAL** (identitas murni): tanpa `tenant_id`/`role`, **KELUAR dari
   RLS**. Konsekuensi: `ListUsers` (panel /dev) lintas-workspace — itu route platform;
   daftar anggota workspace pakai `ListMembersByTenant`.
+- **`notifications` TANPA RLS — SENGAJA, dan berbeda alasannya.** Bukan
+  chicken-and-egg, tapi SEMANTIK: notifikasi milik USER dan lintas-workspace
+  (undangan justru datang dari workspace yang BELUM jadi miliknya). RLS
+  `tenant_id = GUC` malah akan menyembunyikan yang di luar workspace aktif —
+  yaitu inti fiturnya. `tenant_id` di tabel ini cuma KONTEKS tampilan (nullable),
+  bukan kunci isolasi. Konsekuensi: **jangan `h.q(ctx)`** (ter-scope satu tenant)
+  — pakai `db.WithSuper` + `WHERE user_id/email` sebagai satu-satunya penjaga,
+  dengan test isolasi antar-user sebagai pengganti jaring RLS.
 - **`memberships`/`invites` TANPA RLS — SENGAJA.** Keduanya dibaca justru untuk
   MENENTUKAN scope (chicken-and-egg: tak bisa bergantung GUC yang belum di-set), dan
   invite dibuka di jalur publik. Keamanan dari filter query (`WHERE user_id = <uid

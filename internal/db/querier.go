@@ -16,9 +16,15 @@ type Querier interface {
 	// Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
 	// membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
 	CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error)
+	// Bagian "perlu tindakan" dari badge. Undangan pending SENGAJA tak pernah
+	// ter-auto-read: ia tugas, bukan kabar — lihat MarkNotificationsRead.
+	CountPendingInvitesByEmail(ctx context.Context, email string) (int64, error)
 	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
 	// (workspace tanpa owner = yatim).
 	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
+	// Badge sidebar — dirender di SETIAP halaman, ditopang index partial
+	// idx_notif_unread agar tak menyentuh baris yang sudah terbaca.
+	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
 	// Jejak aksi admin. metadata TANPA PII (id saja, bukan email/nama).
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) (AuditLog, error)
 	// Undangan bergabung ke workspace. token = rahasia URL (crypto/rand hex via
@@ -27,6 +33,9 @@ type Querier interface {
 	// Jadikan user anggota workspace dgn role tertentu. Dipakai: register/OAuth (owner
 	// workspace pertama), buat workspace baru (owner), terima invite (admin/member).
 	CreateMembership(ctx context.Context, arg CreateMembershipParams) (Membership, error)
+	// Dipanggil saat peristiwa keanggotaan terjadi (role diubah, dikeluarkan).
+	// payload = snapshot detail siap-render; lihat migrasi 00009.
+	CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error)
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
 	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
@@ -35,7 +44,12 @@ type Querier interface {
 	// users = tabel GLOBAL (identitas murni, TANPA tenant/role — keduanya pindah ke
 	// memberships). Keanggotaan dibuat terpisah via CreateMembership dalam tx sama.
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	// Batalkan undangan yang belum diterima.
+	// Tolak undangan (sisi PENERIMA). Kunci ganda token + email: penerima tak punya
+	// scope ke workspace pengundang, jadi DeleteInvite (yang butuh tenant_id) tak
+	// bisa dipakai. Mencocokkan email mencegah pemegang token menolak undangan
+	// milik orang lain.
+	DeclineInvite(ctx context.Context, arg DeclineInviteParams) error
+	// Batalkan undangan yang belum diterima (sisi PENGUNDANG, di panel anggota).
 	DeleteInvite(ctx context.Context, arg DeleteInviteParams) error
 	// Keluarkan anggota dari workspace (atau user keluar sendiri).
 	DeleteMembership(ctx context.Context, arg DeleteMembershipParams) error
@@ -69,10 +83,27 @@ type Querier interface {
 	// Membership BANYAK user sekaligus (panel /dev: tampilkan workspace+role tiap
 	// user). Satu query untuk semua id → hindari N+1 (Rule 13).
 	ListMembershipsForUsers(ctx context.Context, userIds []int64) ([]ListMembershipsForUsersRow, error)
+	// Keyset pagination (pola ListUsers) — cast ::timestamptz/::bigint WAJIB, tanpa
+	// itu sqlc salah infer tipe cursor_id pada row-value comparison.
+	//
+	// `user_id = $1` BUKAN sekadar filter tampilan: notifications sengaja TANPA RLS
+	// (lihat 00009), jadi klausa ini adalah SATU-SATUNYA penjaga isolasi antar-user.
+	// Jangan pernah menghapusnya "karena sudah difilter di Go".
+	ListNotifications(ctx context.Context, arg ListNotificationsParams) ([]ListNotificationsRow, error)
 	ListOAuthAccountsByUser(ctx context.Context, userID int64) ([]OauthAccount, error)
+	// Undangan yang ditujukan ke SATU ORANG (halaman notifikasi). Dicari per-email,
+	// bukan user_id: saat diundang penerima belum tentu punya akun.
+	//
+	// lower(email) = $1 — pemanggil WAJIB mengirim email yang sudah di-lowercase
+	// (pola auth.go/invite.go). Ditopang index partial idx_invites_email.
+	ListPendingInvitesByEmail(ctx context.Context, email string) ([]ListPendingInvitesByEmailRow, error)
 	ListPlatformStaff(ctx context.Context) ([]PlatformStaff, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
+	// Auto-read saat halaman dibuka. Undangan TIDAK tersentuh di sini — memang tak
+	// disimpan di tabel ini (sumber kebenarannya tetap `invites`), sehingga undangan
+	// pending tetap terhitung di badge sampai benar-benar ditindak.
+	MarkNotificationsRead(ctx context.Context, userID int64) error
 	// Tren per HARI-LOKAL untuk rentang mingguan/bulanan (line chart).
 	PresenceByDay(ctx context.Context, arg PresenceByDayParams) ([]PresenceByDayRow, error)
 	// Distribusi aktivitas per JAM-LOKAL untuk satu rentang (bar "aktivitas per jam").

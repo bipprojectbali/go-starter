@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
 
@@ -14,6 +15,18 @@ import (
 
 // invite_service.go — logika undangan (validasi token, terima, auto-accept).
 // Dipisah dari invite.go (handler HTTP) agar tiap file di bawah batas 150 baris.
+
+// canManageMembers melaporkan apakah aktor boleh mengelola anggota workspace:
+// owner/admin tenant, atau platform (super_admin/staff yang membantu). Tinggal
+// di sini karena dipakai BERSAMA oleh members.go & invite.go — mengundang dan
+// mengelola anggota adalah izin yang sama.
+func canManageMembers(ctx context.Context) bool {
+	if session.IsRoot(ctx) {
+		return true
+	}
+	role := session.Role(ctx)
+	return role == authz.RoleNameOwner || role == authz.RoleNameAdmin || isPlatformRole(role)
+}
 
 var (
 	errInviteNotFound = errors.New("undangan tidak ditemukan")
