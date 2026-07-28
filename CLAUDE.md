@@ -76,6 +76,30 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
   agent-browser `set_viewport` ke **375** (mobile), **768** (tablet), **1280**
   (desktop) + screenshot tiap lebar. Bukti visual, bukan klaim "sudah responsif".
 
+## Identitas panel (/user · /admin · /dev)
+
+Ketiga panel memakai AppShell yang SAMA. Tanpa penanda, user tak tahu sedang di
+shell mana — dan itu bukan cuma kosmetik: **`/dev` menampilkan data LINTAS-workspace**
+(`ListUsers` melihat semua tenant), jadi salah mengira sedang di `/admin` = salah
+membaca cakupan data.
+
+- **Sumbernya `internal/ui/panelkind.go`** (`Panel` bertipe + `panelStyles` array
+  berindeks enum → menambah panel tanpa gaya = compile error). Handler tak perlu
+  mengoper apa-apa: `panelOf(ctx, currentPath)` menurunkannya dari path, dan
+  halaman lintas-panel (`/notifications`) jatuh ke ROLE — sumber yang sama dengan
+  `navFor`, supaya chip tak pernah bertentangan dengan menu yang tampil.
+- **DUA penanda, sengaja**: chip TEKS (`RUANG KERJA`/`ADMIN`/`PLATFORM`) + aksen
+  warna di tepi atas sidebar. Teks saja kurang menonjol; warna saja gagal untuk
+  yang buta warna. Keduanya juga saling menutupi keadaan: saat sidebar collapse
+  jadi rail 4rem, `.app-brand` disembunyikan penuh oleh `input.css` (chip ikut
+  hilang) — **aksen tepi yang bertahan**. Jangan hapus salah satunya.
+- **Warna WAJIB token semantik daisyUI** (`primary`/`secondary`/`warning`), bukan
+  absolut (`bg-red-500`) — token didefinisikan ulang tiap tema (gotcha #11).
+  `/dev` memakai `warning` bukan sebagai warna ketiga, tapi sebagai peringatan.
+  Terverifikasi terbaca di ke-6 tema (selisih luminance 0.41–0.69).
+- Chip **menggantikan** sub-label `go_starter /admin`, tidak menumpuk — dua
+  penanda konteks di satu tempat justru bising.
+
 ## Gotcha (mahal — jangan temukan ulang)
 
 1. **CSP wajib `unsafe-eval`.** Datastar mengevaluasi ekspresi `data-*` via

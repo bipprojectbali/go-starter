@@ -31,6 +31,11 @@ type ShellData struct {
 	Nav           []NavItem
 	QuickLinks    []NavItem // pintasan lintas-panel (sesuai role), di footer sidebar
 
+	// Panel = identitas visual shell yang sedang dibuka (lihat panelkind.go).
+	// Ketiga panel memakai AppShell yang sama; tanpa ini user tak tahu sedang
+	// di mana — dan /dev menampilkan data lintas-workspace.
+	Panel Panel
+
 	// Notifications = entri Notifikasi + jumlah yang perlu perhatian. Blok
 	// TERSENDIRI, bukan bagian Nav/QuickLinks: notifikasi milik USER (bisa datang
 	// dari workspace mana pun, termasuk yang belum ia masuki), sedangkan Nav =
@@ -125,18 +130,59 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 // rail collapsed (konsisten label lain).
 func shellBrand(d ShellData) g.Node {
 	if d.WorkspaceName == "" {
-		return h.Span(h.Class("app-brand flex-1 font-semibold truncate"), g.Text(d.BrandLabel))
+		return h.Div(
+			h.Class("app-brand flex-1 min-w-0 flex flex-col justify-center leading-tight"),
+			h.Span(h.Class("font-semibold truncate"), g.Text(d.BrandLabel)),
+			panelChip(d.Panel),
+		)
 	}
 	label := h.Div(
 		h.Class("min-w-0 flex flex-col justify-center leading-tight text-left"),
 		h.Span(h.Class("font-semibold truncate"), g.Text(d.WorkspaceName)),
-		h.Span(h.Class("app-navlabel text-xs text-base-content/60 truncate"), g.Text(d.BrandLabel)),
+		// Baris kedua = identitas PANEL. Chip berwarna bila panel dikenal; kalau
+		// tidak, jatuh ke sub-label lama (halaman di luar ketiga panel).
+		panelSubLabel(d),
 	)
 	// Satu workspace & tak bisa buat baru → teks biasa (tak perlu dropdown).
 	if len(d.Workspaces) <= 1 && !d.CanCreateWorkspace {
 		return h.Div(h.Class("app-brand flex-1 min-w-0"), label)
 	}
 	return h.Div(h.Class("app-brand flex-1 min-w-0"), workspaceSwitcher(d, label))
+}
+
+// panelSubLabel = baris kedua brand: chip panel bila dikenal, selainnya
+// sub-label teks lama (mis. halaman di luar ketiga panel).
+func panelSubLabel(d ShellData) g.Node {
+	if d.Panel.style().Label != "" {
+		return panelChip(d.Panel)
+	}
+	return h.Span(h.Class("app-navlabel text-xs text-base-content/60 truncate"), g.Text(d.BrandLabel))
+}
+
+// panelChip = penanda TEKS panel yang sedang dibuka. Teks + warna sekaligus:
+// yang tak menangkap warna tetap membaca "PLATFORM". Saat sidebar collapse jadi
+// rail 4rem, chip ikut tersembunyi lewat induknya `.app-brand` (input.css) —
+// itulah kenapa aksen tepi ada: penanda tetap hidup saat rail (terverifikasi).
+func panelChip(p Panel) g.Node {
+	st := p.style()
+	if st.Label == "" {
+		return g.Text("")
+	}
+	return h.Span(
+		h.Class("app-navlabel badge badge-xs "+st.Chip+" mt-0.5 w-fit font-medium tracking-wide"),
+		g.Text(st.Label),
+	)
+}
+
+// panelEdge = garis aksen tipis di tepi ATAS sidebar. Penanda yang tertangkap
+// tanpa membaca, dan tetap terlihat saat sidebar jadi rail ikon (saat itu chip
+// tersembunyi) — jadi keduanya saling menutupi, bukan mengulang.
+func panelEdge(p Panel) g.Node {
+	st := p.style()
+	if st.Edge == "" {
+		return g.Text("")
+	}
+	return h.Div(h.Class("h-1 shrink-0 " + st.Edge))
 }
 
 // workspaceSwitcher = dropdown pindah workspace (model membership: satu user bisa
@@ -204,6 +250,10 @@ func shellSidebar(d ShellData) g.Node {
 		// ClassOn mengutip nama class otomatis → key ber-hyphen mustahil salah
 		// (gotcha #5). Bandingkan data.Class mentah yang butuh kutip manual.
 		ClassOn("translate-x-0", "$sidebarOpen"),
+
+		// Aksen panel di tepi paling atas — terlihat lebih dulu dari apa pun,
+		// dan tetap ada saat sidebar collapse (chip ikut tersembunyi).
+		panelEdge(d.Panel),
 
 		// Header sidebar: brand + tombol collapse (desktop). Brand = nama workspace
 		// (utama) + konteks panel (sub-label kecil). Platform tanpa nama → BrandLabel.

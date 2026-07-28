@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strings"
 
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
@@ -43,6 +44,51 @@ func brandFor(ctx context.Context) string {
 		return "go_starter /admin"
 	default:
 		return "go_starter"
+	}
+}
+
+// panelFor menentukan identitas visual shell dari path yang sedang dibuka
+// (chip + aksen warna, lihat ui/panelkind.go). Diturunkan dari currentPath —
+// BUKAN parameter baru renderShell — agar 9 pemanggilnya tak perlu diubah dan
+// mustahil lupa mengoper: satu path selalu memetakan ke satu panel.
+//
+// /notifications lintas-panel: shell-nya mengikuti navFor (role), jadi
+// pemetaannya diserahkan ke panelForRole agar chip selalu cocok dengan menu
+// yang tampil — bukan menampilkan menu /dev berlabel RUANG KERJA.
+func panelFor(currentPath string) ui.Panel {
+	switch {
+	case strings.HasPrefix(currentPath, "/dev"):
+		return ui.PanelDev
+	case strings.HasPrefix(currentPath, "/admin"):
+		return ui.PanelAdmin
+	case strings.HasPrefix(currentPath, "/user"):
+		return ui.PanelUser
+	default:
+		return ui.PanelNone
+	}
+}
+
+// panelOf = titik masuk tunggal yang dipakai renderShell: path yang dikenal
+// menentukan panel; halaman lintas-panel (path tak dikenal, mis. /notifications)
+// jatuh ke role — sumber yang SAMA dengan navFor, sehingga chip tak pernah
+// bertentangan dengan menu yang tampil.
+func (h *Handler) panelOf(ctx context.Context, currentPath string) ui.Panel {
+	if p := panelFor(currentPath); p != ui.PanelNone {
+		return p
+	}
+	return panelForRole(ctx)
+}
+
+// panelForRole = pasangan navFor/brandFor untuk halaman lintas-panel.
+func panelForRole(ctx context.Context) ui.Panel {
+	role := session.Role(ctx)
+	switch {
+	case isPlatformRole(role) || session.IsRoot(ctx):
+		return ui.PanelDev
+	case role == authz.RoleNameOwner || role == authz.RoleNameAdmin:
+		return ui.PanelAdmin
+	default:
+		return ui.PanelUser
 	}
 }
 

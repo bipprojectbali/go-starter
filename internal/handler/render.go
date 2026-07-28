@@ -130,6 +130,7 @@ func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, bra
 		AvatarURL:          session.AvatarURL(r.Context()),
 		CSSPath:            cssPath,
 		Nav:                nav,
+		Panel:              h.panelOf(r.Context(), currentPath),
 		QuickLinks:         quickLinksFor(r.Context()),
 		Notifications:      h.notifBadge(r.Context()),
 		Workspaces:         workspaces,

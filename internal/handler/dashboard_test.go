@@ -29,7 +29,10 @@ func TestAdminHome_Renders(t *testing.T) {
 		t.Fatalf("AdminHome harus 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Dashboard Admin", "go_starter /admin", "aria-current"} {
+	// Konteks panel kini ditandai CHIP ("ADMIN") + aksen warna, menggantikan
+	// sub-label abu "go_starter /admin" yang praktis tak terbaca sekilas —
+	// ketiga panel memakai shell yang sama, lihat ui/panelkind.go.
+	for _, want := range []string{"Dashboard Admin", "ADMIN", "badge-secondary", "aria-current"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("admin shell kurang %q", want)
 		}
