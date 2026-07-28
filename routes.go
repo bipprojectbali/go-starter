@@ -79,6 +79,14 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/users/{id}/status", h.DevUserSetStatus)
 		r.Post("/users/{id}/delete", h.DevUserDelete)
 
+		// Workspace lintas-platform (0005): tangguhkan/aktifkan/pulihkan. Suspend
+		// PLATFORM-ONLY dan sengaja tak punya padanan di sisi owner — kalau owner
+		// bisa membatalkannya sendiri, gunanya hilang.
+		r.Get("/workspaces", h.DevWorkspaces)
+		r.Post("/workspaces/{id}/suspend", h.DevWorkspaceSuspend)
+		r.Post("/workspaces/{id}/unsuspend", h.DevWorkspaceUnsuspend)
+		r.Post("/workspaces/{id}/restore", h.DevWorkspaceRestore)
+
 		// Panel aktivitas user — TERSEDIA di produksi (data-driven, super_admin
 		// butuh pantau aktivitas nyata). Beda dari /health & /erd yang dev-only.
 		r.Get("/logs", h.DevLogs)
@@ -113,6 +121,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		// Handler pakai db.WithSuper langsung (membership belum ada).
 		r.Get("/workspace/new", h.WorkspaceNewPage)
 		r.Post("/workspace/new", h.WorkspaceCreate)
+
+		// Unarchive SENGAJA di luar /w/{workspace} (0005 §4): gerbang read-only
+		// workspace terarsip memblokir SEMUA POST di dalamnya, jadi pintu keluarnya
+		// harus berada di luar ruangan yang ia buka. Konsekuensinya handler ini
+		// memvalidasi keanggotaan & otoritasnya sendiri (isOwnerOf).
+		r.Post("/workspace/{workspace}/unarchive", h.WorkspaceUnarchive)
 	})
 
 	// Undangan — PUBLIK (penerima belum tentu punya akun). Tanpa Scope: penerima
@@ -163,6 +177,12 @@ func registerWorkspaceRoutes(r chi.Router, h *handler.Handler) {
 		// (di-guard handler, bukan route, agar admin tetap bisa membuka read-only).
 		r.Get("/settings", h.WorkspaceSettings)
 		r.Post("/settings", h.WorkspaceUpdate)
+
+		// Siklus hidup oleh OWNER (0005). Keduanya POST di dalam workspace, jadi
+		// otomatis tertolak saat workspace sudah diarsipkan — kecuali unarchive,
+		// yang justru karena itu diletakkan di luar prefix ini.
+		r.Post("/archive", h.WorkspaceArchive)
+		r.Post("/delete", h.WorkspaceDelete)
 
 		// Anggota (model membership). Lihat = semua anggota; ubah/keluarkan/undang
 		// = owner/admin (di-guard handler via canManageMembers).

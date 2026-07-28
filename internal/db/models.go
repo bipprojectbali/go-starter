@@ -24,7 +24,7 @@ type AuditLog struct {
 	TargetID    *int64             `json:"target_id"`
 	Metadata    []byte             `json:"metadata"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	TenantID    int64              `json:"tenant_id"`
+	TenantID    *int64             `json:"tenant_id"`
 }
 
 type Invite struct {
@@ -73,11 +73,16 @@ type PlatformStaff struct {
 }
 
 type Tenant struct {
-	ID        int64              `json:"id"`
-	Name      string             `json:"name"`
-	Slug      string             `json:"slug"`
-	Status    string             `json:"status"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID            int64              `json:"id"`
+	Name          string             `json:"name"`
+	Slug          string             `json:"slug"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
+	SuspendedAt   pgtype.Timestamptz `json:"suspended_at"`
+	SuspendedBy   *int64             `json:"suspended_by"`
+	SuspendReason *string            `json:"suspend_reason"`
+	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
 }
 
 type User struct {

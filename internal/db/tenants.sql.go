@@ -7,12 +7,39 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const archiveTenant = `-- name: ArchiveTenant :exec
+UPDATE tenants
+SET status = 'archived', archived_at = now()
+WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+`
+
+// OWNER. Workspace jadi READ-ONLY tapi datanya utuh. Guard `status = 'active'`
+// mencegah archive menimpa SUSPENSI platform — kalau tidak, owner bisa keluar
+// dari suspensi lewat pintu samping (archive lalu unarchive).
+func (q *Queries) ArchiveTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, archiveTenant, id)
+	return err
+}
+
+const countTenantsForPlatform = `-- name: CountTenantsForPlatform :one
+SELECT count(*)::bigint FROM tenants
+`
+
+func (q *Queries) CountTenantsForPlatform(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countTenantsForPlatform)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
 
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (name, slug)
 VALUES ($1, $2)
-RETURNING id, name, slug, status, created_at
+RETURNING id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at
 `
 
 type CreateTenantParams struct {
@@ -30,12 +57,17 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 		&i.Slug,
 		&i.Status,
 		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.SuspendedAt,
+		&i.SuspendedBy,
+		&i.SuspendReason,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getTenant = `-- name: GetTenant :one
-SELECT id, name, slug, status, created_at FROM tenants WHERE id = $1
+SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants WHERE id = $1
 `
 
 func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
@@ -47,14 +79,22 @@ func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
 		&i.Slug,
 		&i.Status,
 		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.SuspendedAt,
+		&i.SuspendedBy,
+		&i.SuspendReason,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getTenantBySlug = `-- name: GetTenantBySlug :one
-SELECT id, name, slug, status, created_at FROM tenants WHERE slug = $1
+SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants WHERE slug = $1
 `
 
+// SENGAJA tanpa filter deleted_at: middleware Scope perlu MEMBEDAKAN "workspace
+// tak pernah ada" dari "workspace terhapus" (0005) — keduanya berujung 404 bagi
+// user, tapi jalur restore/purge platform butuh barisnya tetap terbaca.
 func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, error) {
 	row := q.db.QueryRow(ctx, getTenantBySlug, slug)
 	var i Tenant
@@ -64,20 +104,210 @@ func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, err
 		&i.Slug,
 		&i.Status,
 		&i.CreatedAt,
+		&i.DeletedAt,
+		&i.SuspendedAt,
+		&i.SuspendedBy,
+		&i.SuspendReason,
+		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const listExpiredTenants = `-- name: ListExpiredTenants :many
+SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants
+WHERE deleted_at IS NOT NULL AND deleted_at < $1
+ORDER BY deleted_at
+`
+
+// Kandidat purge permanen: terhapus melewati masa tenggang. Dipanggil perintah
+// terjadwal, TAK PERNAH di jalur request (purge = kerja berat & tak reversibel).
+func (q *Queries) ListExpiredTenants(ctx context.Context, deletedAt pgtype.Timestamptz) ([]Tenant, error) {
+	rows, err := q.db.Query(ctx, listExpiredTenants, deletedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Tenant{}
+	for rows.Next() {
+		var i Tenant
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Status,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.SuspendedAt,
+			&i.SuspendedBy,
+			&i.SuspendReason,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTenantsForPlatform = `-- name: ListTenantsForPlatform :many
+SELECT t.id, t.name, t.slug, t.status, t.created_at, t.deleted_at, t.suspended_at, t.suspended_by, t.suspend_reason, t.archived_at, count(m.user_id)::bigint AS member_count
+FROM tenants t
+LEFT JOIN memberships m ON m.tenant_id = t.id
+GROUP BY t.id
+ORDER BY t.created_at DESC, t.id DESC
+LIMIT $1 OFFSET $2
+`
+
+type ListTenantsForPlatformParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListTenantsForPlatformRow struct {
+	ID            int64              `json:"id"`
+	Name          string             `json:"name"`
+	Slug          string             `json:"slug"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
+	SuspendedAt   pgtype.Timestamptz `json:"suspended_at"`
+	SuspendedBy   *int64             `json:"suspended_by"`
+	SuspendReason *string            `json:"suspend_reason"`
+	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
+	MemberCount   int64              `json:"member_count"`
+}
+
+// Daftar workspace untuk panel /dev (lintas-workspace — route platform). Termasuk
+// yang suspended/archived: justru itu yang perlu dilihat operator. Yang TERHAPUS
+// ikut tampil agar restore masih mungkin selama masa tenggang.
+func (q *Queries) ListTenantsForPlatform(ctx context.Context, arg ListTenantsForPlatformParams) ([]ListTenantsForPlatformRow, error) {
+	rows, err := q.db.Query(ctx, listTenantsForPlatform, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTenantsForPlatformRow{}
+	for rows.Next() {
+		var i ListTenantsForPlatformRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Status,
+			&i.CreatedAt,
+			&i.DeletedAt,
+			&i.SuspendedAt,
+			&i.SuspendedBy,
+			&i.SuspendReason,
+			&i.ArchivedAt,
+			&i.MemberCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const purgeTenant = `-- name: PurgeTenant :exec
+DELETE FROM tenants WHERE id = $1 AND deleted_at IS NOT NULL
+`
+
+// Hapus PERMANEN. memberships/invites/notifications ikut CASCADE (data
+// operasional); audit_logs TIDAK — FK-nya ON DELETE SET NULL sejak migrasi 00010,
+// sebab bukti tak boleh lenyap bersama yang dibuktikan (0005 §6).
+func (q *Queries) PurgeTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, purgeTenant, id)
+	return err
+}
+
+const restoreTenant = `-- name: RestoreTenant :exec
+UPDATE tenants
+SET deleted_at = NULL, status = 'active', archived_at = NULL
+WHERE id = $1 AND deleted_at IS NOT NULL
+`
+
+// Batalkan penghapusan dalam masa tenggang. Status dikembalikan ke 'active':
+// workspace yang dihapus saat ter-arsip pun kembali sebagai aktif — pemulihan
+// harus meninggalkan keadaan yang bisa langsung dipakai, bukan setengah jalan.
+func (q *Queries) RestoreTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, restoreTenant, id)
+	return err
+}
+
+const softDeleteTenant = `-- name: SoftDeleteTenant :exec
+UPDATE tenants SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+`
+
+// Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
+func (q *Queries) SoftDeleteTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, softDeleteTenant, id)
+	return err
+}
+
+const suspendTenant = `-- name: SuspendTenant :exec
+UPDATE tenants
+SET status = 'suspended', suspended_at = now(), suspended_by = $2, suspend_reason = $3
+WHERE id = $1 AND deleted_at IS NULL
+`
+
+type SuspendTenantParams struct {
+	ID            int64   `json:"id"`
+	SuspendedBy   *int64  `json:"suspended_by"`
+	SuspendReason *string `json:"suspend_reason"`
+}
+
+// PLATFORM-ONLY (super_admin/staff). Owner tak bisa membatalkannya sendiri —
+// kalau bisa, gunanya hilang (0005 §1). Alasan disimpan agar pertanyaan support
+// pertama ("kenapa workspace saya mati") terjawab tanpa menggali audit log.
+func (q *Queries) SuspendTenant(ctx context.Context, arg SuspendTenantParams) error {
+	_, err := q.db.Exec(ctx, suspendTenant, arg.ID, arg.SuspendedBy, arg.SuspendReason)
+	return err
 }
 
 const tenantSlugExists = `-- name: TenantSlugExists :one
 SELECT EXISTS (SELECT 1 FROM tenants WHERE slug = $1)::boolean
 `
 
-// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...).
+// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...). Ikut
+// menghitung workspace TERHAPUS: slug tak dilepas selama masa tenggang, kalau
+// dilepas orang lain bisa mengambilnya & restore jadi mustahil (0005 §5).
 func (q *Queries) TenantSlugExists(ctx context.Context, slug string) (bool, error) {
 	row := q.db.QueryRow(ctx, tenantSlugExists, slug)
 	var column_1 bool
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const unarchiveTenant = `-- name: UnarchiveTenant :exec
+UPDATE tenants
+SET status = 'active', archived_at = NULL
+WHERE id = $1 AND status = 'archived' AND deleted_at IS NULL
+`
+
+// OWNER. Hanya dari 'archived' — tak bisa dipakai membatalkan suspensi platform.
+func (q *Queries) UnarchiveTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, unarchiveTenant, id)
+	return err
+}
+
+const unsuspendTenant = `-- name: UnsuspendTenant :exec
+UPDATE tenants
+SET status = 'active', suspended_at = NULL, suspended_by = NULL, suspend_reason = NULL
+WHERE id = $1 AND status = 'suspended' AND deleted_at IS NULL
+`
+
+// PLATFORM-ONLY. Membersihkan jejak suspensi agar kolomnya tak jadi sisa yang
+// menyesatkan saat suspensi berikutnya.
+func (q *Queries) UnsuspendTenant(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, unsuspendTenant, id)
+	return err
 }
 
 const updateTenant = `-- name: UpdateTenant :exec

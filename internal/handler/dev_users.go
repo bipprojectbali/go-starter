@@ -264,6 +264,14 @@ func (h *Handler) auditLog(ctx context.Context, actorID int64, action, targetTyp
 	// tenant aktor (selalu >0; semua user punya tenant), jadi jejak ter-atribusi
 	// ke home-tenant aktor walau aksinya lintas-tenant (platform). Bypass RLS
 	// perlu karena aktor platform menulis audit untuk target di tenant lain.
+	// tenant_id kini NULLABLE (migrasi 00010): FK-nya ON DELETE SET NULL agar
+	// jejak audit selamat saat workspace dipurge — bukti tak boleh lenyap bersama
+	// yang dibuktikan. 0 → NULL, sebab "tenant nol" bukan tenant.
+	tenantID := session.TenantID(ctx)
+	tenantRef := &tenantID
+	if tenantID == 0 {
+		tenantRef = nil
+	}
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
 		_, e := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
 			ActorUserID: &actorID,
@@ -271,7 +279,7 @@ func (h *Handler) auditLog(ctx context.Context, actorID int64, action, targetTyp
 			TargetType:  targetType,
 			TargetID:    &targetID,
 			Metadata:    raw,
-			TenantID:    session.TenantID(ctx),
+			TenantID:    tenantRef,
 		})
 		return e
 	})

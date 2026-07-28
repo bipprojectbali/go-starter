@@ -31,7 +31,11 @@ type InviteRow struct {
 // Members merender panel anggota workspace: daftar anggota (ubah role/keluarkan),
 // form undang, dan daftar undangan pending. canManage=false → hanya lihat.
 // selfID dipakai menyembunyikan aksi terhadap diri sendiri.
-func Members(members []MemberRow, invites []InviteRow, canManage bool, selfID int64, errMsg string) g.Node {
+//
+// base = prefix URL workspace ini (mis. "/w/acme"), DIOPER dari handler — view
+// tak boleh merakit path sendiri: sejak 0004 setiap aksi bergantung slug, dan
+// path yang di-hardcode di view akan diam-diam menunjuk workspace yang salah.
+func Members(base string, members []MemberRow, invites []InviteRow, canManage bool, selfID int64, errMsg string) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Anggota Workspace")),
 		h.P(h.Class("text-base-content/70 mb-4"),
@@ -41,11 +45,11 @@ func Members(members []MemberRow, invites []InviteRow, canManage bool, selfID in
 		body = append(body, ui.Alert(ui.VariantDestructive, "members-err", g.Text(errMsg)))
 	}
 	if canManage {
-		body = append(body, inviteForm())
+		body = append(body, inviteForm(base))
 	}
-	body = append(body, memberList(members, canManage, selfID))
+	body = append(body, memberList(base, members, canManage, selfID))
 	if canManage && len(invites) > 0 {
-		body = append(body, inviteList(invites))
+		body = append(body, inviteList(base, invites))
 	}
 	// min-w-0 di wadah grid: tanpa ini, tabel/input lebar di dalamnya memaksa
 	// grid melebar → halaman overflow horizontal di mobile (konvensi mobile-first).
@@ -54,10 +58,10 @@ func Members(members []MemberRow, invites []InviteRow, canManage bool, selfID in
 
 // memberList = tabel anggota. Tabel dibungkus ui.TableScroll agar scroll-nya
 // terkurung, tak mendorong lebar halaman di mobile (konvensi mobile-first).
-func memberList(members []MemberRow, canManage bool, selfID int64) g.Node {
+func memberList(base string, members []MemberRow, canManage bool, selfID int64) g.Node {
 	rows := make([]g.Node, 0, len(members))
 	for _, m := range members {
-		rows = append(rows, memberRow(m, canManage, selfID))
+		rows = append(rows, memberRow(base, m, canManage, selfID))
 	}
 	return h.Div(
 		h.Class("card bg-base-100 border border-base-300 min-w-0"),
@@ -78,7 +82,7 @@ func memberList(members []MemberRow, canManage bool, selfID int64) g.Node {
 	)
 }
 
-func memberRow(m MemberRow, canManage bool, selfID int64) g.Node {
+func memberRow(base string, m MemberRow, canManage bool, selfID int64) g.Node {
 	id := strconv.FormatInt(m.UserID, 10)
 	roleCell := g.Node(h.Span(h.Class("badge badge-neutral"), g.Text(m.Role)))
 	action := g.Node(g.Text(""))
@@ -86,7 +90,7 @@ func memberRow(m MemberRow, canManage bool, selfID int64) g.Node {
 	// mengunci diri keluar dari workspace sendiri).
 	if canManage && m.UserID != selfID {
 		roleCell = h.FormEl(
-			h.Method("post"), h.Action("/admin/members/"+id+"/role"),
+			h.Method("post"), h.Action(base+"/members/"+id+"/role"),
 			h.Class("flex items-center gap-2"),
 			h.Select(
 				h.Class("select select-sm"), h.Name("role"),
@@ -95,7 +99,7 @@ func memberRow(m MemberRow, canManage bool, selfID int64) g.Node {
 			h.Button(h.Type("submit"), h.Class("btn btn-sm"), g.Text("Simpan")),
 		)
 		action = h.FormEl(
-			h.Method("post"), h.Action("/admin/members/"+id+"/remove"),
+			h.Method("post"), h.Action(base+"/members/"+id+"/remove"),
 			h.Button(h.Type("submit"), h.Class("btn btn-sm btn-error btn-outline"),
 				g.Text("Keluarkan")),
 		)
@@ -121,14 +125,14 @@ func roleOpt(val, current string) g.Node {
 }
 
 // inviteForm = undang lewat email. Form NATIVE POST → 303 (gotcha #16).
-func inviteForm() g.Node {
+func inviteForm(base string) g.Node {
 	return h.Div(
 		h.Class("card bg-base-100 border border-base-300"),
 		h.Div(
 			h.Class("card-body"),
 			h.H2(h.Class("font-semibold mb-2"), g.Text("Undang Anggota")),
 			h.FormEl(
-				h.Method("post"), h.Action("/admin/members/invite"),
+				h.Method("post"), h.Action(base+"/members/invite"),
 				h.Class("flex flex-col gap-2 sm:flex-row sm:items-end"),
 				h.Div(
 					h.Class("grid gap-2 flex-1"),
@@ -153,7 +157,7 @@ func inviteForm() g.Node {
 }
 
 // inviteList = undangan pending + tautannya (untuk disalin manual).
-func inviteList(invites []InviteRow) g.Node {
+func inviteList(base string, invites []InviteRow) g.Node {
 	rows := make([]g.Node, 0, len(invites))
 	for _, i := range invites {
 		rows = append(rows, h.Tr(
@@ -167,7 +171,7 @@ func inviteList(invites []InviteRow) g.Node {
 			h.Td(h.Class("py-2 pr-4 text-xs text-base-content/60"), g.Text(i.Expires)),
 			h.Td(h.Class("py-2"), h.FormEl(
 				h.Method("post"),
-				h.Action("/admin/members/invite/"+strconv.FormatInt(i.ID, 10)+"/delete"),
+				h.Action(base+"/members/invite/"+strconv.FormatInt(i.ID, 10)+"/delete"),
 				h.Button(h.Type("submit"), h.Class("btn btn-sm btn-ghost"), g.Text("Batal")),
 			)),
 		))

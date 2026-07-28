@@ -12,11 +12,19 @@ import (
 )
 
 const countOwnedWorkspaces = `-- name: CountOwnedWorkspaces :one
-SELECT count(*)::bigint FROM memberships WHERE user_id = $1 AND role = 'owner'
+SELECT count(*)::bigint
+FROM memberships m
+JOIN tenants t ON t.id = m.tenant_id
+WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL
 `
 
 // Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
 // membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
+//
+// Workspace TERHAPUS tak dihitung (0005 §7): kuota yang masih tertahan oleh
+// workspace yang sudah dihapus terasa seperti bug, dan mendorong user memurge
+// lebih cepat — kebalikan dari tujuan masa tenggang. Yang TERARSIP TETAP
+// dihitung: datanya masih disimpan & bisa diaktifkan kapan saja.
 func (q *Queries) CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countOwnedWorkspaces, userID)
 	var column_1 int64
@@ -153,10 +161,10 @@ func (q *Queries) ListMembersByTenant(ctx context.Context, tenantID int64) ([]Li
 }
 
 const listMembershipsByUser = `-- name: ListMembershipsByUser :many
-SELECT m.tenant_id, m.role, t.name, t.slug
+SELECT m.tenant_id, m.role, t.name, t.slug, t.status
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
-WHERE m.user_id = $1
+WHERE m.user_id = $1 AND t.deleted_at IS NULL
 ORDER BY m.created_at, m.id
 `
 
@@ -165,10 +173,16 @@ type ListMembershipsByUserRow struct {
 	Role     string `json:"role"`
 	Name     string `json:"name"`
 	Slug     string `json:"slug"`
+	Status   string `json:"status"`
 }
 
 // Daftar workspace milik user (untuk switcher sidebar). Urut terlama dulu agar
 // workspace pertama (dari register) jadi default stabil.
+//
+// Workspace TERHAPUS disembunyikan (0005): ia juga jadi sumber pilihan fallback
+// middleware Scope, jadi tanpa filter ini user bisa dilempar ke workspace yang
+// sudah dihapus. status ikut dikembalikan agar switcher bisa menandai yang
+// suspended/archived alih-alih membiarkan user menabrak 403 setelah mengklik.
 func (q *Queries) ListMembershipsByUser(ctx context.Context, userID int64) ([]ListMembershipsByUserRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
 	if err != nil {
@@ -183,6 +197,7 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID int64) ([]Li
 			&i.Role,
 			&i.Name,
 			&i.Slug,
+			&i.Status,
 		); err != nil {
 			return nil, err
 		}
@@ -198,7 +213,7 @@ const listMembershipsForUsers = `-- name: ListMembershipsForUsers :many
 SELECT m.user_id, m.tenant_id, m.role, t.name, t.slug
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
-WHERE m.user_id = ANY($1::bigint[])
+WHERE m.user_id = ANY($1::bigint[]) AND t.deleted_at IS NULL
 ORDER BY m.user_id, m.created_at, m.id
 `
 

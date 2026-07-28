@@ -49,8 +49,19 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderWorkspaceShell(w, r, "Pengaturan", "/settings",
-		panel.Workspace(t.Name, t.Slug, canEditWorkspace(ctx)))
+	canEdit := canEditWorkspace(ctx)
+	h.renderWorkspaceShell(w, r, "Pengaturan", "/settings", panel.Workspace(panel.WorkspaceView{
+		Base:   wsPath(slugFromRequest(r), ""),
+		Name:   t.Name,
+		Slug:   t.Slug,
+		Status: t.Status,
+		// Ganti nama ditolak saat terarsip (read-only), tapi zona bahaya TETAP
+		// tampil — di sanalah tombol "Aktifkan kembali" berada. Menyembunyikannya
+		// akan mengunci owner di luar workspace-nya sendiri.
+		CanEdit:  canEdit && t.Status == TenantActive,
+		CanOwn:   canEdit,
+		Archived: t.Status == TenantArchived,
+	}))
 }
 
 // WorkspaceUpdate — POST /w/{workspace}/settings. Ganti nama workspace

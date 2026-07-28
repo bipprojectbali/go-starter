@@ -21,7 +21,7 @@ type CreateAuditLogParams struct {
 	TargetType  string `json:"target_type"`
 	TargetID    *int64 `json:"target_id"`
 	Metadata    []byte `json:"metadata"`
-	TenantID    int64  `json:"tenant_id"`
+	TenantID    *int64 `json:"tenant_id"`
 }
 
 // Jejak aksi admin. metadata TANPA PII (id saja, bukan email/nama).

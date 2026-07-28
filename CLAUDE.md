@@ -226,6 +226,43 @@ men-supersede pemilihan-via-session di 0003 #4. Gotcha yang mahal ditemukan ulan
   `acme`. Keputusan bypass diambil dari ROLE, tak pernah dari data DB.
 - **`/dev`, `/notifications`, `/invite/{token}`, `/workspace/new` SENGAJA tanpa
   slug** — cakupan datanya bukan satu tenant. Path mengikuti cakupan data.
+- **View TAK BOLEH merakit path workspace sendiri** — oper `base` dari handler
+  (`panel.Members`, `panel.WorkspaceView.Base`). Pelanggarannya senyap: form
+  tetap ter-render rapi, baru ketahuan saat di-SUBMIT (pernah terjadi — semua
+  aksi anggota menunjuk `/admin/*` yang sudah 404). **Verifikasi UI harus
+  mencakup submit, bukan cuma render.**
+
+## Siklus hidup workspace (suspend · archive · delete) — keputusan 0005
+
+`tenants.status` = `active|suspended|archived`, plus `deleted_at` (soft-delete,
+tenggang 30 hari). Ditegakkan di `gateLifecycle` yang dipanggil `Scope`.
+
+- **Bedanya KEWENANGAN, bukan rasa**: `suspended` = tindakan PLATFORM (owner tak
+  bisa membatalkannya sendiri — kalau bisa, gunanya hilang); `archived` =
+  keputusan OWNER (harus bisa dibuka lagi tanpa memohon). Guard `status='active'`
+  di SQL `ArchiveTenant` mencegah owner keluar dari suspensi lewat arsip→unarsip.
+- **Kode status per keadaan**: bukan-anggota → 404 · suspended → **403 + alasan**
+  (anggota sah berhak tahu KENAPA; 404 bikin ia mengira workspace-nya hilang) ·
+  archived → GET lolos, non-GET 403 · deleted → 404.
+- **Platform SENGAJA menembus gerbang** (cabang platform di `Scope` tak memanggil
+  `gateLifecycle`) — merekalah yang menangguhkan; menghalangi mereka bikin
+  suspensi mustahil diselidiki. Dikunci `TestPlatformTembusSuspensi`.
+- **Unarchive ada DI LUAR `/w/{slug}`** (`/workspace/{slug}/unarchive`): gerbang
+  read-only memblokir semua POST di dalam, jadi pintu keluar tak boleh berada di
+  ruangan yang ia buka. Konsekuensinya handler itu mencari tenant sendiri — dan
+  **wajib lewat `tenantBySlug` untuk platform**, bukan `resolveTenantBySlug` yang
+  mensyaratkan keanggotaan (platform bukan anggota → 404 padahal `isOwnerOf`
+  mengizinkan; dua cek saling bertentangan, pernah terjadi).
+- **`audit_logs.tenant_id` NULLABLE + `ON DELETE SET NULL`** (migrasi 00010).
+  Sebelumnya NOT NULL tanpa CASCADE → `DELETE FROM tenants` GAGAL di tengah jalan
+  setelah memberships/invites/notifications terlanjur CASCADE terhapus. Bukti tak
+  boleh lenyap bersama yang dibuktikan.
+- **Kuota**: terhapus TAK dihitung (terasa seperti bug & mendorong purge cepat);
+  terarsip TETAP dihitung (datanya masih disimpan — arsip bukan celah kuota).
+- **Slug tak dilepas saat terhapus** — kalau dilepas, orang lain bisa mengambilnya
+  dan restore jadi mustahil.
+- **Purge belum terjadwal** (tak ada scheduler di single-binary) — `PurgeTenant` +
+  `ListExpiredTenants` tersedia, pemicunya masih manual. Task terbuka, bukan lupa.
 
 - **`h.q(ctx)`, JANGAN `h.DB`** (dihapus). `h.q` ambil `*db.Queries` ber-tenant dari
   middleware `Scope`. Lupa Scope = **panic keras** (bug wiring ketahuan seketika),

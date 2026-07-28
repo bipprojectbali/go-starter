@@ -6,6 +6,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -13,8 +15,17 @@ type Querier interface {
 	// menghasilkan dua membership (UNIQUE di memberships jadi jaring kedua).
 	AcceptInvite(ctx context.Context, token string) error
 	AddPlatformStaff(ctx context.Context, email string) (PlatformStaff, error)
+	// OWNER. Workspace jadi READ-ONLY tapi datanya utuh. Guard `status = 'active'`
+	// mencegah archive menimpa SUSPENSI platform — kalau tidak, owner bisa keluar
+	// dari suspensi lewat pintu samping (archive lalu unarchive).
+	ArchiveTenant(ctx context.Context, id int64) error
 	// Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
 	// membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
+	//
+	// Workspace TERHAPUS tak dihitung (0005 §7): kuota yang masih tertahan oleh
+	// workspace yang sudah dihapus terasa seperti bug, dan mendorong user memurge
+	// lebih cepat — kebalikan dari tujuan masa tenggang. Yang TERARSIP TETAP
+	// dihitung: datanya masih disimpan & bisa diaktifkan kapan saja.
 	CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error)
 	// Bagian "perlu tindakan" dari badge. Undangan pending SENGAJA tak pernah
 	// ter-auto-read: ia tugas, bukan kabar — lihat MarkNotificationsRead.
@@ -22,6 +33,7 @@ type Querier interface {
 	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
 	// (workspace tanpa owner = yatim).
 	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
+	CountTenantsForPlatform(ctx context.Context) (int64, error)
 	// Badge sidebar — dirender di SETIAP halaman, ditopang index partial
 	// idx_notif_unread agar tak menyentuh baris yang sudah terbaca.
 	CountUnreadNotifications(ctx context.Context, userID int64) (int64, error)
@@ -61,6 +73,9 @@ type Querier interface {
 	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
 	GetTenant(ctx context.Context, id int64) (Tenant, error)
+	// SENGAJA tanpa filter deleted_at: middleware Scope perlu MEMBEDAKAN "workspace
+	// tak pernah ada" dari "workspace terhapus" (0005) — keduanya berujung 404 bagi
+	// user, tapi jalur restore/purge platform butuh barisnya tetap terbaca.
 	GetTenantBySlug(ctx context.Context, slug string) (Tenant, error)
 	GetUser(ctx context.Context, id int64) (User, error)
 	// Soft-delete gotcha: user terhapus tak boleh login.
@@ -72,6 +87,9 @@ type Querier interface {
 	ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
 	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
+	// Kandidat purge permanen: terhapus melewati masa tenggang. Dipanggil perintah
+	// terjadwal, TAK PERNAH di jalur request (purge = kerja berat & tak reversibel).
+	ListExpiredTenants(ctx context.Context, deletedAt pgtype.Timestamptz) ([]Tenant, error)
 	// Undangan PENDING satu workspace (panel anggota) — yang sudah diterima disaring.
 	ListInvitesByTenant(ctx context.Context, tenantID int64) ([]Invite, error)
 	// Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk email
@@ -79,6 +97,11 @@ type Querier interface {
 	ListMembersByTenant(ctx context.Context, tenantID int64) ([]ListMembersByTenantRow, error)
 	// Daftar workspace milik user (untuk switcher sidebar). Urut terlama dulu agar
 	// workspace pertama (dari register) jadi default stabil.
+	//
+	// Workspace TERHAPUS disembunyikan (0005): ia juga jadi sumber pilihan fallback
+	// middleware Scope, jadi tanpa filter ini user bisa dilempar ke workspace yang
+	// sudah dihapus. status ikut dikembalikan agar switcher bisa menandai yang
+	// suspended/archived alih-alih membiarkan user menabrak 403 setelah mengklik.
 	ListMembershipsByUser(ctx context.Context, userID int64) ([]ListMembershipsByUserRow, error)
 	// Membership BANYAK user sekaligus (panel /dev: tampilkan workspace+role tiap
 	// user). Satu query untuk semua id → hindari N+1 (Rule 13).
@@ -98,6 +121,10 @@ type Querier interface {
 	// (pola auth.go/invite.go). Ditopang index partial idx_invites_email.
 	ListPendingInvitesByEmail(ctx context.Context, email string) ([]ListPendingInvitesByEmailRow, error)
 	ListPlatformStaff(ctx context.Context) ([]PlatformStaff, error)
+	// Daftar workspace untuk panel /dev (lintas-workspace — route platform). Termasuk
+	// yang suspended/archived: justru itu yang perlu dilihat operator. Yang TERHAPUS
+	// ikut tampil agar restore masih mungkin selama masa tenggang.
+	ListTenantsForPlatform(ctx context.Context, arg ListTenantsForPlatformParams) ([]ListTenantsForPlatformRow, error)
 	// Panel /dev: keyset pagination, hanya user aktif (belum soft-delete).
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error)
 	// Auto-read saat halaman dibuka. Undangan TIDAK tersentuh di sini — memang tak
@@ -119,14 +146,35 @@ type Querier interface {
 	// timestamptz UTC; handler memformatnya ke jam lokal (appTZ) — lebih bersih dari
 	// AT TIME ZONE di SQL (yang bikin sqlc emit interface{}).
 	PresenceUserSpans(ctx context.Context, arg PresenceUserSpansParams) ([]PresenceUserSpansRow, error)
+	// Hapus PERMANEN. memberships/invites/notifications ikut CASCADE (data
+	// operasional); audit_logs TIDAK — FK-nya ON DELETE SET NULL sejak migrasi 00010,
+	// sebab bukti tak boleh lenyap bersama yang dibuktikan (0005 §6).
+	PurgeTenant(ctx context.Context, id int64) error
 	// Presence bucket 15-menit. bucket_at di-floor SERVER-SIDE ke kelipatan 900 dtk
 	// (jangan hitung di Go — hindari drift clock). Agregasi di level baris: request
 	// berulang dalam bucket sama hanya menaikkan hits, bukan insert baris baru.
 	RecordPresence(ctx context.Context, arg RecordPresenceParams) error
 	RemovePlatformStaff(ctx context.Context, email string) error
+	// Batalkan penghapusan dalam masa tenggang. Status dikembalikan ke 'active':
+	// workspace yang dihapus saat ter-arsip pun kembali sebagai aktif — pemulihan
+	// harus meninggalkan keadaan yang bisa langsung dipakai, bukan setengah jalan.
+	RestoreTenant(ctx context.Context, id int64) error
+	// Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
+	SoftDeleteTenant(ctx context.Context, id int64) error
 	SoftDeleteUser(ctx context.Context, id int64) error
-	// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...).
+	// PLATFORM-ONLY (super_admin/staff). Owner tak bisa membatalkannya sendiri —
+	// kalau bisa, gunanya hilang (0005 §1). Alasan disimpan agar pertanyaan support
+	// pertama ("kenapa workspace saya mati") terjawab tanpa menggali audit log.
+	SuspendTenant(ctx context.Context, arg SuspendTenantParams) error
+	// Cek ketersediaan slug (untuk auto-suffix unik: acme -> acme-2 -> ...). Ikut
+	// menghitung workspace TERHAPUS: slug tak dilepas selama masa tenggang, kalau
+	// dilepas orang lain bisa mengambilnya & restore jadi mustahil (0005 §5).
 	TenantSlugExists(ctx context.Context, slug string) (bool, error)
+	// OWNER. Hanya dari 'archived' — tak bisa dipakai membatalkan suspensi platform.
+	UnarchiveTenant(ctx context.Context, id int64) error
+	// PLATFORM-ONLY. Membersihkan jejak suspensi agar kolomnya tak jadi sisa yang
+	// menyesatkan saat suspensi berikutnya.
+	UnsuspendTenant(ctx context.Context, id int64) error
 	UpdateMemberRole(ctx context.Context, arg UpdateMemberRoleParams) error
 	// Ganti NAMA tampilan workspace (owner-only, di-guard di handler). Slug SENGAJA
 	// tak diubah — immutable setelah dibuat (stabilitas URL; ganti display != ganti URL).

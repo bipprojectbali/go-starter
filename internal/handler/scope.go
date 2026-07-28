@@ -65,6 +65,11 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 				http.NotFound(w, r)
 				return
 			}
+			// SENGAJA TANPA gateLifecycle (0005): platform tetap boleh masuk
+			// workspace yang ditangguhkan/diarsipkan/terhapus. Merekalah yang
+			// menangguhkan — menghalangi mereka membuat suspensi mustahil
+			// diselidiki, dan restore mustahil diverifikasi sebelum ditekan.
+			// Ini keputusan, bukan kelalaian; dikunci TestPlatformTembusSuspensi.
 			if err := db.WithSuper(ctx, h.Pool, run); err != nil {
 				h.Log.Error("scope: tx super", "err", err)
 			}
@@ -78,7 +83,7 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 		// Slug di path MENANG atas session (0004): URL adalah state yang lengkap,
 		// jadi dua tab bisa membuka workspace berbeda tanpa saling merusak.
 		if slug != "" {
-			tenantID, ok := h.resolveTenantBySlug(ctx, uid, slug)
+			t, ok := h.resolveTenantBySlug(ctx, uid, slug)
 			if !ok {
 				// 404, BUKAN 403 dan BUKAN redirect: 403 mengonfirmasi workspace itu
 				// ada (kebocoran keberadaan), redirect ke workspace lain menampilkan
@@ -86,7 +91,18 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 				http.NotFound(w, r)
 				return
 			}
-			if err := db.WithTenant(ctx, h.Pool, tenantID, run); err != nil {
+			// Gerbang siklus hidup (0005) — SETELAH keanggotaan terbukti. Urutannya
+			// penting: yang dilindungi 0004 adalah keberadaan workspace dari ORANG
+			// LUAR, bukan alasan dari orang dalam.
+			if !h.gateLifecycle(w, r, t) {
+				return
+			}
+			ctx = withTenantStatus(ctx, t.Status)
+			run = func(q *db.Queries) error {
+				next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
+				return nil
+			}
+			if err := db.WithTenant(ctx, h.Pool, t.ID, run); err != nil {
 				h.Log.Error("scope: tx tenant", "err", err)
 			}
 			return
@@ -115,23 +131,37 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 // SENGAJA tanpa cek membership, dan keputusan itu diambil dari ROLE — tak pernah
 // dari data DB (anti privilege-escalation, sama seperti WithSuper).
 func (h *Handler) adoptTenantBySlug(ctx context.Context, slug string) bool {
-	var found bool
+	t, ok := h.tenantBySlug(ctx, slug)
+	if !ok {
+		return false
+	}
+	if t.ID != session.TenantID(ctx) {
+		session.SetActiveTenant(ctx, t.ID, t.Name, t.Slug)
+	}
+	return true
+}
+
+// tenantBySlug membaca tenant dari slug TANPA memeriksa keanggotaan. Hanya untuk
+// jalur PLATFORM (lintas-workspace) — pemanggil wajib sudah memastikan rolenya
+// dari session, tak pernah dari data DB (anti privilege-escalation).
+func (h *Handler) tenantBySlug(ctx context.Context, slug string) (db.Tenant, bool) {
+	var (
+		tenant db.Tenant
+		found  bool
+	)
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
 		t, e := q.GetTenantBySlug(ctx, slug)
 		if e != nil {
 			return nil // slug tak ada → 404, bukan error
 		}
-		found = true
-		if t.ID != session.TenantID(ctx) {
-			session.SetActiveTenant(ctx, t.ID, t.Name, t.Slug)
-		}
+		tenant, found = t, true
 		return nil
 	})
 	if err != nil {
-		h.Log.Error("scope: adopt slug", "slug", slug, "err", err)
-		return false
+		h.Log.Error("scope: baca slug", "slug", slug, "err", err)
+		return db.Tenant{}, false
 	}
-	return found
+	return tenant, found
 }
 
 // resolveTenantBySlug menerjemahkan slug di URL ke tenant_id, HANYA bila user
@@ -146,11 +176,11 @@ func (h *Handler) adoptTenantBySlug(ctx context.Context, slug string) bool {
 // Dibaca lewat WithSuper: memberships & tenants sengaja tanpa RLS, dan query ini
 // justru yang MENENTUKAN tenant — tak bisa bergantung GUC yang belum di-set.
 // Keamanan dari filter user_id = uid sesi.
-func (h *Handler) resolveTenantBySlug(ctx context.Context, uid int64, slug string) (int64, bool) {
+func (h *Handler) resolveTenantBySlug(ctx context.Context, uid int64, slug string) (db.Tenant, bool) {
 	var (
-		tenantID int64
-		name     string
-		found    bool
+		tenant db.Tenant
+		name   string
+		found  bool
 	)
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
 		t, e := q.GetTenantBySlug(ctx, slug)
@@ -160,17 +190,17 @@ func (h *Handler) resolveTenantBySlug(ctx context.Context, uid int64, slug strin
 		if _, e := q.GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: t.ID}); e != nil {
 			return nil // bukan anggota — disamakan dgn tak ada (anti kebocoran keberadaan)
 		}
-		tenantID, name, found = t.ID, t.Name, true
+		tenant, name, found = t, t.Name, true
 		return nil
 	})
 	if err != nil {
 		h.Log.Error("scope: resolve slug", "user_id", uid, "err", err)
-		return 0, false
+		return db.Tenant{}, false
 	}
-	if found && tenantID != session.TenantID(ctx) {
-		session.SetActiveTenant(ctx, tenantID, name, slug)
+	if found && tenant.ID != session.TenantID(ctx) {
+		session.SetActiveTenant(ctx, tenant.ID, name, slug)
 	}
-	return tenantID, found
+	return tenant, found
 }
 
 // resolveActiveTenant mengembalikan workspace aktif yang SUDAH TERVALIDASI milik

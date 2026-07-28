@@ -97,10 +97,11 @@ func seedTwoTenants(t *testing.T) (int64, int64) {
 			t.Fatalf("membership: %v", err)
 		}
 	}
-	// Probe ber-RLS: satu audit log per workspace.
+	// Probe ber-RLS: satu audit log per workspace. tenant_id kini *int64 (nullable
+	// sejak migrasi 00010 — FK ON DELETE SET NULL agar audit selamat saat purge).
 	for _, a := range []db.CreateAuditLogParams{
-		{ActorUserID: &ua.ID, Action: "seed.a", TargetType: "test", TargetID: &ua.ID, Metadata: []byte("{}"), TenantID: ta.ID},
-		{ActorUserID: &ub.ID, Action: "seed.b", TargetType: "test", TargetID: &ub.ID, Metadata: []byte("{}"), TenantID: tb.ID},
+		{ActorUserID: &ua.ID, Action: "seed.a", TargetType: "test", TargetID: &ua.ID, Metadata: []byte("{}"), TenantID: &ta.ID},
+		{ActorUserID: &ub.ID, Action: "seed.b", TargetType: "test", TargetID: &ub.ID, Metadata: []byte("{}"), TenantID: &tb.ID},
 	} {
 		if _, err := q.CreateAuditLog(ctx, a); err != nil {
 			t.Fatalf("audit seed: %v", err)
@@ -185,7 +186,7 @@ func TestRLS_WithCheckRejectsCrossTenant(t *testing.T) {
 		actor := int64(1)
 		_, e := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
 			ActorUserID: &actor, Action: "evil", TargetType: "test",
-			TargetID: &actor, Metadata: []byte("{}"), TenantID: idB, // ← workspace lain
+			TargetID: &actor, Metadata: []byte("{}"), TenantID: &idB, // ← workspace lain
 		})
 		return e
 	})

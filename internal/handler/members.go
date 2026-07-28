@@ -46,9 +46,12 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 		h.Log.Error("members: list invites", "err", e)
 	}
 
+	// Workspace terarsip = hanya-baca: sembunyikan aksi kelola agar user tak
+	// menekan tombol yang pasti ditolak gerbang lifecycle (0005 §4).
+	canManage := canManageMembers(ctx) && !IsReadOnly(ctx)
 	h.renderWorkspaceShell(w, r, "Anggota", "/members",
-		panel.Members(members, invites, canManageMembers(ctx), session.UserID(ctx),
-			workspaceErrMsg(r.URL.Query().Get("err"))))
+		panel.Members(wsPath(slugFromRequest(r), ""), members, invites, canManage,
+			session.UserID(ctx), workspaceErrMsg(r.URL.Query().Get("err"))))
 }
 
 // MemberSetRole — POST /w/{workspace}/members/{id}/role. Ubah role anggota di workspace

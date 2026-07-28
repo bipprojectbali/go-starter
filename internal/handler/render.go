@@ -88,6 +88,7 @@ func workspaceNav(slug string, canManage bool) []ui.NavItem {
 func devNav() []ui.NavItem {
 	items := []ui.NavItem{
 		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
+		{Label: "Workspaces", Href: "/dev/workspaces", Icon: lucide.Building2(html.Class("size-4"))},
 		{Label: "User Logs", Href: "/dev/logs", Icon: lucide.ChartColumn(html.Class("size-4"))},
 	}
 	if devMode {

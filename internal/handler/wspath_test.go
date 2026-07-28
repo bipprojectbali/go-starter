@@ -68,8 +68,8 @@ func TestResolveTenantBySlug_MilikSendiri(t *testing.T) {
 		if !ok {
 			t.Fatal("slug workspace sendiri harus dikenali")
 		}
-		if got != env.tenantID {
-			t.Errorf("tenant = %d, want %d", got, env.tenantID)
+		if got.ID != env.tenantID {
+			t.Errorf("tenant = %d, want %d", got.ID, env.tenantID)
 		}
 		// Session ikut mengikuti workspace yang dibuka (session = PETUNJUK).
 		if s := session.TenantSlug(sc.ctx); s != "test" {
