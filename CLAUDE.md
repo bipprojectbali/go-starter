@@ -73,8 +73,11 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
 - **Tap target ≥ 44px** (tombol/link aksi) — daisyUI `.btn` sudah cukup; hati-hati
   ikon-only kecil. **Input `text-base`** (≥16px) agar iOS tak auto-zoom saat fokus.
 - **VERIFIKASI 3 LEBAR WAJIB** sebelum lapor selesai untuk perubahan UI apa pun:
-  agent-browser `set_viewport` ke **375** (mobile), **768** (tablet), **1280**
+  skill **ego-browser**, set lebar ke **375** (mobile), **768** (tablet), **1280**
   (desktop) + screenshot tiap lebar. Bukti visual, bukan klaim "sudah responsif".
+  Tak ada helper `set_viewport` — pakai CDP langsung, lalu reset setelah selesai:
+  `await cdp('Emulation.setDeviceMetricsOverride', {width: 375, height: 812,
+  deviceScaleFactor: 2, mobile: true})` … `await cdp('Emulation.clearDeviceMetricsOverride', {})`.
 
 ## Identitas panel (/user · /admin · /dev)
 
