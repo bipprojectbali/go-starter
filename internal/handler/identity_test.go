@@ -28,7 +28,7 @@ func (e *testEnv) runRefresh(t *testing.T, userID int64, setupSuper func(string)
 		// Workspace aktif: di produksi ditetapkan middleware Scope SEBELUM
 		// RefreshIdentity (yang lalu meresolusi role DI workspace itu). Test
 		// mensimulasikan urutan yang sama.
-		session.SetActiveTenant(r.Context(), e.tenantID, "Test")
+		session.SetActiveTenant(r.Context(), e.tenantID, "Test", "test")
 		// Inject Queries ber-scope (RefreshIdentity pakai h.q) — sim. Scope middleware.
 		r = r.WithContext(withQueries(r.Context(), e.q))
 		e.h.RefreshIdentity(final).ServeHTTP(w, r)

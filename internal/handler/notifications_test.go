@@ -119,7 +119,7 @@ func TestNotif_AutoReadTapiUndanganTetapTerhitung(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/notifications", nil)
 	rec := env.doAuthed(uid, req, func(w http.ResponseWriter, r *http.Request) {
 		session.SetIdentity(r.Context(), uid, "test@local", "owner", false,
-			env.tenantID, "Test", "")
+			env.tenantID, "Test", "test", "")
 		env.h.NotificationsPage(w, r)
 	})
 	if rec.Code != http.StatusOK {

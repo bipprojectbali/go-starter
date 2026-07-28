@@ -91,28 +91,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		}
 	})
 
-	// Panel /admin — admin+ (super_admin mewarisi). Konten menyusul.
-	r.Route("/admin", func(r chi.Router) {
-		r.Use(mw.RequireAuth)
-		r.Use(h.Scope) // buka tx ber-tenant (RLS) SEBELUM RefreshIdentity butuh h.q
-		r.Use(h.RefreshIdentity)
-		r.Use(h.TrackPresence)
-		r.Use(mw.RequireEnforce("admin:home", "read"))
-		r.Get("/", h.AdminHome)
-		// Pengaturan workspace: semua penghuni /admin boleh LIHAT (admin:home).
-		// Ganti nama = owner/platform saja — di-guard di handler (canEditWorkspace),
-		// bukan route, agar admin tetap bisa membuka halamannya (read-only).
-		r.Get("/workspace", h.WorkspaceSettings)
-		r.Post("/workspace", h.WorkspaceUpdate)
-
-		// Anggota workspace (model membership). Lihat = admin+; ubah/keluarkan/
-		// undang = owner/admin (di-guard handler via canManageMembers).
-		r.Get("/members", h.MembersPage)
-		r.Post("/members/{id}/role", h.MemberSetRole)
-		r.Post("/members/{id}/remove", h.MemberRemove)
-		r.Post("/members/invite", h.InviteCreate)
-		r.Post("/members/invite/{id}/delete", h.InviteDelete)
-	})
+	// Ruang kerja — /w/{workspace}/… (keputusan 0004). SATU ruang per workspace:
+	// /admin & /user dilebur karena keduanya membedakan ROLE, bukan RESOURCE —
+	// halaman anggotanya sama, yang beda hanya aksi yang boleh dilakukan.
+	// Beda role = beda AKSI di halaman yang sama, BUKAN beda ALAMAT (satu orang
+	// bisa admin di A & member di B; alamat yang ikut berubah = tautan rusak).
+	registerWorkspaceRoutes(r, h)
 
 	// Workspace: pindah & buat baru. Butuh login TAPI di luar grup /admin —
 	// /workspace/new adalah tujuan Scope saat user belum punya workspace sama
@@ -151,13 +135,41 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/invite/{token}/decline", h.NotificationDecline)
 	})
 
-	// Beranda /user — semua user login (admin/super mewarisi user:home).
-	r.Route("/user", func(r chi.Router) {
+}
+
+// registerWorkspaceRoutes mendaftarkan grup /w/{workspace} — semua halaman yang
+// cakupannya SATU workspace. Dipisah dari registerRoutes agar file tetap terbaca;
+// tetap di routes.go supaya "semua route di satu tempat" tak dilanggar.
+//
+// Yang SENGAJA di luar grup ini (lihat 0004): /dev (platform, lintas-workspace),
+// /notifications (milik user — undangan datang dari workspace yang belum jadi
+// miliknya), /invite/{token} (publik), /workspace/new (belum punya workspace).
+// Cakupan data menentukan bentuk path, bukan sebaliknya.
+func registerWorkspaceRoutes(r chi.Router, h *handler.Handler) {
+	r.Route("/w/{workspace}", func(r chi.Router) {
 		r.Use(mw.RequireAuth)
-		r.Use(h.Scope) // buka tx ber-tenant (RLS) SEBELUM RefreshIdentity butuh h.q
+		// Scope menerjemahkan {workspace} → tenant_id + memvalidasi keanggotaan;
+		// bukan anggota → 404 (bukan 403: itu mengonfirmasi workspace-nya ada).
+		r.Use(h.Scope)
 		r.Use(h.RefreshIdentity)
 		r.Use(h.TrackPresence)
+		// Gerbang = user:home (semua anggota). Pembatasan per-aksi ada di handler
+		// (canEditWorkspace/canManageMembers) — member tetap boleh MEMBUKA halaman.
 		r.Use(mw.RequireEnforce("user:home", "read"))
-		r.Get("/", h.UserHome)
+
+		r.Get("/", h.WorkspaceHome)
+
+		// Pengaturan workspace: admin+ boleh LIHAT, ganti nama = owner/platform
+		// (di-guard handler, bukan route, agar admin tetap bisa membuka read-only).
+		r.Get("/settings", h.WorkspaceSettings)
+		r.Post("/settings", h.WorkspaceUpdate)
+
+		// Anggota (model membership). Lihat = semua anggota; ubah/keluarkan/undang
+		// = owner/admin (di-guard handler via canManageMembers).
+		r.Get("/members", h.MembersPage)
+		r.Post("/members/{id}/role", h.MemberSetRole)
+		r.Post("/members/{id}/remove", h.MemberRemove)
+		r.Post("/members/invite", h.InviteCreate)
+		r.Post("/members/invite/{id}/delete", h.InviteDelete)
 	})
 }

@@ -60,7 +60,7 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
   (a) `overflow-x-auto` di pembungkus **langsung** tabel — dipasang di `.card-body`
   TIDAK menahan (flex-col; min-content tabel tetap menular ke atas), dan (b)
   `min-w-0` — card/flex-item default `min-width:auto` sehingga MENOLAK menyusut,
-  bikin overflow mubazir. Terukur: satu tabel telanjang membuat `/admin/members`
+  bikin overflow mubazir. Terukur: satu tabel telanjang membuat halaman anggota
   meluber 439px di viewport 375px (H1 pun ikut melar — gejalanya menyesatkan,
   tampak seperti bug teks).
 - **Baris tombol horizontal wajib `flex-wrap`.** Prev/next + angka halaman tak muat
@@ -79,18 +79,21 @@ kelalaian di sini menular ke tiap project turunan. Aturan yang bisa dicek (bukan
   `await cdp('Emulation.setDeviceMetricsOverride', {width: 375, height: 812,
   deviceScaleFactor: 2, mobile: true})` … `await cdp('Emulation.clearDeviceMetricsOverride', {})`.
 
-## Identitas panel (/user · /admin · /dev)
+## Identitas panel (/w/{slug} · /dev)
 
-Ketiga panel memakai AppShell yang SAMA. Tanpa penanda, user tak tahu sedang di
+Semua halaman memakai AppShell yang SAMA. Tanpa penanda, user tak tahu sedang di
 shell mana — dan itu bukan cuma kosmetik: **`/dev` menampilkan data LINTAS-workspace**
-(`ListUsers` melihat semua tenant), jadi salah mengira sedang di `/admin` = salah
-membaca cakupan data.
+(`ListUsers` melihat semua tenant), jadi salah mengira sedang di ruang kerja =
+salah membaca cakupan data.
 
 - **Sumbernya `internal/ui/panelkind.go`** (`Panel` bertipe + `panelStyles` array
   berindeks enum → menambah panel tanpa gaya = compile error). Handler tak perlu
-  mengoper apa-apa: `panelOf(ctx, currentPath)` menurunkannya dari path, dan
-  halaman lintas-panel (`/notifications`) jatuh ke ROLE — sumber yang sama dengan
-  `navFor`, supaya chip tak pernah bertentangan dengan menu yang tampil.
+  mengoper apa-apa: `panelOf(ctx, currentPath)` menurunkannya.
+- **Hanya `/dev` ditentukan PATH.** Sejak 0004 satu alamat `/w/{slug}` melayani
+  semua role, jadi chip-nya diturunkan dari ROLE (`panelForRole`) — sumber yang
+  sama dengan `navFor`, supaya chip tak pernah bertentangan dengan menu yang
+  tampil. Di ruang kerja, chip justru MENJADI penanda otoritas: owner/admin
+  melihat `ADMIN`, member melihat `RUANG KERJA`, di halaman yang identik.
 - **DUA penanda, sengaja**: chip TEKS (`RUANG KERJA`/`ADMIN`/`PLATFORM`) + aksen
   warna di tepi atas sidebar. Teks saja kurang menonjol; warna saja gagal untuk
   yang buta warna. Keduanya juga saling menutupi keadaan: saat sidebar collapse
@@ -100,8 +103,9 @@ membaca cakupan data.
   absolut (`bg-red-500`) — token didefinisikan ulang tiap tema (gotcha #11).
   `/dev` memakai `warning` bukan sebagai warna ketiga, tapi sebagai peringatan.
   Terverifikasi terbaca di ke-6 tema (selisih luminance 0.41–0.69).
-- Chip **menggantikan** sub-label `go_starter /admin`, tidak menumpuk — dua
-  penanda konteks di satu tempat justru bising.
+- Chip **menggantikan** sub-label panel, tidak menumpuk — dua penanda konteks di
+  satu tempat justru bising. Brand utama = NAMA WORKSPACE (role tenant) atau
+  `go_starter /dev` (platform).
 
 ## Gotcha (mahal — jangan temukan ulang)
 
@@ -197,12 +201,31 @@ membaca cakupan data.
     `<script>` inline tetap diblokir — jadi menambah `unsafe-inline` BUKAN solusi
     (melemahkan CSP; lihat § Batasan).
 
-## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002 & 0003
+## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002, 0003 & 0004
 
 Isolasi tenant ditegakkan **Postgres RLS**, bukan cuma `WHERE tenant_id` di app.
 Keanggotaan = model **membership** (satu user boleh di banyak workspace dgn role
 berbeda) — `docs/decisions/0003` men-supersede "1 user = 1 tenant" di 0002.
-Gotcha yang mahal ditemukan ulang:
+Workspace aktif hidup di **PATH** (`/w/{slug}`), bukan session — `0004`
+men-supersede pemilihan-via-session di 0003 #4. Gotcha yang mahal ditemukan ulang:
+
+- **URL workspace HANYA lewat `wsPath`/`wsRedirect`** (`internal/handler/wspath.go`)
+  — satu-satunya tempat literal `/w/` boleh muncul (Rule 15). Slug kosong →
+  `/workspace/new`, bukan `/w//x` yang rusak senyap.
+- **`/admin` & `/user` TIDAK ADA lagi** — dilebur jadi `/w/{slug}`. Keduanya
+  membedakan ROLE, bukan RESOURCE: satu orang bisa owner di A & member di B, jadi
+  alamat per-role membuat halaman yang sama berpindah alamat saat ganti workspace.
+  Aturannya: **beda role = beda AKSI di halaman yang sama, BUKAN beda ALAMAT.**
+  Pembatasan di handler (`canEditWorkspace`/`canManageMembers`), bukan di route.
+- **Slug asing/tak dikenal → `http.NotFound`**, jangan 403 (mengonfirmasi
+  workspace itu ada) dan jangan redirect (menampilkan data workspace lain secara
+  senyap — persis penyakit yang diobati 0004).
+- **Role PLATFORM pun wajib mengikuti slug** — cabang platform di `Scope` bypass
+  RLS tapi TETAP memanggil `adoptTenantBySlug`; tanpa itu super_admin membuka
+  `/w/acme/members` melihat anggota workspace lain di bawah URL yang menjanjikan
+  `acme`. Keputusan bypass diambil dari ROLE, tak pernah dari data DB.
+- **`/dev`, `/notifications`, `/invite/{token}`, `/workspace/new` SENGAJA tanpa
+  slug** — cakupan datanya bukan satu tenant. Path mengikuti cakupan data.
 
 - **`h.q(ctx)`, JANGAN `h.DB`** (dihapus). `h.q` ambil `*db.Queries` ber-tenant dari
   middleware `Scope`. Lupa Scope = **panic keras** (bug wiring ketahuan seketika),

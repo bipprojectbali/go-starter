@@ -21,23 +21,23 @@ import (
 // link ditampilkan di panel anggota untuk disalin manual.
 //
 // TODO(invite): kirim email otomatis — butuh SMTP/provider (net/smtp stdlib,
-// nol dependency). Sampai itu ada, link disalin manual dari /admin/members.
+// nol dependency). Sampai itu ada, link disalin manual dari halaman anggota.
 
 // inviteTTL = masa berlaku undangan. Cukup lama untuk dibagikan, cukup pendek
 // agar token bocor tak berlaku selamanya.
 const inviteTTL = 7 * 24 * time.Hour
 
-// InviteCreate — POST /admin/members/invite. Buat undangan (owner/admin saja).
+// InviteCreate — POST /w/{workspace}/members/invite. Buat undangan (owner/admin saja).
 func (h *Handler) InviteCreate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canManageMembers(ctx) {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
 	role := r.FormValue("role")
 	if email == "" || !strings.Contains(email, "@") {
-		http.Redirect(w, r, "/admin/members?err=email", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "email")
 		return
 	}
 	// owner TAK bisa diundang (harus diangkat setelah bergabung) — CHECK di DB juga.
@@ -60,24 +60,24 @@ func (h *Handler) InviteCreate(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: pgtype.Timestamptz{Time: time.Now().Add(inviteTTL), Valid: true},
 	}); err != nil {
 		h.Log.Error("invite: create", "err", err)
-		http.Redirect(w, r, "/admin/members?err=failed", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "failed")
 		return
 	}
 	// metadata TANPA PII: email undangan tak dicatat, hanya role.
 	h.audit(ctx, uid, "invite.create", session.TenantID(ctx), map[string]string{"role": role})
-	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
+	wsRedirect(w, r, "/members", "")
 }
 
-// InviteDelete — POST /admin/members/invite/{id}/delete. Batalkan undangan.
+// InviteDelete — POST /w/{workspace}/members/invite/{id}/delete. Batalkan undangan.
 func (h *Handler) InviteDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canManageMembers(ctx) {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if err != nil {
-		http.Redirect(w, r, "/admin/members?err=notfound", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "notfound")
 		return
 	}
 	if err := h.q(ctx).DeleteInvite(ctx, db.DeleteInviteParams{
@@ -85,7 +85,7 @@ func (h *Handler) InviteDelete(w http.ResponseWriter, r *http.Request) {
 	}); err != nil {
 		h.Log.Error("invite: delete", "err", err)
 	}
-	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
+	wsRedirect(w, r, "/members", "")
 }
 
 // InvitePage — GET /invite/{token}. PUBLIK: penerima belum tentu login (atau

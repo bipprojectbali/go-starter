@@ -119,7 +119,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	h.acceptPendingInvite(r) // datang lewat tautan undangan? langsung gabung
 	// Native redirect (bukan SSE): scs LoadAndSave commit cookie otomatis — tak
 	// perlu WriteCookie manual (itu hanya utk jalur NewSSE yang bypass scs).
-	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
+	http.Redirect(w, r, homeFor(r.Context()), http.StatusSeeOther)
 }
 
 // Login — POST /login (native form, PRG). Verifikasi argon2id, mulai session,
@@ -179,7 +179,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.acceptPendingInvite(r) // datang lewat tautan undangan? langsung gabung
-	http.Redirect(w, r, authz.HomePathFor(session.Role(r.Context())), http.StatusSeeOther)
+	http.Redirect(w, r, homeFor(r.Context()), http.StatusSeeOther)
 }
 
 // Logout — POST /logout (native form, PRG). Hancurkan session, redirect 303.
@@ -229,6 +229,7 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string, prefe
 	var (
 		tenantID   int64
 		tenantName string
+		tenantSlug string
 		tenantRole = authz.RoleNameMember
 	)
 	if err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
@@ -245,7 +246,7 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string, prefe
 				}
 			}
 		}
-		tenantID, tenantName, tenantRole = pick.TenantID, pick.Name, pick.Role
+		tenantID, tenantName, tenantSlug, tenantRole = pick.TenantID, pick.Name, pick.Slug, pick.Role
 		return nil
 	}); err != nil {
 		h.Log.Warn("startIdentity: load memberships", "err", err)
@@ -267,7 +268,7 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string, prefe
 	if u.AvatarUrl != nil {
 		avatar = *u.AvatarUrl
 	}
-	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, tenantID, tenantName, avatar)
+	session.SetIdentity(r.Context(), u.ID, u.Email, role, isRoot, tenantID, tenantName, tenantSlug, avatar)
 	// Jejak login (fail-soft) — untuk panel aktivitas. actor = user sendiri.
 	h.auditAuth(r.Context(), u.ID, "auth.login", method)
 	return nil

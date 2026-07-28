@@ -22,29 +22,22 @@ import (
 // langsung; halaman ini tidak, jadi menu ditentukan dari ROLE — pola precompute
 // yang sama dengan quickLinksFor (view tak boleh memanggil authz sendiri).
 func navFor(ctx context.Context) []ui.NavItem {
-	role := session.Role(ctx)
-	switch {
-	case isPlatformRole(role) || session.IsRoot(ctx):
+	if role := session.Role(ctx); isPlatformRole(role) || session.IsRoot(ctx) {
 		return devNav()
-	case role == authz.RoleNameOwner || role == authz.RoleNameAdmin:
-		return adminNav
-	default:
-		return userNav
 	}
+	// Role tenant → menu ruang kerja AKTIF (dari session: halaman ini tak punya
+	// slug di path-nya sendiri). Item "Pengaturan" mengikuti izin yang sama
+	// dengan halaman ber-slug agar menu tak berubah-ubah antar halaman.
+	return workspaceNav(session.TenantSlug(ctx), canEditWorkspace(ctx))
 }
 
 // brandFor = sub-label panel, dipasangkan dengan navFor agar konteks di sidebar
 // cocok dengan menu yang ditampilkan.
 func brandFor(ctx context.Context) string {
-	role := session.Role(ctx)
-	switch {
-	case isPlatformRole(role) || session.IsRoot(ctx):
+	if role := session.Role(ctx); isPlatformRole(role) || session.IsRoot(ctx) {
 		return "go_starter /dev"
-	case role == authz.RoleNameOwner || role == authz.RoleNameAdmin:
-		return "go_starter /admin"
-	default:
-		return "go_starter"
 	}
+	return session.TenantName(ctx)
 }
 
 // panelFor menentukan identitas visual shell dari path yang sedang dibuka
@@ -55,14 +48,14 @@ func brandFor(ctx context.Context) string {
 // /notifications lintas-panel: shell-nya mengikuti navFor (role), jadi
 // pemetaannya diserahkan ke panelForRole agar chip selalu cocok dengan menu
 // yang tampil — bukan menampilkan menu /dev berlabel RUANG KERJA.
+// Path /w/{slug} tak lagi menentukan panel sendirian: sejak 0004 satu alamat
+// melayani semua role, jadi chip diturunkan dari ROLE di workspace itu
+// (panelForRole) — sumber yang SAMA dengan navFor, supaya chip tak pernah
+// bertentangan dengan menu yang tampil.
 func panelFor(currentPath string) ui.Panel {
 	switch {
 	case strings.HasPrefix(currentPath, "/dev"):
 		return ui.PanelDev
-	case strings.HasPrefix(currentPath, "/admin"):
-		return ui.PanelAdmin
-	case strings.HasPrefix(currentPath, "/user"):
-		return ui.PanelUser
 	default:
 		return ui.PanelNone
 	}
@@ -79,7 +72,10 @@ func (h *Handler) panelOf(ctx context.Context, currentPath string) ui.Panel {
 	return panelForRole(ctx)
 }
 
-// panelForRole = pasangan navFor/brandFor untuk halaman lintas-panel.
+// panelForRole = pasangan navFor/brandFor. Dipakai halaman lintas-panel DAN
+// halaman ruang kerja: di /w/{slug} chip menandakan otoritas user DI SANA
+// (ADMIN bila owner/admin, RUANG KERJA bila member) — informasi yang justru
+// lebih berguna setelah peleburan, karena alamatnya kini sama untuk semua.
 func panelForRole(ctx context.Context) ui.Panel {
 	role := session.Role(ctx)
 	switch {

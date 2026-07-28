@@ -26,20 +26,23 @@ func (h *Handler) WorkspaceSwitch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := session.UserID(ctx)
-	m, err := h.q(ctx).GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: tenantID})
-	if err != nil {
+	if _, err := h.q(ctx).GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: tenantID}); err != nil {
 		// Bukan anggota → jangan bocorkan keberadaan workspace; diamkan ke home.
 		h.Log.Warn("workspace switch: bukan anggota", "user_id", uid, "tenant_id", tenantID)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	name := ""
-	if t, e := h.q(ctx).GetTenant(ctx, tenantID); e == nil {
-		name = t.Name
+	t, err := h.q(ctx).GetTenant(ctx, tenantID)
+	if err != nil {
+		// Membership ada tapi tenant tak terbaca — tanpa slug tak ada tujuan yang
+		// bisa dibentuk (0004), jadi jangan pindahkan session ke keadaan setengah.
+		h.Log.Error("workspace switch: get tenant", "tenant_id", tenantID, "err", err)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
 	}
-	session.SetActiveTenant(ctx, tenantID, name)
-	// Role berubah antar-workspace → home bisa beda (owner→/admin, member→/user).
-	http.Redirect(w, r, authz.HomePathFor(m.Role), http.StatusSeeOther)
+	session.SetActiveTenant(ctx, tenantID, t.Name, t.Slug)
+	// Alamat kini sama untuk semua role (0004) — yang berubah hanya isinya.
+	http.Redirect(w, r, wsPath(t.Slug, ""), http.StatusSeeOther)
 }
 
 // WorkspaceNewPage — GET /workspace/new. Form buat workspace baru. Juga jadi
@@ -64,6 +67,7 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 	// sekali → tak ada tenant untuk di-scope). Semua query lewat WithSuper.
 	var (
 		newID     int64
+		newSlug   string
 		overQuota bool
 	)
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
@@ -89,7 +93,7 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			return e
 		}
-		newID = t.ID
+		newID, newSlug = t.ID, t.Slug
 		_, e = q.CreateMembership(ctx, db.CreateMembershipParams{
 			UserID: uid, TenantID: t.ID, Role: authz.RoleNameOwner,
 		})
@@ -105,9 +109,9 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Langsung pindah ke workspace baru (user jadi owner di sana).
-	session.SetActiveTenant(ctx, newID, name)
+	session.SetActiveTenant(ctx, newID, name, newSlug)
 	h.audit(ctx, uid, "workspace.create", newID, nil)
-	http.Redirect(w, r, authz.HomePath(authz.RoleOwner), http.StatusSeeOther)
+	http.Redirect(w, r, wsPath(newSlug, ""), http.StatusSeeOther)
 }
 
 // workspaceErrMsg memetakan kode ?err= ke pesan (pola PRG, sama seperti authErrMsg).

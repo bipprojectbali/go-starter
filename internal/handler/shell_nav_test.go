@@ -13,14 +13,17 @@ import (
 // dipilih dari role. Kalau salah pilih, user melihat menu yang tak boleh ia
 // akses (atau kehilangan menu panelnya saat membuka notifikasi).
 
+// Role tenant kini bermuara ke ruang kerja yang SAMA (0004): menu mereka
+// menunjuk /w/{slug}, bukan /admin vs /user. Yang membedakan hanya entri
+// "Pengaturan" (owner/platform) — lihat TestNavFor_PengaturanIkutIzin.
 func TestNavFor_MenuIkutRole(t *testing.T) {
 	cases := []struct {
 		role      string
-		wantFirst string // href item pertama = penanda panel yang dipilih
+		wantFirst string // href item pertama = penanda ruang yang dipilih
 	}{
-		{"member", "/user"},
-		{"admin", "/admin"},
-		{"owner", "/admin"},
+		{"member", "/w/acme"},
+		{"admin", "/w/acme"},
+		{"owner", "/w/acme"},
 		{"staff", "/dev/users"},
 		{"super_admin", "/dev/users"},
 	}
@@ -36,22 +39,44 @@ func TestNavFor_MenuIkutRole(t *testing.T) {
 	}
 }
 
-// TestNavFor_MemberTakDapatMenuAdmin: member membuka /notifications tak boleh
-// mendapati menu panel yang route-nya akan menolaknya (menu hantu).
-func TestNavFor_MemberTakDapatMenuAdmin(t *testing.T) {
+// TestNavFor_PengaturanIkutIzin: entri yang PASTI ditolak tak boleh ditampilkan.
+// Member melihat pintu Pengaturan lalu ditolak 403 = menu hantu — persis yang
+// dihindari TestNavFor_MemberTakDapatMenuAdmin sebelum peleburan.
+func TestNavFor_PengaturanIkutIzin(t *testing.T) {
+	has := func(nav []ui.NavItem, sub string) bool {
+		for _, it := range nav {
+			if strings.HasSuffix(it.Href, sub) {
+				return true
+			}
+		}
+		return false
+	}
+	if has(navFor(ctxWithRole(t, "member")), "/settings") {
+		t.Error("member tak boleh melihat menu Pengaturan (route akan menolaknya)")
+	}
+	if !has(navFor(ctxWithRole(t, "owner")), "/settings") {
+		t.Error("owner harus melihat menu Pengaturan")
+	}
+}
+
+// TestNavFor_MemberTakDapatMenuDev: member membuka /notifications tak boleh
+// mendapati menu panel platform (menu hantu).
+func TestNavFor_MemberTakDapatMenuDev(t *testing.T) {
 	for _, it := range navFor(ctxWithRole(t, "member")) {
-		if strings.HasPrefix(it.Href, "/admin") || strings.HasPrefix(it.Href, "/dev") {
+		if strings.HasPrefix(it.Href, "/dev") {
 			t.Errorf("member tak boleh melihat menu %q di halaman notifikasi", it.Href)
 		}
 	}
 }
 
-// TestBrandFor_SelarasDenganNav: sub-label sidebar harus cocok dengan menu yang
-// tampil — kalau tidak, user melihat menu /admin berlabel "/dev".
+// TestBrandFor_SelarasDenganNav: brand sidebar harus cocok dengan menu yang
+// tampil. Role tenant → NAMA WORKSPACE (bukan lagi "go_starter /admin"): setelah
+// peleburan, yang membedakan konteks adalah workspace-nya, bukan panelnya.
 func TestBrandFor_SelarasDenganNav(t *testing.T) {
 	cases := map[string]string{
-		"member":      "go_starter",
-		"admin":       "go_starter /admin",
+		"member":      "Acme",
+		"admin":       "Acme",
+		"owner":       "Acme",
 		"super_admin": "go_starter /dev",
 	}
 	for role, want := range cases {
@@ -84,7 +109,7 @@ func TestNotifBadge_JumlahGabungan(t *testing.T) {
 
 	var got *ui.NavBadge
 	env.withSession(t, uid, func(sc sessionCtx) {
-		session.SetIdentity(sc.ctx, uid, "test@local", "owner", false, env.tenantID, "Test", "")
+		session.SetIdentity(sc.ctx, uid, "test@local", "owner", false, env.tenantID, "Test", "test", "")
 		got = env.h.notifBadge(sc.ctx)
 	})
 	if got == nil {

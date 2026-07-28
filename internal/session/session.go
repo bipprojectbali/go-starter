@@ -17,6 +17,7 @@ const (
 	keyIsRoot        = "isRoot"        // super-admin env (immutable root)
 	keyTenantID      = "tenantID"      // tenant user (multi-tenancy; 0 = platform/anonim)
 	keyTenantName    = "tenantName"    // nama workspace (cache utk brand sidebar; bukan PII)
+	keyTenantSlug    = "tenantSlug"    // slug workspace aktif — dipakai membentuk URL /w/{slug}
 	keyAvatarURL     = "avatarURL"     // foto Google untuk nav
 	keyPendingInvite = "pendingInvite" // token undangan yg menunggu login/register
 	keyOAuthState    = "oauthState"    // anti-CSRF token flow OAuth
@@ -61,13 +62,14 @@ func SetUserID(ctx context.Context, id int64) { mgr.Put(ctx, keyUserID, id) }
 // workspace yang sedang DIPILIH — satu user bisa anggota banyak workspace. Nilai
 // ini TIDAK boleh dipercaya begitu saja: middleware Scope memvalidasinya terhadap
 // tabel memberships sebelum membuka tx ber-tenant (anti tenant-forcing).
-func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, tenantID int64, tenantName, avatarURL string) {
+func SetIdentity(ctx context.Context, id int64, email, role string, isRoot bool, tenantID int64, tenantName, tenantSlug, avatarURL string) {
 	mgr.Put(ctx, keyUserID, id)
 	mgr.Put(ctx, keyEmail, email)
 	mgr.Put(ctx, keyRole, role)
 	mgr.Put(ctx, keyIsRoot, isRoot)
 	mgr.Put(ctx, keyTenantID, tenantID)
 	mgr.Put(ctx, keyTenantName, tenantName)
+	mgr.Put(ctx, keyTenantSlug, tenantSlug)
 	mgr.Put(ctx, keyAvatarURL, avatarURL)
 }
 
@@ -77,10 +79,20 @@ func TenantID(ctx context.Context) int64 { return mgr.GetInt64(ctx, keyTenantID)
 
 // SetActiveTenant memindahkan workspace aktif (switcher sidebar / fallback Scope).
 // Pemanggil WAJIB sudah memverifikasi keanggotaan user di tenant tsb.
-func SetActiveTenant(ctx context.Context, tenantID int64, name string) {
+//
+// Sejak 0004 (workspace di path), session bukan lagi SUMBER KEBENARAN workspace
+// aktif melainkan PETUNJUK: dipakai saat URL tak menyebut workspace (mis. "/",
+// setelah login, /notifications) untuk memilih ke mana user diantar. Begitu ada
+// slug di path, path yang menang.
+func SetActiveTenant(ctx context.Context, tenantID int64, name, slug string) {
 	mgr.Put(ctx, keyTenantID, tenantID)
 	mgr.Put(ctx, keyTenantName, name)
+	mgr.Put(ctx, keyTenantSlug, slug)
 }
+
+// TenantSlug mengembalikan slug workspace aktif ("" bila belum login/belum punya).
+// Dipakai membentuk URL /w/{slug}/… lewat handler.wsPath.
+func TenantSlug(ctx context.Context) string { return mgr.GetString(ctx, keyTenantSlug) }
 
 // TenantName mengembalikan nama workspace user login (kosong bila belum login).
 func TenantName(ctx context.Context) string { return mgr.GetString(ctx, keyTenantName) }

@@ -142,7 +142,7 @@ func (h *Handler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, authz.HomePathFor(session.Role(ctx)), http.StatusSeeOther)
+	http.Redirect(w, r, homeFor(ctx), http.StatusSeeOther)
 }
 
 // findOrLinkGoogleUser memetakan claim Google ke user lokal dalam SATU transaksi:

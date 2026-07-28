@@ -25,12 +25,14 @@ func TestRegister_Success(t *testing.T) {
 		"workspace": {"Acme Corp"}, "email": {"baru@local"}, "password": {"rahasia123"},
 	}), env.h.Register)
 
-	// Native PRG: sukses → 303 + Location home (owner tenant baru → /admin).
+	// Native PRG: sukses → 303 + Location = ruang kerja yang baru dibuat.
+	// Slug diturunkan dari nama workspace ("Acme Corp" → "acme-corp"), jadi
+	// tujuannya bergantung workspace — bukan role (0004).
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("want 303, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "/admin" {
-		t.Errorf("register sukses (owner) harus redirect /admin, got %q", loc)
+	if loc := rec.Header().Get("Location"); loc != "/w/acme-corp" {
+		t.Errorf("register sukses harus redirect ke ruang kerja baru, got %q", loc)
 	}
 	// REGRESI: cookie WAJIB terkirim (native redirect → scs LoadAndSave commit).
 	if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "session=") {
@@ -117,9 +119,9 @@ func TestLogin_Success(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("want 303, got %d", rec.Code)
 	}
-	// member → /user (home role).
-	if loc := rec.Header().Get("Location"); loc != "/user" {
-		t.Errorf("login sukses (member) harus redirect /user, got %q", loc)
+	// member → ruang kerja tempat ia jadi anggota (bukan lagi /user per-role).
+	if loc := rec.Header().Get("Location"); loc != "/w/test" {
+		t.Errorf("login sukses harus redirect ke ruang kerja aktif, got %q", loc)
 	}
 	if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "session=") {
 		t.Errorf("Set-Cookie session harus ada, got %q", c)

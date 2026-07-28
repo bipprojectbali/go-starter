@@ -10,19 +10,20 @@ import (
 // user mengira sedang di panel lain; untuk /dev itu berarti salah membaca
 // CAKUPAN DATA (panel platform menampilkan semua workspace).
 
+// Sejak 0004 hanya /dev yang ditentukan PATH: satu alamat /w/{slug} melayani
+// semua role, jadi chip-nya diturunkan dari role (panelForRole) — kalau tidak,
+// member dan owner di halaman yang sama akan melihat chip identik padahal
+// otoritas mereka berbeda.
 func TestPanelFor_PathKeIdentitas(t *testing.T) {
 	cases := map[string]ui.Panel{
-		"/dev/users":        ui.PanelDev,
-		"/dev/logs":         ui.PanelDev,
-		"/admin":            ui.PanelAdmin,
-		"/admin/members":    ui.PanelAdmin,
-		"/user":             ui.PanelUser,
-		"/notifications":    ui.PanelNone, // lintas-panel → ditentukan role
-		"/workspace/new":    ui.PanelNone,
-		"/":                 ui.PanelNone,
-		"/dev":              ui.PanelDev,
-		"/administrasi":     ui.PanelAdmin, // prefix — didokumentasikan, bukan kejutan
-		"/userland/sesuatu": ui.PanelUser,
+		"/dev/users":      ui.PanelDev,
+		"/dev/logs":       ui.PanelDev,
+		"/dev":            ui.PanelDev,
+		"/w/acme":         ui.PanelNone, // ruang kerja → ditentukan role
+		"/w/acme/members": ui.PanelNone,
+		"/notifications":  ui.PanelNone, // lintas-panel → ditentukan role
+		"/workspace/new":  ui.PanelNone,
+		"/":               ui.PanelNone,
 	}
 	for path, want := range cases {
 		if got := panelFor(path); got != want {
@@ -51,16 +52,36 @@ func TestPanelOf_LintasPanelIkutRole(t *testing.T) {
 	}
 }
 
-// TestPanelOf_PathMenangAtasRole: di dalam panel yang jelas, path yang menentukan
-// — super_admin membuka /user harus melihat identitas RUANG KERJA, bukan PLATFORM.
-func TestPanelOf_PathMenangAtasRole(t *testing.T) {
+// TestPanelOf_DevPathMenangAtasRole: /dev adalah SATU-SATUNYA path yang menang
+// atas role — panel platform menampilkan data LINTAS-workspace, jadi chip
+// PLATFORM harus muncul di sana apa pun role tenant yang dipegang user.
+func TestPanelOf_DevPathMenangAtasRole(t *testing.T) {
 	env, _ := setupTest(t)
-	ctx := ctxWithRole(t, "super_admin")
-	if got := env.h.panelOf(ctx, "/user"); got != ui.PanelUser {
-		t.Errorf("super_admin di /user: panel %v, want PanelUser", got)
+	for _, role := range []string{"member", "admin", "owner"} {
+		ctx := ctxWithRole(t, role)
+		if got := env.h.panelOf(ctx, "/dev/users"); got != ui.PanelDev {
+			t.Errorf("role %s di /dev/users: panel %v, want PanelDev", role, got)
+		}
 	}
-	if got := env.h.panelOf(ctx, "/admin"); got != ui.PanelAdmin {
-		t.Errorf("super_admin di /admin: panel %v, want PanelAdmin", got)
+}
+
+// TestPanelOf_RuangKerjaIkutRole: di /w/{slug} chip menandakan OTORITAS user di
+// workspace itu. Setelah peleburan 0004 alamatnya sama untuk semua, jadi chip
+// inilah satu-satunya petunjuk bahwa owner & member melihat halaman yang sama
+// dengan kewenangan berbeda.
+func TestPanelOf_RuangKerjaIkutRole(t *testing.T) {
+	env, _ := setupTest(t)
+	cases := map[string]ui.Panel{
+		"member":      ui.PanelUser,
+		"admin":       ui.PanelAdmin,
+		"owner":       ui.PanelAdmin,
+		"super_admin": ui.PanelDev,
+	}
+	for role, want := range cases {
+		ctx := ctxWithRole(t, role)
+		if got := env.h.panelOf(ctx, "/w/acme/members"); got != want {
+			t.Errorf("role %s di /w/acme/members: panel %v, want %v", role, got, want)
+		}
 	}
 }
 

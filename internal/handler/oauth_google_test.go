@@ -92,8 +92,8 @@ func TestGoogleCallback_NewUser(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("login sukses harus redirect 303, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "/admin" {
-		t.Errorf("user Google baru = owner tenant baru → redirect /admin, got %q", loc)
+	if loc := rec.Header().Get("Location"); loc != "/w/baru" {
+		t.Errorf("user Google baru = owner workspace baru → redirect ke ruang kerjanya, got %q", loc)
 	}
 	// User baru + oauth_account terbuat.
 	u, err := env.q.GetUserByEmail(t.Context(), "baru@gmail.com")

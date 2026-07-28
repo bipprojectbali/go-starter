@@ -65,17 +65,23 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 	}
 }
 
-// Menu sidebar per panel.
-var (
-	adminNav = []ui.NavItem{
-		{Label: "Dashboard", Href: "/admin", Icon: lucide.LayoutDashboard(html.Class("size-4"))},
-		{Label: "Anggota", Href: "/admin/members", Icon: lucide.Users(html.Class("size-4"))},
-		{Label: "Workspace", Href: "/admin/workspace", Icon: lucide.Building2(html.Class("size-4"))},
+// workspaceNav membangun menu sidebar ruang kerja. Semua href bergantung SLUG
+// (0004) → menu tak bisa lagi jadi var paket. canManage memangkas entri yang
+// tak berguna bagi member (Pengaturan = 403 baginya): menampilkan pintu yang
+// pasti tertutup itu menyesatkan, bukan informatif.
+func workspaceNav(slug string, canManage bool) []ui.NavItem {
+	items := []ui.NavItem{
+		{Label: "Beranda", Href: wsPath(slug, ""), Icon: lucide.House(html.Class("size-4"))},
+		{Label: "Anggota", Href: wsPath(slug, "/members"), Icon: lucide.Users(html.Class("size-4"))},
 	}
-	userNav = []ui.NavItem{
-		{Label: "Beranda", Href: "/user", Icon: lucide.House(html.Class("size-4"))},
+	if canManage {
+		items = append(items, ui.NavItem{
+			Label: "Pengaturan", Href: wsPath(slug, "/settings"),
+			Icon: lucide.Building2(html.Class("size-4")),
+		})
 	}
-)
+	return items
+}
 
 // devNav membangun menu panel /dev. "File Health" hanya di dev (route-nya tak
 // terdaftar di produksi — source .go tak ada di single-binary).
@@ -96,6 +102,10 @@ func devNav() []ui.NavItem {
 // quickLinksFor membangun pintasan lintas-panel sesuai IZIN user (Casbin,
 // di-precompute di sini — bukan dari dalam gomponents). Pintasan /dev menuju
 // /dev/users (route "/dev" telanjang tak ada). Hanya muncul untuk yang berhak.
+//
+// Sejak 0004 hanya tersisa DUA tujuan lintas-panel: platform (/dev) dan ruang
+// kerja aktif. Pintasan "Admin" & "User" yang lama hilang bersama peleburannya —
+// keduanya kini satu tempat yang sama, dibedakan oleh aksi, bukan alamat.
 func quickLinksFor(ctx context.Context) []ui.NavItem {
 	var links []ui.NavItem
 	if authz.Can(ctx, "dev:users", "read") {
@@ -103,17 +113,26 @@ func quickLinksFor(ctx context.Context) []ui.NavItem {
 			Label: "Developer", Href: "/dev/users", Icon: lucide.Terminal(html.Class("size-4")),
 		})
 	}
-	if authz.Can(ctx, "admin:home", "read") {
+	// Hanya bila user benar-benar punya workspace: tanpa slug, wsPathOf jatuh ke
+	// /workspace/new — pintasan "Ruang Kerja" yang mengantar ke form buat-baru
+	// adalah janji palsu, lebih baik tak ditampilkan.
+	if session.TenantSlug(ctx) != "" && authz.Can(ctx, "user:home", "read") {
 		links = append(links, ui.NavItem{
-			Label: "Admin", Href: "/admin", Icon: lucide.Shield(html.Class("size-4")),
-		})
-	}
-	if authz.Can(ctx, "user:home", "read") {
-		links = append(links, ui.NavItem{
-			Label: "User", Href: "/user", Icon: lucide.House(html.Class("size-4")),
+			Label: "Ruang Kerja", Href: wsPathOf(ctx, ""), Icon: lucide.House(html.Class("size-4")),
 		})
 	}
 	return links
+}
+
+// renderWorkspaceShell mengirim halaman di dalam ruang kerja. Merakit sendiri
+// slug, menu, dan currentPath dari request — pemanggil cukup menyebut sub-path
+// (mis. "/members"). Tanpa ini tiap handler workspace mengulang perakitan yang
+// sama, dan satu yang keliru menghasilkan menu menunjuk workspace lain.
+func (h *Handler) renderWorkspaceShell(w http.ResponseWriter, r *http.Request, title, sub string, body g.Node) {
+	ctx := r.Context()
+	slug := slugFromRequest(r)
+	nav := workspaceNav(slug, canEditWorkspace(ctx))
+	h.renderShell(w, r, title, session.TenantName(ctx), wsPath(slug, sub), nav, body)
 }
 
 // renderShell mengirim halaman dengan AppShell (sidebar). brand = label brand

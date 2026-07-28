@@ -31,8 +31,16 @@ func canEditWorkspace(ctx context.Context) bool {
 	return role == authz.RoleNameOwner || isPlatformRole(role)
 }
 
-// WorkspaceSettings — GET /admin/workspace. Form nama workspace (AppShell).
-// Semua penghuni /admin boleh LIHAT; hanya owner/platform boleh ubah (canEdit).
+// WorkspaceHome — GET /w/{workspace}/. Beranda ruang kerja, terbuka untuk SEMUA
+// anggota (member/admin/owner). Menggantikan /admin & /user yang dulu terpisah:
+// keduanya membedakan role, bukan resource (0004).
+func (h *Handler) WorkspaceHome(w http.ResponseWriter, r *http.Request) {
+	h.renderWorkspaceShell(w, r, "Beranda", "",
+		panel.Placeholder("Beranda", "Selamat datang di "+session.TenantName(r.Context())+"."))
+}
+
+// WorkspaceSettings — GET /w/{workspace}/settings. Form nama workspace (AppShell).
+// Admin boleh LIHAT (read-only); hanya owner/platform boleh ubah (canEdit).
 func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	t, err := h.q(ctx).GetTenant(ctx, session.TenantID(ctx))
@@ -41,13 +49,14 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "Workspace", "go_starter /admin", "/admin/workspace", adminNav,
+	h.renderWorkspaceShell(w, r, "Pengaturan", "/settings",
 		panel.Workspace(t.Name, t.Slug, canEditWorkspace(ctx)))
 }
 
-// WorkspaceUpdate — POST /admin/workspace. Ganti nama workspace (owner/platform).
-// Guard di handler (bukan cuma route) karena admin BOLEH akses /admin tapi TAK
-// boleh ganti nama. Slug tak diubah (immutable). Audit + refresh brand sidebar.
+// WorkspaceUpdate — POST /w/{workspace}/settings. Ganti nama workspace
+// (owner/platform). Guard di handler (bukan cuma route) karena admin BOLEH
+// membuka halamannya tapi TAK boleh ganti nama. Slug tak diubah (immutable —
+// mengubahnya mematikan setiap tautan tersimpan). Audit + refresh brand sidebar.
 func (h *Handler) WorkspaceUpdate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canEditWorkspace(ctx) {

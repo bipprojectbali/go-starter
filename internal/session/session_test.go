@@ -30,7 +30,7 @@ func withSession(t *testing.T, fn func(ctx context.Context, w http.ResponseWrite
 
 func TestSetIdentity_RoundTrip(t *testing.T) {
 	withSession(t, func(ctx context.Context, _ http.ResponseWriter) {
-		SetIdentity(ctx, 7, "u@x.com", "admin", true, 42, "WS", "https://a/av")
+		SetIdentity(ctx, 7, "u@x.com", "admin", true, 42, "WS", "ws", "https://a/av")
 		if UserID(ctx) != 7 {
 			t.Errorf("UserID=%d, want 7", UserID(ctx))
 		}

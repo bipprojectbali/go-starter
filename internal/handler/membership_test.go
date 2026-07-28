@@ -95,7 +95,7 @@ func TestResolveActiveTenant_TolakTenantAsing(t *testing.T) {
 	_ = orang2
 
 	env.withSession(t, uid, func(sctx sessionCtx) {
-		session.SetActiveTenant(sctx.ctx, asing.ID, "Asing") // ← paksa tenant asing
+		session.SetActiveTenant(sctx.ctx, asing.ID, "Asing", "asing") // ← paksa tenant asing
 		got, ok := env.h.resolveActiveTenant(sctx.ctx, uid)
 		if !ok {
 			t.Fatal("user punya workspace sendiri — harus tetap dapat tenant")

@@ -53,16 +53,45 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
 			return nil
 		}
+		slug := slugFromRequest(r)
+
 		// Platform (super_admin/staff) lintas-tenant → bypass RLS, tak perlu membership.
 		if isPlatformRole(session.Role(ctx)) {
+			// Tapi slug di path tetap WAJIB diikuti: handler membaca workspace dari
+			// session.TenantID, jadi tanpa ini platform yang membuka /w/acme/members
+			// akan melihat anggota workspace LAIN (yang kebetulan aktif di session)
+			// di bawah URL yang menjanjikan acme — salah data secara senyap.
+			if slug != "" && !h.adoptTenantBySlug(ctx, slug) {
+				http.NotFound(w, r)
+				return
+			}
 			if err := db.WithSuper(ctx, h.Pool, run); err != nil {
 				h.Log.Error("scope: tx super", "err", err)
 			}
 			return
 		}
 
-		// Tenant user: VALIDASI keanggotaan sebelum membuka tx ber-tenant. Session
-		// user-controlled → tanpa cek ini, tenantID sembarang bisa dipaksa.
+		// Tenant user: VALIDASI keanggotaan sebelum membuka tx ber-tenant. Baik slug
+		// di path MAUPUN tenantID di session user-controlled → tanpa cek ini,
+		// workspace sembarang bisa dipaksa.
+		//
+		// Slug di path MENANG atas session (0004): URL adalah state yang lengkap,
+		// jadi dua tab bisa membuka workspace berbeda tanpa saling merusak.
+		if slug != "" {
+			tenantID, ok := h.resolveTenantBySlug(ctx, uid, slug)
+			if !ok {
+				// 404, BUKAN 403 dan BUKAN redirect: 403 mengonfirmasi workspace itu
+				// ada (kebocoran keberadaan), redirect ke workspace lain menampilkan
+				// data yang salah secara senyap — penyakit yang justru diobati 0004.
+				http.NotFound(w, r)
+				return
+			}
+			if err := db.WithTenant(ctx, h.Pool, tenantID, run); err != nil {
+				h.Log.Error("scope: tx tenant", "err", err)
+			}
+			return
+		}
+
 		tenantID, ok := h.resolveActiveTenant(ctx, uid)
 		if !ok {
 			// Belum punya workspace sama sekali (mis. membership terakhir dicabut)
@@ -78,6 +107,72 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 	})
 }
 
+// adoptTenantBySlug menjadikan workspace ber-slug tsb sebagai konteks aktif TANPA
+// memeriksa keanggotaan — khusus role platform, yang memang lintas-workspace
+// (super_admin/staff membantu workspace mana pun). false bila slug tak ada.
+//
+// Terpisah dari resolveTenantBySlug justru agar bedanya kelihatan: yang ini
+// SENGAJA tanpa cek membership, dan keputusan itu diambil dari ROLE — tak pernah
+// dari data DB (anti privilege-escalation, sama seperti WithSuper).
+func (h *Handler) adoptTenantBySlug(ctx context.Context, slug string) bool {
+	var found bool
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		t, e := q.GetTenantBySlug(ctx, slug)
+		if e != nil {
+			return nil // slug tak ada → 404, bukan error
+		}
+		found = true
+		if t.ID != session.TenantID(ctx) {
+			session.SetActiveTenant(ctx, t.ID, t.Name, t.Slug)
+		}
+		return nil
+	})
+	if err != nil {
+		h.Log.Error("scope: adopt slug", "slug", slug, "err", err)
+		return false
+	}
+	return found
+}
+
+// resolveTenantBySlug menerjemahkan slug di URL ke tenant_id, HANYA bila user
+// benar-benar anggotanya. false untuk slug tak dikenal MAUPUN slug milik orang
+// lain — dua keadaan itu sengaja tak dibedakan agar pemanggil (404) tidak
+// membocorkan workspace mana yang ada.
+//
+// Session ikut diperbarui agar jalur tanpa slug berikutnya (/notifications,
+// landing) mengikuti workspace yang sedang dibuka — session sebagai PETUNJUK,
+// bukan sumber kebenaran (0004).
+//
+// Dibaca lewat WithSuper: memberships & tenants sengaja tanpa RLS, dan query ini
+// justru yang MENENTUKAN tenant — tak bisa bergantung GUC yang belum di-set.
+// Keamanan dari filter user_id = uid sesi.
+func (h *Handler) resolveTenantBySlug(ctx context.Context, uid int64, slug string) (int64, bool) {
+	var (
+		tenantID int64
+		name     string
+		found    bool
+	)
+	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
+		t, e := q.GetTenantBySlug(ctx, slug)
+		if e != nil {
+			return nil // slug tak ada — bukan error, cukup tak ditemukan
+		}
+		if _, e := q.GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: t.ID}); e != nil {
+			return nil // bukan anggota — disamakan dgn tak ada (anti kebocoran keberadaan)
+		}
+		tenantID, name, found = t.ID, t.Name, true
+		return nil
+	})
+	if err != nil {
+		h.Log.Error("scope: resolve slug", "user_id", uid, "err", err)
+		return 0, false
+	}
+	if found && tenantID != session.TenantID(ctx) {
+		session.SetActiveTenant(ctx, tenantID, name, slug)
+	}
+	return tenantID, found
+}
+
 // resolveActiveTenant mengembalikan workspace aktif yang SUDAH TERVALIDASI milik
 // user. Alur: pakai tenant di session bila user memang anggotanya; kalau tidak
 // (session basi / dipaksa / baru login) → jatuh ke workspace pertama user dan
@@ -91,10 +186,14 @@ func (h *Handler) resolveActiveTenant(ctx context.Context, uid int64) (int64, bo
 	var (
 		okTenant int64
 		okName   string
+		okSlug   string
 		found    bool
 	)
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
-		if want != 0 {
+		if want != 0 && session.TenantSlug(ctx) != "" {
+			// Slug ikut disyaratkan: session lama (sebelum 0004) menyimpan tenantID
+			// tanpa slug. Tanpa cek ini ia lolos sebagai "valid" lalu setiap wsPath
+			// menghasilkan /workspace/new — self-heal lewat jalur fallback di bawah.
 			if _, e := q.GetMembership(ctx, db.GetMembershipParams{UserID: uid, TenantID: want}); e == nil {
 				okTenant, found = want, true
 				return nil // session valid — tak perlu query lagi
@@ -105,7 +204,7 @@ func (h *Handler) resolveActiveTenant(ctx context.Context, uid int64) (int64, bo
 			return e
 		}
 		if len(ms) > 0 {
-			okTenant, okName, found = ms[0].TenantID, ms[0].Name, true
+			okTenant, okName, okSlug, found = ms[0].TenantID, ms[0].Name, ms[0].Slug, true
 		}
 		return nil
 	})
@@ -113,8 +212,8 @@ func (h *Handler) resolveActiveTenant(ctx context.Context, uid int64) (int64, bo
 		h.Log.Error("scope: resolve tenant", "user_id", uid, "err", err)
 		return 0, false
 	}
-	if found && okTenant != want {
-		session.SetActiveTenant(ctx, okTenant, okName) // fallback → simpan
+	if found && okSlug != "" {
+		session.SetActiveTenant(ctx, okTenant, okName, okSlug) // fallback → simpan
 	}
 	return okTenant, found
 }

@@ -12,7 +12,7 @@ import (
 // members.go — kelola ANGGOTA workspace aktif (model membership). Dipisah dari
 // workspace.go (pengaturan nama) agar tiap file di bawah batas handler 150 baris.
 
-// MembersPage — GET /admin/members. Daftar anggota + undangan pending.
+// MembersPage — GET /w/{workspace}/members. Daftar anggota + undangan pending.
 func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	tenantID := session.TenantID(ctx)
@@ -46,17 +46,17 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 		h.Log.Error("members: list invites", "err", e)
 	}
 
-	h.renderShell(w, r, "Anggota", "go_starter /admin", "/admin/members", adminNav,
+	h.renderWorkspaceShell(w, r, "Anggota", "/members",
 		panel.Members(members, invites, canManageMembers(ctx), session.UserID(ctx),
 			workspaceErrMsg(r.URL.Query().Get("err"))))
 }
 
-// MemberSetRole — POST /admin/members/{id}/role. Ubah role anggota di workspace
+// MemberSetRole — POST /w/{workspace}/members/{id}/role. Ubah role anggota di workspace
 // AKTIF. Owner/admin saja; owner terakhir tak boleh diturunkan (workspace yatim).
 func (h *Handler) MemberSetRole(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canManageMembers(ctx) {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	targetID, ok := h.parseTargetID(w, r)
@@ -65,22 +65,22 @@ func (h *Handler) MemberSetRole(w http.ResponseWriter, r *http.Request) {
 	}
 	newRole := r.FormValue("role")
 	if !authz.ValidRoleName(newRole) {
-		http.Redirect(w, r, "/admin/members?err=role", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "role")
 		return
 	}
 	tenantID := session.TenantID(ctx)
 	actor, target, err := h.loadActorTarget(ctx, targetID, tenantID)
 	if err != nil {
-		http.Redirect(w, r, "/admin/members?err=notfound", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "notfound")
 		return
 	}
 	if err := authz.GuardSetRole(actor, target, authz.ParseRole(newRole)); err != nil {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	if target.Role == authz.RoleOwner && newRole != authz.RoleNameOwner {
 		if n, e := h.q(ctx).CountTenantOwners(ctx, tenantID); e == nil && n <= 1 {
-			http.Redirect(w, r, "/admin/members?err=lastowner", http.StatusSeeOther)
+			wsRedirect(w, r, "/members", "lastowner")
 			return
 		}
 	}
@@ -88,22 +88,22 @@ func (h *Handler) MemberSetRole(w http.ResponseWriter, r *http.Request) {
 		UserID: targetID, TenantID: tenantID, Role: newRole,
 	}); err != nil {
 		h.Log.Error("members: update role", "err", err)
-		http.Redirect(w, r, "/admin/members?err=failed", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "failed")
 		return
 	}
 	h.audit(ctx, actor.ID, "member.role.update", targetID, map[string]string{"to": newRole})
 	// Beri tahu yang bersangkutan — perubahan role mengubah apa yang bisa ia
 	// lakukan, jadi ia berhak tahu tanpa harus menyadarinya sendiri.
 	h.notify(ctx, targetID, tenantID, "member.role.changed", notifPayload{Role: newRole})
-	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
+	wsRedirect(w, r, "/members", "")
 }
 
-// MemberRemove — POST /admin/members/{id}/remove. Keluarkan anggota dari
+// MemberRemove — POST /w/{workspace}/members/{id}/remove. Keluarkan anggota dari
 // workspace aktif (membership dihapus; USER-nya tetap ada — identitas global).
 func (h *Handler) MemberRemove(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canManageMembers(ctx) {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	targetID, ok := h.parseTargetID(w, r)
@@ -113,16 +113,16 @@ func (h *Handler) MemberRemove(w http.ResponseWriter, r *http.Request) {
 	tenantID := session.TenantID(ctx)
 	actor, target, err := h.loadActorTarget(ctx, targetID, tenantID)
 	if err != nil {
-		http.Redirect(w, r, "/admin/members?err=notfound", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "notfound")
 		return
 	}
 	if err := authz.GuardDelete(actor, target); err != nil {
-		http.Redirect(w, r, "/admin/members?err=forbidden", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "forbidden")
 		return
 	}
 	if target.Role == authz.RoleOwner {
 		if n, e := h.q(ctx).CountTenantOwners(ctx, tenantID); e == nil && n <= 1 {
-			http.Redirect(w, r, "/admin/members?err=lastowner", http.StatusSeeOther)
+			wsRedirect(w, r, "/members", "lastowner")
 			return
 		}
 	}
@@ -130,7 +130,7 @@ func (h *Handler) MemberRemove(w http.ResponseWriter, r *http.Request) {
 		UserID: targetID, TenantID: tenantID,
 	}); err != nil {
 		h.Log.Error("members: remove", "err", err)
-		http.Redirect(w, r, "/admin/members?err=failed", http.StatusSeeOther)
+		wsRedirect(w, r, "/members", "failed")
 		return
 	}
 	h.audit(ctx, actor.ID, "member.remove", targetID, nil)
@@ -138,5 +138,5 @@ func (h *Handler) MemberRemove(w http.ResponseWriter, r *http.Request) {
 	// hanya ber-FK ke tenants (bukan memberships), jadi tetap ada & terbaca oleh
 	// mantan anggota yang sudah tak punya akses ke workspace itu.
 	h.notify(ctx, targetID, tenantID, "member.removed", notifPayload{})
-	http.Redirect(w, r, "/admin/members", http.StatusSeeOther)
+	wsRedirect(w, r, "/members", "")
 }

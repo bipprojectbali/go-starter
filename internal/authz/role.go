@@ -69,22 +69,16 @@ func ValidRoleName(s string) bool {
 	return s == RoleNameMember || s == RoleNameAdmin || s == RoleNameOwner
 }
 
-// HomePath mengembalikan halaman "rumah" untuk sebuah role — tujuan redirect
-// setelah login & pengalihan landing. Sumber TUNGGAL agar tak ada literal
-// redirect tersebar. Platform (super_admin/staff) → /dev; owner/admin → /admin;
-// member → /user.
-func HomePath(role Role) string {
-	switch role {
-	case RoleSuperAdmin, RoleStaff:
-		return "/dev"
-	case RoleOwner, RoleAdmin:
-		return "/admin"
-	default:
-		return "/user"
-	}
-}
+// PlatformHomePath = rumah role PLATFORM (super_admin/staff). Panel lintas-
+// workspace, jadi ia satu-satunya home yang tak bergantung workspace.
+const PlatformHomePath = "/dev"
 
-// HomePathFor memetakan nama role string (dari session) ke home path.
-func HomePathFor(roleName string) string {
-	return HomePath(ParseRole(roleName))
+// IsPlatformHome melaporkan apakah role berumah di panel platform. Role TENANT
+// (owner/admin/member) sengaja TIDAK punya home di sini: sejak keputusan 0004
+// alamatnya "/w/{slug}" — bergantung WORKSPACE AKTIF, bukan role. Satu orang
+// bisa owner di A dan member di B; memetakan role→path membuat alamat halaman
+// yang sama berubah saat pindah workspace. Pembentukannya di handler.homeFor
+// (butuh session slug, yang tak boleh diimpor paket authz).
+func IsPlatformHome(role Role) bool {
+	return role == RoleSuperAdmin || role == RoleStaff
 }

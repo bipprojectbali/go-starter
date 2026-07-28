@@ -26,18 +26,21 @@ func ctxWithRole(t *testing.T, role string) context.Context {
 	if err != nil {
 		t.Fatalf("session load: %v", err)
 	}
-	session.SetIdentity(ctx, 1, "u@x.com", role, false, 1, "Acme", "")
+	session.SetIdentity(ctx, 1, "u@x.com", role, false, 1, "Acme", "acme", "")
 	return ctx
 }
 
+// Sejak 0004 hanya tersisa DUA tujuan lintas-panel: platform (/dev) dan ruang
+// kerja aktif. Pintasan "Admin"+"User" yang lama menunjuk dua alamat yang kini
+// satu dan sama — menampilkan keduanya berarti dua tombol ke tempat identik.
 func TestQuickLinksFor(t *testing.T) {
 	cases := []struct {
 		role      string
 		wantHrefs []string
 	}{
-		{"member", []string{"/user"}},                              // user biasa: hanya beranda User
-		{"admin", []string{"/admin", "/user"}},                     // admin: Admin + User (mewarisi user:home)
-		{"super_admin", []string{"/dev/users", "/admin", "/user"}}, // super: ketiganya, /dev/users (bukan /dev)
+		{"member", []string{"/w/acme"}},                    // anggota: ruang kerjanya
+		{"admin", []string{"/w/acme"}},                     // admin: sama — beda AKSI, bukan ALAMAT
+		{"super_admin", []string{"/dev/users", "/w/acme"}}, // super: platform + ruang kerja
 	}
 	for _, c := range cases {
 		links := quickLinksFor(ctxWithRole(t, c.role))

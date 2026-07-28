@@ -17,7 +17,7 @@ func (e *testEnv) doWorkspace(uid int64, role, body string, fn http.HandlerFunc)
 	rec := httptest.NewRecorder()
 	wrapped := e.sm.LoadAndSave(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// tenantID = env.tenantID (workspace seed); nama awal "Test".
-		session.SetIdentity(r.Context(), uid, "test@local", role, false, e.tenantID, "Test", "")
+		session.SetIdentity(r.Context(), uid, "test@local", role, false, e.tenantID, "Test", "test", "")
 		fn(w, r.WithContext(withQueries(r.Context(), e.q)))
 	}))
 	wrapped.ServeHTTP(rec, req)
