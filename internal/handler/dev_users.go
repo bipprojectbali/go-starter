@@ -11,6 +11,7 @@ import (
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
+	"go_starter/internal/settings"
 	"go_starter/internal/ui/pages/dev"
 
 	"github.com/go-chi/chi/v5"
@@ -41,7 +42,7 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	actorRole := authz.ParseRole(session.Role(r.Context()))
 	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
 	byUser := h.membershipsByUser(r.Context(), users) // satu query batch (anti N+1)
-	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(),
+	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(r.Context()),
 		dev.UsersPage(toUserRows(users, byUser), canManageSuper))
 }
 
@@ -318,7 +319,12 @@ func toUserRows(users []db.User, byUser map[int64][]dev.WorkspaceRole) []dev.Use
 			AvatarURL:  avatar,
 			IsRoot:     isRoot,
 			Workspaces: byUser[u.ID],
-			Quota:      int(u.WorkspaceQuota),
+			// Kuota EFEKTIF + apakah itu hak khusus. Keduanya dioper terpisah agar
+			// panel bisa menampilkan "3 (global)" vs "5 (khusus)": tanpa penanda,
+			// operator tak bisa tahu mana yang akan ikut berubah saat default
+			// global diubah — justru pertanyaan yang membuat halaman ini berguna.
+			Quota:         settings.EffectiveWorkspaceQuota(u.WorkspaceQuota),
+			QuotaOverride: u.WorkspaceQuota != nil,
 		})
 	}
 	return rows

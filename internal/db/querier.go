@@ -30,6 +30,11 @@ type Querier interface {
 	// Bagian "perlu tindakan" dari badge. Undangan pending SENGAJA tak pernah
 	// ter-auto-read: ia tugas, bukan kabar — lihat MarkNotificationsRead.
 	CountPendingInvitesByEmail(ctx context.Context, email string) (int64, error)
+	// Berapa user memegang HAK KHUSUS (kuota di-override, bukan mengikuti global).
+	// Dipakai halaman pengaturan untuk menyatakan dampak sebelum operator menyimpan:
+	// mereka SENGAJA tak ikut berubah, dan tanpa angka ini operator mengira
+	// pengaturannya tak bekerja.
+	CountQuotaOverrides(ctx context.Context) (int64, error)
 	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
 	// (workspace tanpa owner = yatim).
 	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
@@ -72,6 +77,9 @@ type Querier interface {
 	// (memastikan tenant aktif di session memang milik user; anti tenant-forcing).
 	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
+	// Baca satu pengaturan platform. Tak ditemukan = keadaan SAH (pemanggil jatuh ke
+	// default bawaan kode), bukan error yang perlu diributkan.
+	GetSetting(ctx context.Context, key string) (PlatformSetting, error)
 	GetTenant(ctx context.Context, id int64) (Tenant, error)
 	// SENGAJA tanpa filter deleted_at: middleware Scope perlu MEMBEDAKAN "workspace
 	// tak pernah ada" dari "workspace terhapus" (0005) — keduanya berujung 404 bagi
@@ -121,6 +129,9 @@ type Querier interface {
 	// (pola auth.go/invite.go). Ditopang index partial idx_invites_email.
 	ListPendingInvitesByEmail(ctx context.Context, email string) ([]ListPendingInvitesByEmailRow, error)
 	ListPlatformStaff(ctx context.Context) ([]PlatformStaff, error)
+	// Semua pengaturan sekaligus — dipakai halaman /dev/settings dan pemuatan cache
+	// saat boot. Jumlahnya sedikit, jadi tak dipaginasi (beda dari daftar user).
+	ListSettings(ctx context.Context) ([]PlatformSetting, error)
 	// Daftar workspace untuk panel /dev (lintas-workspace — route platform). Termasuk
 	// yang suspended/archived: justru itu yang perlu dilihat operator. Yang TERHAPUS
 	// ikut tampil agar restore masih mungkin selama masa tenggang.
@@ -181,9 +192,15 @@ type Querier interface {
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) error
 	// URL avatar Google berubah saat user ganti foto → update tiap login.
 	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error
-	// Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+	// Kuota workspace per user. NULL = IKUT DEFAULT GLOBAL (platform_settings), angka
+	// = hak khusus milik user itu yang kebal perubahan global. Membedakan keduanya
+	// adalah alasan kolom ini nullable — dgn NOT NULL, "kebetulan 3" tak bisa
+	// dibedakan dari "sengaja diberi 3".
 	UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error
+	// Simpan pengaturan. UPSERT karena baris mungkin belum ada (deployment baru yang
+	// tak menjalankan seed): pemanggil tak perlu tahu bedanya.
+	UpsertSetting(ctx context.Context, arg UpsertSettingParams) error
 }
 
 var _ Querier = (*Queries)(nil)

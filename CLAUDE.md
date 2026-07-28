@@ -301,9 +301,29 @@ tenggang 30 hari). Ditegakkan di `gateLifecycle` yang dipanggil `Scope`.
   tenant di session itu user-controlled — tanpa cek ini user bisa memaksa workspace
   orang lain. Tak valid → fallback workspace pertama; tanpa workspace → `/workspace/new`.
   Validasi HARUS di Scope, bukan RefreshIdentity (yang jalan setelah scope terpilih).
-- **Kuota workspace**: `users.workspace_quota` (default env `MAX_WORKSPACES_PER_USER`).
-  Yang dihitung hanya workspace ber-role **owner** — diundang jadi member/admin tak
-  memakan kuota. `CountTenantOwners` mencegah owner terakhir diturunkan (workspace yatim).
+- **Kuota workspace = DUA lapis** (`internal/settings`): default global di tabel
+  `platform_settings` (bisa diubah dari `/dev/settings`, berlaku SEKETIKA tanpa
+  restart) + override per-user di `users.workspace_quota`. **`NULL` = ikut
+  global**, angka = hak khusus yang KEBAL perubahan global — pembedaan itu
+  mustahil dengan kolom NOT NULL, dan itulah alasan ia dibuat nullable.
+  `MAX_WORKSPACES_PER_USER` kini hanya **fallback** saat baris DB belum ada
+  (deployment baru); dulu ia "aturan global" yang menyesatkan — nilainya cuma
+  disalin saat user DIBUAT, jadi mengubahnya tak pernah menyentuh user lama.
+  Hitung kuota HANYA lewat `settings.EffectiveWorkspaceQuota` — penegakan
+  (`WorkspaceCreate`) dan tampilan (sidebar) wajib memakai sumber yang sama,
+  beda sedikit = user melihat tombol yang lalu ditolak.
+  Yang dihitung hanya workspace ber-role **owner** & belum terhapus — diundang
+  jadi member/admin tak memakan kuota. `CountTenantOwners` mencegah owner
+  terakhir diturunkan (workspace yatim).
+- **`/dev/settings` di-gate `platform:settings`, BUKAN `dev:users`.** Seluruh
+  grup `/dev` dijaga `dev:users` yang dimiliki **staff** — tanpa objek Casbin
+  tersendiri, staff (yang sengaja dibatasi: tak boleh suspend tenant/kelola staff)
+  bisa mengubah aturan yang berlaku bagi SETIAP user. `devNav` juga memeriksa izin
+  ini agar menunya tak jadi menu hantu. Deny-default; hanya super_admin lolos.
+- **Cache settings = PER-PROSES.** Perubahan seketika di instance yang melayani;
+  instance lain menyusul saat boot. Diterima karena penulisnya hanya operator
+  platform & efek terburuknya sementara. Kalau kelak butuh serempak: pub/sub
+  Redis (sudah ada di stack), bukan menghapus cache.
 - **Register/OAuth = user + workspace + membership owner** dalam SATU tx `WithSuper`
   (atomik). `startIdentity(preferTenant)` memilih workspace aktif.
 - **Audit di tx `WithSuper` TERPISAH** dari Scope tx (fail-soft struktural: gagal

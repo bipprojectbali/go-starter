@@ -18,6 +18,6 @@ func (h *Handler) DevHealth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gagal memindai file", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "File Health", "go_starter /dev", "/dev/health", devNav(),
+	h.renderShell(w, r, "File Health", "go_starter /dev", "/dev/health", devNav(r.Context()),
 		dev.HealthPage(res))
 }

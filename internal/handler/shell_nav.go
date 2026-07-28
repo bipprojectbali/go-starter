@@ -23,7 +23,7 @@ import (
 // yang sama dengan quickLinksFor (view tak boleh memanggil authz sendiri).
 func navFor(ctx context.Context) []ui.NavItem {
 	if role := session.Role(ctx); isPlatformRole(role) || session.IsRoot(ctx) {
-		return devNav()
+		return devNav(ctx)
 	}
 	// Role tenant → menu ruang kerja AKTIF (dari session: halaman ini tak punya
 	// slug di path-nya sendiri). Item "Pengaturan" mengikuti izin yang sama

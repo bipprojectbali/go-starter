@@ -54,7 +54,7 @@ func (h *Handler) DevWorkspaces(w http.ResponseWriter, r *http.Request) {
 			Reason:  strFromPtr(t.SuspendReason),
 		})
 	}
-	h.renderShell(w, r, "Workspaces", "go_starter /dev", "/dev/workspaces", devNav(),
+	h.renderShell(w, r, "Workspaces", "go_starter /dev", "/dev/workspaces", devNav(r.Context()),
 		dev.Workspaces(items, page, total, devWorkspacePageSize,
 			workspaceErrMsg(r.URL.Query().Get("err"))))
 }

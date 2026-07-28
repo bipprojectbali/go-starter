@@ -5,8 +5,11 @@ import "testing"
 // TestDevNav_FileHealthDevOnly menjaga agar menu "File Health" HANYA muncul di
 // dev — route-nya tak terdaftar di produksi (source .go tak ada di single-binary).
 func TestDevNav_FileHealthDevOnly(t *testing.T) {
+	// devNav kini memeriksa izin (menu Pengaturan) → butuh context ber-session,
+	// bukan context kosong. super_admin = yang berhak melihat semuanya.
+	ctx := ctxWithRole(t, "super_admin")
 	hasFileHealth := func() bool {
-		for _, it := range devNav() {
+		for _, it := range devNav(ctx) {
 			if it.Href == "/dev/health" {
 				return true
 			}
@@ -19,7 +22,7 @@ func TestDevNav_FileHealthDevOnly(t *testing.T) {
 		t.Error("di dev, menu File Health harus ada")
 	}
 	// Users selalu ada.
-	if len(devNav()) < 1 || devNav()[0].Href != "/dev/users" {
+	if len(devNav(ctx)) < 1 || devNav(ctx)[0].Href != "/dev/users" {
 		t.Error("menu Users harus selalu ada")
 	}
 
@@ -29,7 +32,7 @@ func TestDevNav_FileHealthDevOnly(t *testing.T) {
 	}
 	// User Logs harus SELALU ada (produksi & dev — data-driven, bukan dev-only).
 	hasLogs := func() bool {
-		for _, it := range devNav() {
+		for _, it := range devNav(ctx) {
 			if it.Href == "/dev/logs" {
 				return true
 			}

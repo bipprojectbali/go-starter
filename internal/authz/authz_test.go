@@ -85,3 +85,30 @@ func TestNew_InvalidPolicyLine(t *testing.T) {
 		t.Error("baris policy tak dikenal harus error")
 	}
 }
+
+// TestPlatformSettings_StaffDitolak menjaga pemisahan yang mudah hilang: SELURUH
+// panel /dev di-gate dev:users, dan staff memilikinya. Tanpa objek tersendiri
+// untuk platform:settings, staff — yang aksesnya sengaja dibatasi (tak boleh
+// suspend tenant, tak boleh kelola staff lain) — bisa mengubah aturan yang
+// berlaku bagi SETIAP user di platform.
+func TestPlatformSettings_StaffDitolak(t *testing.T) {
+	e, err := New(Model, Policy)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if ok, _ := e.Enforce("staff", "platform:settings", "write"); ok {
+		t.Error("staff TAK BOLEH mengubah pengaturan platform")
+	}
+	if ok, _ := e.Enforce("super_admin", "platform:settings", "write"); !ok {
+		t.Error("super_admin harus boleh mengubah pengaturan platform")
+	}
+	// Staff tetap boleh melihat panel /dev — yang dibatasi hanya pengaturannya.
+	if ok, _ := e.Enforce("staff", "dev:users", "read"); !ok {
+		t.Error("staff harus tetap bisa membuka panel /dev")
+	}
+	for _, role := range []string{"owner", "admin", "member"} {
+		if ok, _ := e.Enforce(role, "platform:settings", "write"); ok {
+			t.Errorf("role tenant %q tak boleh menyentuh pengaturan platform", role)
+		}
+	}
+}

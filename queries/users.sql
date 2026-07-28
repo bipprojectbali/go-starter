@@ -23,7 +23,10 @@ SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL;
 UPDATE users SET avatar_url = $2 WHERE id = $1;
 
 -- name: UpdateUserQuota :exec
--- Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+-- Kuota workspace per user. NULL = IKUT DEFAULT GLOBAL (platform_settings), angka
+-- = hak khusus milik user itu yang kebal perubahan global. Membedakan keduanya
+-- adalah alasan kolom ini nullable — dgn NOT NULL, "kebetulan 3" tak bisa
+-- dibedakan dari "sengaja diberi 3".
 UPDATE users SET workspace_quota = $2 WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: UpdateUserStatus :exec
@@ -39,3 +42,11 @@ WHERE deleted_at IS NULL
   AND (created_at, id) < (sqlc.arg(cursor_created_at)::timestamptz, sqlc.arg(cursor_id)::bigint)
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_size);
+
+-- name: CountQuotaOverrides :one
+-- Berapa user memegang HAK KHUSUS (kuota di-override, bukan mengikuti global).
+-- Dipakai halaman pengaturan untuk menyatakan dampak sebelum operator menyimpan:
+-- mereka SENGAJA tak ikut berubah, dan tanpa angka ini operator mengira
+-- pengaturannya tak bekerja.
+SELECT count(*)::bigint FROM users
+WHERE workspace_quota IS NOT NULL AND deleted_at IS NULL;

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go_starter/internal/db"
+	"go_starter/internal/settings"
 	"go_starter/internal/ui/pages/dev"
 )
 
@@ -14,9 +15,12 @@ func TestToUserRows_MarksRootAndMemberships(t *testing.T) {
 	SetSuperAdminChecker(func(email string) bool { return email == "root@x.com" })
 	t.Cleanup(func() { SetSuperAdminChecker(func(string) bool { return false }) })
 
+	// workspace_quota kini NULLABLE: nil = ikut default global, angka = hak
+	// khusus. Keduanya diwakili di sini agar pemetaan QuotaOverride ikut terjaga.
+	khusus := int32(5)
 	users := []db.User{
-		{ID: 1, Email: "root@x.com", WorkspaceQuota: 3},  // super-admin env
-		{ID: 2, Email: "biasa@x.com", WorkspaceQuota: 1}, // user biasa
+		{ID: 1, Email: "root@x.com"},                           // super-admin env, ikut global
+		{ID: 2, Email: "biasa@x.com", WorkspaceQuota: &khusus}, // hak khusus
 	}
 	byUser := map[int64][]dev.WorkspaceRole{
 		2: {{TenantID: 9, Name: "Acme", Role: "owner"}},
@@ -36,8 +40,18 @@ func TestToUserRows_MarksRootAndMemberships(t *testing.T) {
 	if len(rows[0].Workspaces) != 0 {
 		t.Errorf("user tanpa membership harus punya daftar kosong, got %+v", rows[0].Workspaces)
 	}
-	// Kuota ikut ditampilkan (dasar kontrol platform).
-	if rows[1].Quota != 1 {
-		t.Errorf("kuota harus terbawa, got %d", rows[1].Quota)
+	// Kuota EFEKTIF + asalnya. Menampilkan angka saja tak cukup: operator perlu
+	// tahu siapa yang akan ikut berubah saat default global diubah.
+	if rows[1].Quota != 5 || !rows[1].QuotaOverride {
+		t.Errorf("hak khusus harus terbawa apa adanya, got %d (override=%v)",
+			rows[1].Quota, rows[1].QuotaOverride)
+	}
+	if rows[0].QuotaOverride {
+		t.Error("user tanpa override tak boleh ditandai punya hak khusus")
+	}
+	// Tanpa override → angka datang dari default global, bukan dari user.
+	if rows[0].Quota != settings.WorkspaceQuotaDefault() {
+		t.Errorf("tanpa override harus ikut global %d, got %d",
+			settings.WorkspaceQuotaDefault(), rows[0].Quota)
 	}
 }

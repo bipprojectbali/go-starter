@@ -35,6 +35,6 @@ func (h *Handler) DevLogs(w http.ResponseWriter, r *http.Request) {
 	vm.Spans = h.buildSpans(ctx, fromTS, toTS)
 	vm.AuthEvents = h.buildAuthEvents(ctx)
 
-	h.renderShell(w, r, "User Activity", "go_starter /dev", "/dev/logs", devNav(),
+	h.renderShell(w, r, "User Activity", "go_starter /dev", "/dev/logs", devNav(r.Context()),
 		dev.LogsPage(vm))
 }

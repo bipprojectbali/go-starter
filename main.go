@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed database tzdata: LoadLocation gagal di container minimal (CGO_ENABLED=0) tanpa ini
@@ -18,9 +19,11 @@ import (
 	"go_starter/internal/authz"
 	"go_starter/internal/config"
 	"go_starter/internal/database"
+	"go_starter/internal/db"
 	"go_starter/internal/handler"
 	"go_starter/internal/oauth"
 	"go_starter/internal/session"
+	"go_starter/internal/settings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -155,6 +158,17 @@ func run() error {
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)
 	handler.SetAppTimezone(cfg.Location()) // TZ agregasi panel logs (tampilan jam lokal)
 
+	// Pengaturan platform: env jadi FALLBACK (dipakai bila baris DB belum ada,
+	// mis. deployment baru), DB jadi sumber kebenaran yang bisa diubah operator
+	// saat jalan. Fail-soft: gagal baca → jalan dgn fallback env, sebab kuota
+	// yang sedikit basi jauh lebih baik daripada aplikasi menolak start.
+	settings.SetFallback(settings.KeyWorkspaceQuotaDefault, strconv.Itoa(cfg.MaxWorkspacesPerUser))
+	if kv, err := loadSettings(ctx, pool); err != nil {
+		log.Error("settings: gagal memuat, pakai fallback env", "err", err)
+	} else {
+		settings.Load(kv)
+	}
+
 	// Authz (Casbin) — enforcer in-memory dari model+policy embed.
 	enforcer, err := authz.New(authz.Model, authz.Policy)
 	if err != nil {
@@ -218,6 +232,24 @@ func run() error {
 		log.Info("shutdown: done")
 		return nil
 	}
+}
+
+// loadSettings membaca seluruh pengaturan platform jadi map siap-cache.
+// platform_settings TANPA RLS (pengaturan berlaku lintas-workspace), jadi
+// WithSuper aman — dan memang perlu: saat boot belum ada tenant untuk di-scope.
+func loadSettings(ctx context.Context, pool *pgxpool.Pool) (map[string]string, error) {
+	kv := map[string]string{}
+	err := db.WithSuper(ctx, pool, func(q *db.Queries) error {
+		rows, e := q.ListSettings(ctx)
+		if e != nil {
+			return e
+		}
+		for _, s := range rows {
+			kv[s.Key] = s.Value
+		}
+		return nil
+	})
+	return kv, err
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {

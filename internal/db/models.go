@@ -66,6 +66,13 @@ type OauthAccount struct {
 	TenantID    int64              `json:"tenant_id"`
 }
 
+type PlatformSetting struct {
+	Key       string             `json:"key"`
+	Value     string             `json:"value"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy *int64             `json:"updated_by"`
+}
+
 type PlatformStaff struct {
 	ID        int64              `json:"id"`
 	Email     string             `json:"email"`
@@ -94,5 +101,5 @@ type User struct {
 	Status         string             `json:"status"`
 	AvatarUrl      *string            `json:"avatar_url"`
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
-	WorkspaceQuota int32              `json:"workspace_quota"`
+	WorkspaceQuota *int32             `json:"workspace_quota"`
 }

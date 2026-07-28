@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countQuotaOverrides = `-- name: CountQuotaOverrides :one
+SELECT count(*)::bigint FROM users
+WHERE workspace_quota IS NOT NULL AND deleted_at IS NULL
+`
+
+// Berapa user memegang HAK KHUSUS (kuota di-override, bukan mengikuti global).
+// Dipakai halaman pengaturan untuk menyatakan dampak sebelum operator menyimpan:
+// mereka SENGAJA tak ikut berubah, dan tanpa angka ini operator mengira
+// pengaturannya tak bekerja.
+func (q *Queries) CountQuotaOverrides(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countQuotaOverrides)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createOAuthUser = `-- name: CreateOAuthUser :one
 INSERT INTO users (email, email_verified, avatar_url)
 VALUES ($1, true, $2)
@@ -187,11 +203,14 @@ UPDATE users SET workspace_quota = $2 WHERE id = $1 AND deleted_at IS NULL
 `
 
 type UpdateUserQuotaParams struct {
-	ID             int64 `json:"id"`
-	WorkspaceQuota int32 `json:"workspace_quota"`
+	ID             int64  `json:"id"`
+	WorkspaceQuota *int32 `json:"workspace_quota"`
 }
 
-// Kuota workspace per user (override platform; default dari MAX_WORKSPACES_PER_USER).
+// Kuota workspace per user. NULL = IKUT DEFAULT GLOBAL (platform_settings), angka
+// = hak khusus milik user itu yang kebal perubahan global. Membedakan keduanya
+// adalah alasan kolom ini nullable — dgn NOT NULL, "kebetulan 3" tak bisa
+// dibedakan dari "sengaja diberi 3".
 func (q *Queries) UpdateUserQuota(ctx context.Context, arg UpdateUserQuotaParams) error {
 	_, err := q.db.Exec(ctx, updateUserQuota, arg.ID, arg.WorkspaceQuota)
 	return err

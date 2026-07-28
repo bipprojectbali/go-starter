@@ -87,6 +87,23 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		r.Post("/workspaces/{id}/unsuspend", h.DevWorkspaceUnsuspend)
 		r.Post("/workspaces/{id}/restore", h.DevWorkspaceRestore)
 
+		// Pengaturan platform — berlaku SEKETIKA (tabel platform_settings + cache),
+		// bukan env yang butuh restart. Hak khusus per-user diatur di /dev/users
+		// karena di sanalah orangnya terlihat; dua tempat mengelola hal yang sama
+		// hanya bikin salah satunya basi.
+		//
+		// Gate SENDIRI (platform:settings), BUKAN dev:users yang menjaga grup ini:
+		// aturan di sini berlaku untuk SETIAP user di platform, jadi staff — yang
+		// aksesnya sengaja dibatasi — tak boleh mengubahnya. Deny-default di
+		// policy.csv; hanya super_admin (root) yang lolos.
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireEnforce("platform:settings", "write"))
+			r.Get("/settings", h.DevSettings)
+			r.Post("/settings/quota", h.DevSettingsQuota)
+			r.Post("/users/{id}/quota", h.DevUserQuota)
+			r.Post("/users/{id}/quota/reset", h.DevUserQuotaReset)
+		})
+
 		// Panel aktivitas user — TERSEDIA di produksi (data-driven, super_admin
 		// butuh pantau aktivitas nyata). Beda dari /health & /erd yang dev-only.
 		r.Get("/logs", h.DevLogs)

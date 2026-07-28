@@ -8,6 +8,7 @@ import (
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
+	"go_starter/internal/settings"
 	"go_starter/internal/ui/pages/panel"
 )
 
@@ -80,7 +81,10 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 		if e != nil {
 			return e
 		}
-		if owned >= int64(u.WorkspaceQuota) {
+		// Kuota EFEKTIF: override per-user bila ada, selainnya default global yang
+		// bisa diubah operator saat jalan. Dihitung di satu tempat (settings) agar
+		// penegakan di sini tak pernah berbeda dari angka yang ditampilkan sidebar.
+		if owned >= int64(settings.EffectiveWorkspaceQuota(u.WorkspaceQuota)) {
 			overQuota = true
 			return nil
 		}

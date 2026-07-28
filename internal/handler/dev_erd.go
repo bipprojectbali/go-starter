@@ -16,6 +16,6 @@ func (h *Handler) DevERD(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gagal membaca skema", http.StatusInternalServerError)
 		return
 	}
-	h.renderShell(w, r, "Database ERD", "go_starter /dev", "/dev/erd", devNav(),
+	h.renderShell(w, r, "Database ERD", "go_starter /dev", "/dev/erd", devNav(r.Context()),
 		dev.ERDPage(schema.Mermaid(), len(schema.Tables)))
 }

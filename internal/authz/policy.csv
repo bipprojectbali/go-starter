@@ -38,3 +38,9 @@ p, staff, dev:users, read
 # staff TAK BOLEH: hapus/suspend tenant, kelola staff lain — TANPA policy untuk
 # platform:tenants:delete / platform:staff:* (deny-default). Hanya super_admin
 # (root god-mode) yang lolos obj platform:* apa pun.
+
+# Pengaturan platform (kuota workspace dst) SENGAJA obj tersendiri, bukan
+# menumpang dev:users. Alasannya: seluruh /dev di-gate dev:users, jadi tanpa obj
+# ini staff — yang aksesnya sengaja dibatasi — bisa mengubah aturan yang berlaku
+# untuk SETIAP user di platform. TANPA baris p untuk staff = deny-default; hanya
+# super_admin (root) yang lolos.

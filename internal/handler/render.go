@@ -10,6 +10,7 @@ import (
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
+	"go_starter/internal/settings"
 	"go_starter/internal/ui"
 
 	lucide "github.com/eduardolat/gomponents-lucide"
@@ -85,11 +86,20 @@ func workspaceNav(slug string, canManage bool) []ui.NavItem {
 
 // devNav membangun menu panel /dev. "File Health" hanya di dev (route-nya tak
 // terdaftar di produksi — source .go tak ada di single-binary).
-func devNav() []ui.NavItem {
+//
+// "Pengaturan" mengikuti IZIN, bukan sekadar berada di panel /dev: aturannya
+// berlaku untuk setiap user di platform, jadi staff tak boleh mengubahnya.
+// Menampilkan menu yang pasti ditolak route = menu hantu (pola quickLinksFor).
+func devNav(ctx context.Context) []ui.NavItem {
 	items := []ui.NavItem{
 		{Label: "Users", Href: "/dev/users", Icon: lucide.Users(html.Class("size-4"))},
 		{Label: "Workspaces", Href: "/dev/workspaces", Icon: lucide.Building2(html.Class("size-4"))},
 		{Label: "User Logs", Href: "/dev/logs", Icon: lucide.ChartColumn(html.Class("size-4"))},
+	}
+	if authz.Can(ctx, "platform:settings", "write") {
+		items = append(items, ui.NavItem{
+			Label: "Pengaturan", Href: "/dev/settings", Icon: lucide.Settings(html.Class("size-4")),
+		})
 	}
 	if devMode {
 		items = append(items,
@@ -191,10 +201,13 @@ func (h *Handler) workspaceOptions(ctx context.Context) ([]ui.WorkspaceOption, b
 			owned++
 		}
 	}
-	// Kuota per-user (kolom users.workspace_quota; default dari env saat user dibuat).
+	// Kuota EFEKTIF (override per-user, selainnya default global). Sumber yang
+	// SAMA dengan penegakan di WorkspaceCreate — kalau berbeda, user melihat
+	// tombol "Buat workspace" yang lalu ditolak, atau sebaliknya kehilangan
+	// tombol padahal masih berhak.
 	quota := 0
 	if u, e := q.GetUser(ctx, uid); e == nil {
-		quota = int(u.WorkspaceQuota)
+		quota = settings.EffectiveWorkspaceQuota(u.WorkspaceQuota)
 	}
 	return out, owned < quota
 }

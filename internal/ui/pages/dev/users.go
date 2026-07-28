@@ -13,13 +13,14 @@ import (
 
 // UserRow = data satu baris user untuk tabel (view model, bukan db.User).
 type UserRow struct {
-	ID         int64
-	Email      string
-	Status     string
-	AvatarURL  string
-	IsRoot     bool            // super-admin env (kontrol dinonaktifkan)
-	Workspaces []WorkspaceRole // keanggotaan: role PER-workspace (model membership)
-	Quota      int             // kuota workspace yang boleh dimiliki user
+	ID            int64
+	Email         string
+	Status        string
+	AvatarURL     string
+	IsRoot        bool            // super-admin env (kontrol dinonaktifkan)
+	Workspaces    []WorkspaceRole // keanggotaan: role PER-workspace (model membership)
+	Quota         int             // kuota EFEKTIF (override bila ada, selainnya default global)
+	QuotaOverride bool            // true = angka di atas hak KHUSUS user ini, bukan warisan global
 }
 
 // WorkspaceRole = satu keanggotaan user (workspace + role di dalamnya). Role kini
@@ -48,7 +49,7 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 					h.THead(
 						h.Tr(
 							h.Class("border-b border-base-300 text-left text-base-content/70"),
-							th("User"), th("Role"), th("Status"), th("Aksi"),
+							th("User"), th("Role"), th("Kuota"), th("Status"), th("Aksi"),
 						),
 					),
 					h.TBody(g.Map(rows, func(u UserRow) g.Node { return UserRowNode(u, canManageSuper) })),
@@ -76,8 +77,53 @@ func UserRowNode(u UserRow, canManageSuper bool) g.Node {
 			),
 		),
 		h.Td(h.Class("py-2 pr-4"), roleControl(u, canManageSuper)),
+		h.Td(h.Class("py-2 pr-4"), quotaControl(u)),
 		h.Td(h.Class("py-2 pr-4"), statusControl(u)),
 		h.Td(h.Class("py-2"), deleteControl(u)),
+	)
+}
+
+// quotaControl = jatah workspace user + tombol memberi/mencabut hak khusus.
+//
+// Menampilkan ASAL angkanya, bukan cuma angkanya: "3 global" vs "5 khusus".
+// Tanpa penanda itu, operator tak bisa tahu siapa yang akan ikut berubah saat
+// default global diubah — justru pertanyaan yang membuat halaman ini berguna.
+// Root env dikecualikan: ia super_admin di semua workspace, kuota tak berlaku.
+func quotaControl(u UserRow) g.Node {
+	if u.IsRoot {
+		return h.Span(h.Class("text-base-content/50 text-sm"), g.Text("—"))
+	}
+	id := strconv.FormatInt(u.ID, 10)
+	origin := "global"
+	if u.QuotaOverride {
+		origin = "khusus"
+	}
+	nodes := []g.Node{
+		h.Method("post"), h.Action("/dev/users/" + id + "/quota"),
+		h.Class("flex flex-wrap items-center gap-1 min-w-0"),
+		h.Input(
+			h.Type("number"), h.Name("quota"),
+			h.Value(strconv.Itoa(u.Quota)),
+			g.Attr("min", "1"), g.Attr("max", "100"),
+			h.Class("input input-sm w-16"),
+		),
+		h.Button(h.Type("submit"), h.Class("btn btn-sm"), g.Text("Set")),
+		h.Span(h.Class("text-xs text-base-content/60"), g.Text(origin)),
+	}
+	form := h.FormEl(nodes...)
+	if !u.QuotaOverride {
+		return h.Div(h.Class("flex flex-col gap-1 min-w-0"), form)
+	}
+	// Hanya yang PUNYA hak khusus yang bisa dikembalikan ke global — tombol pada
+	// yang sudah mengikuti global tak melakukan apa-apa selain membingungkan.
+	return h.Div(
+		h.Class("flex flex-col gap-1 min-w-0"),
+		form,
+		h.FormEl(
+			h.Method("post"), h.Action("/dev/users/"+id+"/quota/reset"),
+			h.Button(h.Type("submit"), h.Class("btn btn-xs btn-ghost"),
+				g.Text("kembalikan ke global")),
+		),
 	)
 }
 
