@@ -140,20 +140,14 @@ func MustLoad() *Config {
 		panic(fmt.Sprintf("config: APP_TIMEZONE %q tidak valid: %v", c.AppTimezone, err))
 	}
 	// Dual-DSN: pool runtime pakai APP_DATABASE_URL (role app_rw NOBYPASSRLS) agar
-	// RLS mengikat. Kosong → fallback DATABASE_URL (dev: owner, RLS TAK mengikat —
-	// isolasi tetap benar via WHERE, tapi tak ada jaring RLS). Di production SANGAT
-	// disarankan set APP_DATABASE_URL ke role non-owner (defense-in-depth).
+	// RLS mengikat. Kosong → fallback DATABASE_URL.
+	//
+	// TIDAK ADA pemeriksaan "env wajib terisi" di sini — SENGAJA. Env yang terisi
+	// tak membuktikan apa pun: mengisinya dengan DSN yang sama seperti
+	// DATABASE_URL ("biar aman, samakan saja") lolos pemeriksaan itu sambil tetap
+	// membocorkan data. Pembuktiannya dilakukan pada KONEKSI yang sudah terbuka,
+	// bukan pada string konfigurasi — lihat db.CheckRLS yang dipanggil main.
 	if c.IsProduction() {
-		// APP_DATABASE_URL WAJIB di production — TIDAK boleh fallback ke owner.
-		// Fallback diam-diam berarti pool runtime berjalan sebagai role owner yang
-		// BYPASS RLS: satu query yang lupa `WHERE tenant_id` membocorkan data
-		// lintas-pelanggan, tanpa error, tanpa jejak. Jaring pengaman terakhir
-		// multi-tenancy tak boleh mati karena env yang lupa diisi.
-		if c.AppDatabaseURL == "" {
-			panic("config: APP_DATABASE_URL wajib di production — pool runtime harus " +
-				"role non-owner (app_rw NOBYPASSRLS) agar RLS mengikat. " +
-				"Fallback ke DATABASE_URL (owner) akan mematikan isolasi tenant secara senyap")
-		}
 		c.SessionKey = mustEnv("SESSION_KEY")
 		// Kunci lemah = kunci yang tak ada. Divalidasi PANJANGNYA, bukan cuma
 		// keberadaannya: "SESSION_KEY=rahasia" lolos mustEnv tapi tak melindungi

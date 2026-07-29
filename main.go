@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -169,6 +170,19 @@ func run() error {
 	}
 	log.Info("mode aplikasi", "mode", cfg.AppMode.String())
 
+	// BUKTIKAN isolasi tenant mengikat pada koneksi runtime — jangan percaya env.
+	// Urutannya penting: SETELAH migrasi (tabel & policy harus sudah ada) dan
+	// SETELAH appmode.Set (ketatnya bergantung mode), SEBELUM melayani request.
+	//
+	// Kenapa di sini, bukan di config: string DSN tak membuktikan apa pun. Mengisi
+	// APP_DATABASE_URL dengan nilai yang SAMA seperti DATABASE_URL lolos setiap
+	// pemeriksaan env sambil tetap menjalankan pool sebagai owner — lalu satu
+	// query yang lupa `WHERE tenant_id` membocorkan data lintas-pelanggan tanpa
+	// error. Yang bisa ditanyakan ke database jawabannya pasti.
+	if err := verifyTenantIsolation(ctx, pool, cfg, log); err != nil {
+		return err
+	}
+
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)
@@ -248,6 +262,48 @@ func run() error {
 		log.Info("shutdown: done")
 		return nil
 	}
+}
+
+// verifyTenantIsolation memastikan pool runtime benar-benar terikat RLS.
+//
+// Keras di MULTI-tenant (menolak start), sekadar catatan di single-app: di sana
+// hanya ada satu tenant, jadi tak ada yang bisa bocor ke siapa pun — memaksa
+// operator menyiapkan role terpisah untuk perlindungan yang tak ia butuhkan
+// hanyalah gesekan. Aturannya menyesuaikan diri sendiri, tanpa env tambahan.
+//
+// Dev tetap boleh longgar: menjalankan Postgres dengan role terpisah hanya untuk
+// `make dev` tak sepadan, dan isolasi di sana tetap benar via GUC + WHERE.
+func verifyTenantIsolation(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config, log *slog.Logger) error {
+	st, err := db.CheckRLS(ctx, pool, "audit_logs")
+	if err != nil {
+		return err
+	}
+	if st.Binds() {
+		log.Info("isolasi tenant: RLS mengikat", "role", st.User)
+		return nil
+	}
+	// Tidak mengikat. Seberapa keras responsnya bergantung apakah ada yang bisa
+	// bocor sama sekali.
+	if cfg.IsProduction() && appmode.IsMulti() {
+		// Pesan memuat SQL siap-tempel: role app_rw sengaja dibuat NOLOGIN oleh
+		// migrasi 00007 (kerangka, tanpa kredensial di repo), jadi tanpa ini
+		// operator harus meraba sendiri cara mengaktifkannya — friksi yang justru
+		// mendorong orang menyerah dan menyamakan DSN.
+		return fmt.Errorf("isolasi tenant TIDAK mengikat: %s.\n"+
+			"Pool runtime (APP_DATABASE_URL) harus memakai role non-owner tanpa BYPASSRLS, "+
+			"agar satu query yang lupa WHERE tenant_id mengembalikan 0 baris — bukan data "+
+			"pelanggan lain.\n"+
+			"Siapkan sekali di Postgres:\n"+
+			"  ALTER ROLE app_rw LOGIN PASSWORD '<password>';\n"+
+			"  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_rw;\n"+
+			"  GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_rw;\n"+
+			"lalu set APP_DATABASE_URL=postgres://app_rw:<password>@host:port/db",
+			st.Reason())
+	}
+	log.Warn("isolasi tenant TIDAK mengikat — RLS tak jadi jaring pengaman",
+		"sebab", st.Reason(),
+		"catatan", "dapat diterima di dev/single-app; WAJIB diperbaiki sebelum production multi-tenant")
+	return nil
 }
 
 // loadSettings membaca seluruh pengaturan platform jadi map siap-cache.

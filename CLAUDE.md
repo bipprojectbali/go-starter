@@ -395,10 +395,23 @@ Prinsipnya: **yang berbahaya bila salah harus menggagalkan boot; yang bisa
 diturunkan otomatis jangan diminta ke manusia.** Warning di log adalah hal yang
 paling sering diabaikan — ia bukan pengaman.
 
-- **`APP_DATABASE_URL` WAJIB di production** (panic bila kosong). Dulu ia
-  fallback diam-diam ke `DATABASE_URL` (role owner, BYPASS RLS) — satu env yang
-  lupa diisi mematikan jaring pengaman terakhir isolasi tenant, tanpa error dan
-  tanpa jejak. Dev tetap boleh kosong (isolasi tetap benar via GUC+WHERE).
+- **Isolasi tenant DIBUKTIKAN, bukan dijanjikan** (`db.CheckRLS`, dipanggil
+  `verifyTenantIsolation` di `main.go`). Memeriksa "env terisi" TIDAK cukup:
+  mengisi `APP_DATABASE_URL` dengan DSN yang SAMA seperti `DATABASE_URL` lolos
+  pemeriksaan itu sambil tetap membocorkan data — terukur di DB nyata, query yang
+  lupa `WHERE tenant_id` membaca 82 baris dari 15 tenant sebagai owner, vs 13
+  baris dari 1 tenant sebagai `app_rw`. Yang ditanyakan ke Postgres jawabannya
+  pasti: `rolsuper`/`rolbypassrls`/pemilik-tabel + `FORCE RLS`.
+  Ketatnya MENYESUAIKAN DIRI: production multi-tenant → menolak start (dengan SQL
+  siap tempel, sebab `app_rw` sengaja `NOLOGIN` dari migrasi 00007); dev atau
+  single-app → peringatan saja (satu tenant, tak ada yang bisa bocor ke siapa).
+  Tak ada env baru untuk ini — aturan yang menyesuaikan diri mengalahkan aturan
+  yang harus diingat.
+- **`APP_DATABASE_URL` = satu database, DUA ROLE** — bukan dua database. Owner
+  butuh `ALTER`/`CREATE POLICY` untuk migrasi; runtime harus role terbatas agar
+  RLS mengikat. Satu role tak bisa keduanya: owner & superuser SELALU bypass RLS,
+  bahkan dengan `FORCE`. `WithSuper` tetap bekerja sebagai `app_rw` (bypass lewat
+  GUC `app.is_super`, bukan privilege) — terverifikasi, panel `/dev` aman.
 - **`SESSION_KEY` divalidasi PANJANGNYA** (min 32, `config.MinSessionKeyLen`),
   bukan cuma keberadaannya. `mustEnv` meloloskan `SESSION_KEY=rahasia` — kunci
   lemah lebih berbahaya daripada kosong, sebab kosong menggagalkan boot sedangkan

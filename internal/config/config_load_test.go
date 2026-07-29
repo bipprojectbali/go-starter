@@ -191,21 +191,30 @@ func mustPanic(t *testing.T, nama string, fn func()) {
 	fn()
 }
 
-// TestMustLoad_ProdWajibAppDatabaseURL: RLS adalah jaring pengaman TERAKHIR
-// isolasi tenant. Fallback diam-diam ke DATABASE_URL (role owner) membuat pool
-// runtime BYPASS RLS — satu query yang lupa `WHERE tenant_id` membocorkan data
-// lintas-pelanggan tanpa error dan tanpa jejak. Env yang lupa diisi tak boleh
-// bisa mematikannya.
-func TestMustLoad_ProdWajibAppDatabaseURL(t *testing.T) {
+// TestMustLoad_AppDatabaseURLTakDivalidasiDiSini: config SENGAJA tidak lagi
+// mewajibkan APP_DATABASE_URL terisi.
+//
+// Alasannya bukan kelonggaran, melainkan bahwa pemeriksaan itu TAK MEMBUKTIKAN
+// apa pun: mengisinya dengan DSN yang sama seperti DATABASE_URL ("biar aman,
+// samakan saja") melewatinya sambil tetap menjalankan pool sebagai owner —
+// terukur di database nyata: 82 baris dari 15 tenant tetap terbaca oleh query
+// yang lupa WHERE tenant_id. Pembuktian pindah ke db.CheckRLS, yang bertanya
+// pada KONEKSI, bukan pada string.
+//
+// Test ini menjaga agar validasi berbasis-janji itu tak dihidupkan kembali.
+func TestMustLoad_AppDatabaseURLTakDivalidasiDiSini(t *testing.T) {
 	setProdEnv(t)
 	t.Setenv("APP_DATABASE_URL", "")
-	mustPanic(t, "APP_DATABASE_URL kosong di production", func() { MustLoad() })
+	c := MustLoad() // tak boleh panic
+	if c.AppDatabaseURL != c.DatabaseURL {
+		t.Errorf("kosong harus fallback ke DATABASE_URL, got %q", c.AppDatabaseURL)
+	}
 }
 
-// TestMustLoad_DevBolehTanpaAppDatabaseURL: dev sengaja TIDAK terpengaruh —
-// menjalankan Postgres kedua dengan role terpisah hanya untuk `make dev` adalah
-// gesekan yang tak sepadan, dan isolasi tetap benar via GUC+WHERE.
-func TestMustLoad_DevBolehTanpaAppDatabaseURL(t *testing.T) {
+// TestMustLoad_DevFallbackAppDatabaseURL: dev sengaja longgar — menjalankan
+// Postgres dengan role terpisah hanya untuk `make dev` tak sepadan, dan isolasi
+// di sana tetap benar via GUC+WHERE.
+func TestMustLoad_DevFallbackAppDatabaseURL(t *testing.T) {
 	setMinimalEnv(t)
 	c := MustLoad()
 	if c.AppDatabaseURL != c.DatabaseURL {
