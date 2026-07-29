@@ -102,6 +102,18 @@ func (e *testEnv) seedMember(t *testing.T, email, role string, tenantID int64) d
 	return u
 }
 
+// seedUserOnly membuat user TANPA membership — dipakai test yang menguji
+// penempatan pendaftar baru (placeNewUser), tempat keanggotaan justru hasil
+// yang diuji, bukan prasyarat.
+func (e *testEnv) seedUserOnly(t *testing.T, email string) db.User {
+	t.Helper()
+	u, err := e.q.CreateUser(t.Context(), db.CreateUserParams{Email: email, PassHash: ptr("x")})
+	if err != nil {
+		t.Fatalf("seed user %s: %v", email, err)
+	}
+	return u
+}
+
 // sessionCtx membungkus context ber-session aktif (scs butuh request melewati
 // LoadAndSave agar Put/Get bekerja).
 type sessionCtx struct{ ctx context.Context }

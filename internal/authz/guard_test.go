@@ -21,8 +21,13 @@ func TestGuardSetRole(t *testing.T) {
 		wantErr error
 	}{
 		{"owner angkat member->admin", owner, Target{ID: 10, Role: RoleMember}, RoleAdmin, nil},
-		{"owner angkat member->owner", owner, Target{ID: 10, Role: RoleMember}, RoleOwner, nil},
-		{"admin angkat member->admin", admin, Target{ID: 10, Role: RoleMember}, RoleAdmin, nil},
+		// Admin TAK boleh mengangkat sesama admin: itu memperbanyak dirinya sendiri
+		// dan mencabut kendali atasannya atas siapa yang memegang wewenang itu.
+		// Kritis di mode single-app (0006), tempat admin adalah jabatan tertinggi
+		// yang bisa diangkat — tanpa aturan ini, satu admin melahirkan semuanya.
+		{"admin TAK boleh angkat sesama admin", admin, Target{ID: 10, Role: RoleMember}, RoleAdmin, ErrForbidden},
+		{"admin boleh atur member (di bawahnya)", admin, Target{ID: 10, Role: RoleAdmin}, RoleMember, nil},
+		{"owner angkat sesama owner ditolak", owner, Target{ID: 10, Role: RoleMember}, RoleOwner, ErrForbidden},
 		{"admin TAK boleh angkat owner", admin, Target{ID: 10, Role: RoleMember}, RoleOwner, ErrForbidden},
 		{"admin TAK boleh sentuh owner", admin, Target{ID: 10, Role: RoleOwner}, RoleAdmin, ErrForbidden},
 		{"target root env kebal", owner, Target{ID: 10, Role: RoleOwner, IsEnvSuperA: true}, RoleMember, ErrProtectedRoot},

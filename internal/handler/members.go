@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
@@ -50,7 +51,8 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	// menekan tombol yang pasti ditolak gerbang lifecycle (0005 §4).
 	canManage := canManageMembers(ctx) && !IsReadOnly(ctx)
 	h.renderWorkspaceShell(w, r, "Anggota", "/members",
-		panel.Members(wsPath(slugFromRequest(r), ""), members, invites, canManage,
+		panel.Members(wsPath(slugFromRequest(r), ""), authz.AssignableRoles(appmode.IsSingle()),
+			members, invites, canManage,
 			session.UserID(ctx), workspaceErrMsg(r.URL.Query().Get("err"))))
 }
 

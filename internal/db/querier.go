@@ -38,6 +38,9 @@ type Querier interface {
 	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
 	// (workspace tanpa owner = yatim).
 	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
+	// Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
+	// 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
+	CountTenants(ctx context.Context) (int64, error)
 	CountTenantsForPlatform(ctx context.Context) (int64, error)
 	// Badge sidebar — dirender di SETIAP halaman, ditopang index partial
 	// idx_notif_unread agar tak menyentuh baris yang sudah terbaca.
@@ -170,6 +173,12 @@ type Querier interface {
 	// workspace yang dihapus saat ter-arsip pun kembali sebagai aktif — pemulihan
 	// harus meninggalkan keadaan yang bisa langsung dipakai, bukan setengah jalan.
 	RestoreTenant(ctx context.Context, id int64) error
+	// Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
+	// mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
+	// tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
+	// mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
+	// workspace itu belum berisi anggota.
+	SetTenantSlug(ctx context.Context, arg SetTenantSlugParams) error
 	// Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
 	SoftDeleteTenant(ctx context.Context, id int64) error
 	SoftDeleteUser(ctx context.Context, id int64) error

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go_starter/internal/appmode"
 )
 
 // Config menampung seluruh konfigurasi runtime aplikasi.
@@ -42,6 +44,16 @@ type Config struct {
 	// menyimpannya per-user agar platform bisa override tanpa ubah env (lever
 	// monetisasi: free/pro/enterprise). MAX_WORKSPACES_PER_USER, default 3.
 	MaxWorkspacesPerUser int
+
+	// AppMode = bentuk aplikasi: "multi" (multi-tenant, /w/{slug}) atau "single"
+	// (satu app, /app). Default multi — turunan yang tak mengisi env berperilaku
+	// persis seperti template. Lihat keputusan 0006. APP_MODE.
+	AppMode appmode.Mode
+
+	// AppName = nama aplikasi di mode single; dipakai membuat tenant tunggal saat
+	// boot pertama. Slug-nya KONSTAN "app" (bukan dari nama ini) agar path selalu
+	// /app di semua deployment. APP_NAME, default "App".
+	AppName string
 }
 
 // Location mem-parse AppTimezone jadi *time.Location. Sudah divalidasi di
@@ -89,7 +101,17 @@ func MustLoad() *Config {
 		SuperAdminEmails:     parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
 		AppTimezone:          getEnv("APP_TIMEZONE", "Asia/Jakarta"),
 		MaxWorkspacesPerUser: getEnvInt("MAX_WORKSPACES_PER_USER", 3),
+		AppName:              getEnv("APP_NAME", "App"),
 	}
+	// Mode fail-fast: nilai diisi TAPI tak dikenal → panic saat startup. Diam-diam
+	// jatuh ke multi berarti aplikasi berjalan dalam bentuk yang tak diminta
+	// siapa pun — dan bentuk itu menentukan seluruh URL-nya.
+	mode, ok := appmode.Parse(getEnv("APP_MODE", ""))
+	if !ok {
+		panic(fmt.Sprintf("config: APP_MODE %q tidak dikenal (pakai %q atau %q)",
+			os.Getenv("APP_MODE"), appmode.NameMulti, appmode.NameSingle))
+	}
+	c.AppMode = mode
 	// Validasi TZ fail-fast: nama IANA salah → panic saat startup, bukan error
 	// senyap saat render panel logs. (tzdata di-embed via import di main.)
 	if _, err := time.LoadLocation(c.AppTimezone); err != nil {

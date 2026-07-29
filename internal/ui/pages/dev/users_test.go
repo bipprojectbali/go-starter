@@ -12,7 +12,7 @@ func TestUserRow_SelectWrappedInForm(t *testing.T) {
 	row := UserRow{ID: 7, Email: "u@x.com", Status: "active",
 		Workspaces: []WorkspaceRole{{TenantID: 1, Name: "Acme", Role: "member"}}}
 	var sb strings.Builder
-	UserRowNode(row, true).Render(&sb)
+	UserRowNode(row, []string{"member", "admin", "owner"}, true).Render(&sb)
 	out := sb.String()
 
 	if !strings.Contains(out, `<form><input type="hidden" name="tenant"`) ||
@@ -32,7 +32,7 @@ func TestUserRow_SelectWrappedInForm(t *testing.T) {
 func TestUserRow_RootImmutable(t *testing.T) {
 	row := UserRow{ID: 1, Email: "root@x.com", Status: "active", IsRoot: true}
 	var sb strings.Builder
-	UserRowNode(row, true).Render(&sb)
+	UserRowNode(row, []string{"member", "admin", "owner"}, true).Render(&sb)
 	out := sb.String()
 
 	if strings.Contains(out, "/dev/users/1/role") {

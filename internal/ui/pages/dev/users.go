@@ -33,7 +33,9 @@ type WorkspaceRole struct {
 
 // UsersPage merender tabel user + kontrol role/status/hapus. canManageSuper =
 // aktor boleh mengangkat super-admin (opsi super_admin muncul).
-func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
+// roles = role yang boleh diberikan; dioper handler karena mode single tak
+// mengenal `owner` (0006 §7) dan view tak boleh menanyakan mode aplikasi.
+func UsersPage(rows []UserRow, roles []string, canManageSuper bool) g.Node {
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-4"), g.Text("Users")),
 		// Slot toast (kanan-bawah), diisi via SSE patch (id "flash").
@@ -52,7 +54,7 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 							th("User"), th("Role"), th("Kuota"), th("Status"), th("Aksi"),
 						),
 					),
-					h.TBody(g.Map(rows, func(u UserRow) g.Node { return UserRowNode(u, canManageSuper) })),
+					h.TBody(g.Map(rows, func(u UserRow) g.Node { return UserRowNode(u, roles, canManageSuper) })),
 				)),
 			),
 		),
@@ -61,7 +63,7 @@ func UsersPage(rows []UserRow, canManageSuper bool) g.Node {
 
 // UserRowNode merender satu baris user. Di-export agar handler bisa me-render
 // ulang baris ini via SSE setelah mutasi (id "user-<id>" jadi target morph).
-func UserRowNode(u UserRow, canManageSuper bool) g.Node {
+func UserRowNode(u UserRow, roles []string, canManageSuper bool) g.Node {
 	rowID := "user-" + strconv.FormatInt(u.ID, 10)
 	return h.Tr(
 		h.ID(rowID),
@@ -76,7 +78,7 @@ func UserRowNode(u UserRow, canManageSuper bool) g.Node {
 				ui.When(u.IsRoot, badge("root", "outline")),
 			),
 		),
-		h.Td(h.Class("py-2 pr-4"), roleControl(u, canManageSuper)),
+		h.Td(h.Class("py-2 pr-4"), roleControl(u, roles, canManageSuper)),
 		h.Td(h.Class("py-2 pr-4"), quotaControl(u)),
 		h.Td(h.Class("py-2 pr-4"), statusControl(u)),
 		h.Td(h.Class("py-2"), deleteControl(u)),
@@ -130,7 +132,7 @@ func quotaControl(u UserRow) g.Node {
 // roleControl merender SATU baris kontrol per WORKSPACE tempat user jadi anggota
 // (role kini per-workspace, bukan properti user). Root env → badge (immutable).
 // Tanpa keanggotaan → penanda "—" (user ada, tapi belum/tak lagi di workspace mana pun).
-func roleControl(u UserRow, canManageSuper bool) g.Node {
+func roleControl(u UserRow, roles []string, canManageSuper bool) g.Node {
 	if u.IsRoot {
 		return badge("root (semua workspace)", "")
 	}
@@ -142,7 +144,7 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 		items = append(items, h.Div(
 			h.Class("flex items-center gap-2"),
 			h.Span(h.Class("text-xs text-base-content/70 truncate max-w-[10rem]"), g.Text(ws.Name)),
-			workspaceRoleSelect(u.ID, ws),
+			workspaceRoleSelect(u.ID, roles, ws),
 		))
 	}
 	return h.Div(h.Class("flex flex-col gap-1"), g.Group(items))
@@ -151,11 +153,10 @@ func roleControl(u UserRow, canManageSuper bool) g.Node {
 // workspaceRoleSelect = dropdown ubah role user DI SATU workspace. tenant dikirim
 // sebagai hidden field (handler butuh tahu workspace mana). Balasan SSE me-render
 // ulang baris + toast (tanpa reload).
-func workspaceRoleSelect(userID int64, ws WorkspaceRole) g.Node {
-	opts := []g.Node{
-		roleOption("member", ws.Role),
-		roleOption("admin", ws.Role),
-		roleOption("owner", ws.Role),
+func workspaceRoleSelect(userID int64, roles []string, ws WorkspaceRole) g.Node {
+	opts := make([]g.Node, 0, len(roles))
+	for _, r := range roles {
+		opts = append(opts, roleOption(r, ws.Role))
 	}
 	return ui.FormPostSelectWith(
 		"/dev/users/"+strconv.FormatInt(userID, 10)+"/role", "role",

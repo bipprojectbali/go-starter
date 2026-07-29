@@ -15,6 +15,7 @@ import (
 	"time"
 	_ "time/tzdata" // embed database tzdata: LoadLocation gagal di container minimal (CGO_ENABLED=0) tanpa ini
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/assets"
 	"go_starter/internal/authz"
 	"go_starter/internal/config"
@@ -153,6 +154,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	// Mode aplikasi di-set SEBELUM apa pun yang membentuk URL atau mendaftarkan
+	// route (0006): mode menentukan bentuk keduanya, dan route dipasang sekali.
+	appmode.Set(cfg.AppMode)
+	// Mode single butuh TEPAT SATU tenant. Sengaja fail-fast: DB berisi >1
+	// workspace + APP_MODE=single = app menolak start, sebab memilih diam-diam
+	// salah satu membuat sisanya lenyap dari pandangan tanpa jejak.
+	if err := handler.BootstrapSingleApp(ctx, migratePool, cfg.AppName); err != nil {
+		return err
+	}
+	log.Info("mode aplikasi", "mode", cfg.AppMode.String())
+
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)

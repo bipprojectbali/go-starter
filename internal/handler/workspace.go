@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
@@ -20,15 +21,28 @@ type workspaceName struct {
 	Name string `json:"name"`
 }
 
-// canEditWorkspace melaporkan apakah aktor boleh mengubah nama workspace:
-// owner (pemilik) atau platform (super_admin/staff yang membantu). Admin/member
-// TIDAK — mereka hanya lihat. Root env selalu boleh (super_admin efektif).
+// canEditWorkspace melaporkan apakah aktor boleh mengubah PENGATURAN
+// workspace/aplikasi (nama, dst). Root env selalu boleh (super_admin efektif).
+//
+//	multi  → owner (pemilik) atau platform. Admin/member hanya lihat.
+//	single → admin JUGA boleh (0006 §7).
+//
+// Kenapa berbeda: di mode single tak ada `owner` — kalau syaratnya tetap owner,
+// admin tak bisa mengubah apa pun dan gelarnya kosong, sehingga hal sepele
+// seperti mengganti nama harus lewat super_admin (yang cuma bisa ditambah lewat
+// .env + restart). Admin di sana adalah PEMBANTU super_admin: mengurus
+// operasional harian, tanpa menyentuh yang fundamental — dan yang fundamental
+// dijaga di tempat lain, bukan di sini (zona bahaya tak didaftarkan §9, kuota
+// & mode di-gate platform:settings).
 func canEditWorkspace(ctx context.Context) bool {
 	if session.IsRoot(ctx) {
 		return true
 	}
 	role := session.Role(ctx)
-	return role == authz.RoleNameOwner || isPlatformRole(role)
+	if isPlatformRole(role) || role == authz.RoleNameOwner {
+		return true
+	}
+	return appmode.IsSingle() && role == authz.RoleNameAdmin
 }
 
 // WorkspaceHome — GET /w/{workspace}/. Beranda ruang kerja, terbuka untuk SEMUA
@@ -58,8 +72,10 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		// Ganti nama ditolak saat terarsip (read-only), tapi zona bahaya TETAP
 		// tampil — di sanalah tombol "Aktifkan kembali" berada. Menyembunyikannya
 		// akan mengunci owner di luar workspace-nya sendiri.
-		CanEdit:  canEdit && t.Status == TenantActive,
-		CanOwn:   canEdit,
+		CanEdit: canEdit && t.Status == TenantActive,
+		// Zona bahaya (arsip/hapus) TIDAK ADA di mode single (0006 §9) — route-nya
+		// pun tak didaftarkan, jadi menampilkannya hanya menjanjikan pintu buntu.
+		CanOwn:   canEdit && appmode.IsMulti(),
 		Archived: t.Status == TenantArchived,
 	}))
 }

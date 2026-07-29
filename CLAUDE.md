@@ -201,6 +201,41 @@ salah membaca cakupan data.
     `<script>` inline tetap diblokir — jadi menambah `unsafe-inline` BUKAN solusi
     (melemahkan CSP; lihat § Batasan).
 
+## Mode aplikasi: single vs multi (`APP_MODE`) — keputusan 0006
+
+Template ini melayani DUA bentuk: multi-tenant (`/w/{slug}`) dan satu aplikasi
+(`/app`). Default **multi** — turunan yang tak mengisi env berperilaku seperti
+biasa.
+
+- **Single = multi-tenant dengan N=1, BUKAN jalur kode kedua.** Di dalam tetap
+  ada TEPAT SATU tenant; RLS/memberships/audit jalan apa adanya. Yang hilang cuma
+  chrome-nya. Jangan tergoda membuang `tenant_id` "karena toh cuma satu" — itu
+  melahirkan aplikasi kedua dalam satu repo, dan jalur yang jarang dipakai pasti
+  membusuk.
+- **Bentuk URL diputuskan di SATU tempat** (`wsPath` di `wspath.go`). Handler &
+  view tak pernah tahu mode. `slugFromRequest` mengembalikan slug tunggal di mode
+  single — itulah yang membuat `Scope`, `resolveTenantBySlug`, `wsRedirect`, dan
+  gerbang siklus hidup bekerja tanpa satu pun cabang mode.
+- **Route dua mode TAK PERNAH hidup bersamaan.** `/workspace/new`, `/switch`,
+  zona bahaya tak DIDAFTARKAN di single (bukan cuma menunya disembunyikan) —
+  menu tersembunyi + route hidup = pintu belakang.
+- **Pendaftar di mode single = `member`, BUKAN owner** (`placeNewUser`). Sebelum
+  ini register/OAuth selalu `CreateTenant`+owner; di mode single itu berarti
+  setiap orang yang mendaftar jadi pemilik aplikasi. Pengelola = `SUPER_ADMIN_EMAILS`.
+- **Wewenang single**: super_admin (env) → fundamental; admin → operasional
+  (termasuk nama app: `canEditWorkspace` melonggar HANYA di mode single, sebab di
+  sana tak ada owner); member → pakai. `owner` tetap ada di kode tapi tak pernah
+  ditawarkan (`authz.AssignableRoles`).
+- **`GuardSetRole` memakai `>=`**, bukan `>`: tanpa itu admin bisa mengangkat
+  sesama admin — memperbanyak dirinya sendiri. Kritis di mode single (admin =
+  jabatan tertinggi yang bisa diangkat).
+- **Boot mode single**: tenant tunggal dibuat bila belum ada; tenant `default`
+  bawaan migrasi 00007 DIADOPSI bila masih kosong; >1 tenant → **app menolak
+  start** (memilih diam-diam = workspace lain lenyap tanpa jejak).
+- **Test WAJIB di kedua mode** untuk jalur pembentuk path (`withMode` +
+  `t.Cleanup` di `appmode_test.go`) — mode adalah state paket, dan yang lupa
+  dipulihkan meracuni test lain dengan gejala di tempat tak berhubungan.
+
 ## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002, 0003 & 0004
 
 Isolasi tenant ditegakkan **Postgres RLS**, bukan cuma `WHERE tenant_id` di app.

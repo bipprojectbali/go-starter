@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
@@ -177,6 +178,12 @@ func (h *Handler) renderShell(w http.ResponseWriter, r *http.Request, title, bra
 // kosong & tak bisa buat (sidebar tetap tampil, brand jadi teks biasa).
 // memberships TANPA RLS → aman dibaca lewat h.q(ctx) di scope mana pun.
 func (h *Handler) workspaceOptions(ctx context.Context) ([]ui.WorkspaceOption, bool) {
+	// Mode single: tak ada yang bisa dipilih maupun dibuat (0006 §4). Switcher
+	// disembunyikan dgn mengosongkan daftarnya — brand sidebar otomatis jadi teks
+	// biasa, tanpa cabang render tersendiri di view.
+	if appmode.IsSingle() {
+		return nil, false
+	}
 	uid := session.UserID(ctx)
 	if uid == 0 {
 		return nil, false

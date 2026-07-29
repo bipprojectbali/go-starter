@@ -53,6 +53,9 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
 			return nil
 		}
+		// Di mode single ini selalu terisi (slug tenant tunggal) — jadi seluruh
+		// cabang di bawah berjalan sama persis seperti mode multi, tanpa satu pun
+		// `if mode` tambahan (0006 §1: satu jalur kode, bukan dua).
 		slug := slugFromRequest(r)
 
 		// Platform (super_admin/staff) lintas-tenant → bypass RLS, tak perlu membership.

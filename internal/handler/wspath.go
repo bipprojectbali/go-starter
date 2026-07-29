@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/session"
 
@@ -15,24 +16,40 @@ import (
 // muncul (Rule 15): setelah 0004 setiap tautan workspace bergantung slug, jadi
 // path tak boleh lagi ditulis tangan yang tersebar.
 
-// WorkspacePrefix = segmen akar semua route ber-workspace. Prefix eksplisit
-// (bukan "/{slug}" telanjang) membuat tabrakan slug-vs-route MUSTAHIL secara
-// struktural — tak perlu daftar kata terlarang yang harus dijaga selamanya.
+// WorkspacePrefix = segmen akar route ber-workspace di mode MULTI. Prefix
+// eksplisit (bukan "/{slug}" telanjang) membuat tabrakan slug-vs-route MUSTAHIL
+// secara struktural — tak perlu daftar kata terlarang yang dijaga selamanya.
 const WorkspacePrefix = "/w"
 
+// SingleAppPrefix = akar aplikasi di mode SINGLE. Tanpa segmen slug: user tak
+// pernah melihat kata "workspace", padahal di dalam tetap ada tepat satu tenant
+// (0006 §1 — bukan jalur kode kedua).
+const SingleAppPrefix = "/app"
+
 // slugURLParam = nama parameter chi di pola route ("/w/{workspace}/...").
+// Di mode single tak ada parameter ini — chi.URLParam mengembalikan "".
 const slugURLParam = "workspace"
 
-// wsPath membentuk URL di dalam workspace: wsPath("acme", "/members") →
-// "/w/acme/members". sub "" atau "/" → akar workspace ("/w/acme").
+// wsPath membentuk URL halaman di dalam ruang kerja/aplikasi:
 //
-// Slug kosong (belum punya workspace) → "/workspace/new": satu-satunya tujuan
-// masuk akal, dan mencegah lahirnya URL rusak seperti "/w//members".
+//	multi  → wsPath("acme", "/members") = "/w/acme/members"
+//	single → wsPath(_,      "/members") = "/app/members"
+//
+// SATU-SATUNYA tempat bentuk itu diputuskan (0006 §3): karena seluruh handler &
+// view sudah lewat sini sejak 0004, mengubah bentuk URL antar-mode tak menyentuh
+// satu pun pemanggilnya.
+//
+// Slug kosong di mode MULTI (belum punya workspace) → "/workspace/new":
+// satu-satunya tujuan masuk akal, sekaligus mencegah URL rusak "/w//members".
+// Di mode single slug memang selalu diabaikan — tak ada keadaan "belum punya".
 func wsPath(slug, sub string) string {
-	if slug == "" {
-		return "/workspace/new"
+	base := SingleAppPrefix
+	if !appmode.IsSingle() {
+		if slug == "" {
+			return "/workspace/new"
+		}
+		base = WorkspacePrefix + "/" + slug
 	}
-	base := WorkspacePrefix + "/" + slug
 	if sub == "" || sub == "/" {
 		return base
 	}
@@ -50,7 +67,16 @@ func wsPathOf(ctx context.Context, sub string) string {
 
 // slugFromRequest membaca slug workspace dari path route ("" bila route ini tak
 // ber-workspace, mis. /dev atau /notifications).
+//
+// Di mode SINGLE selalu mengembalikan slug tenant tunggal, karena route /app tak
+// punya segmen slug untuk dibaca. Ini yang membuat 0006 murah: middleware Scope,
+// resolveTenantBySlug, wsRedirect, dan gerbang siklus hidup semuanya bekerja
+// APA ADANYA — mereka menerima slug, dan di mode single slug itu selalu sama.
+// Tanpa ini, tiap pemanggil harus tahu sedang di mode apa.
 func slugFromRequest(r *http.Request) string {
+	if appmode.IsSingle() {
+		return appmode.SingleSlug
+	}
 	return chi.URLParam(r, slugURLParam)
 }
 

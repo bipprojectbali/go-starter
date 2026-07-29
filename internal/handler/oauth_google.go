@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/oauth"
 	"go_starter/internal/session"
@@ -216,17 +215,10 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		if err != nil {
 			return err
 		}
-		slug, err := uniqueSlug(ctx, q, slugify(name))
+		// Sama seperti register password: multi = workspace baru + owner, single =
+		// gabung ke aplikasi tunggal sebagai member (0006 §6).
+		t, err := placeNewUser(ctx, q, newUser.ID, name)
 		if err != nil {
-			return err
-		}
-		t, err := q.CreateTenant(ctx, db.CreateTenantParams{Name: name, Slug: slug})
-		if err != nil {
-			return err
-		}
-		if _, err := q.CreateMembership(ctx, db.CreateMembershipParams{
-			UserID: newUser.ID, TenantID: t.ID, Role: authz.RoleNameOwner,
-		}); err != nil {
 			return err
 		}
 		if _, err := q.CreateOAuthAccount(ctx, db.CreateOAuthAccountParams{

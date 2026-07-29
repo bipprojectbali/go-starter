@@ -91,3 +91,16 @@ LIMIT $1 OFFSET $2;
 
 -- name: CountTenantsForPlatform :one
 SELECT count(*)::bigint FROM tenants;
+
+-- name: CountTenants :one
+-- Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
+-- 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
+SELECT count(*)::bigint FROM tenants WHERE deleted_at IS NULL;
+
+-- name: SetTenantSlug :exec
+-- Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
+-- mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
+-- tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
+-- mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
+-- workspace itu belum berisi anggota.
+UPDATE tenants SET slug = $2, name = $3 WHERE id = $1;

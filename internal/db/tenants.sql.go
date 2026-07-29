@@ -25,6 +25,19 @@ func (q *Queries) ArchiveTenant(ctx context.Context, id int64) error {
 	return err
 }
 
+const countTenants = `-- name: CountTenants :one
+SELECT count(*)::bigint FROM tenants WHERE deleted_at IS NULL
+`
+
+// Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
+// 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
+func (q *Queries) CountTenants(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countTenants)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countTenantsForPlatform = `-- name: CountTenantsForPlatform :one
 SELECT count(*)::bigint FROM tenants
 `
@@ -238,6 +251,26 @@ WHERE id = $1 AND deleted_at IS NOT NULL
 // harus meninggalkan keadaan yang bisa langsung dipakai, bukan setengah jalan.
 func (q *Queries) RestoreTenant(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, restoreTenant, id)
+	return err
+}
+
+const setTenantSlug = `-- name: SetTenantSlug :exec
+UPDATE tenants SET slug = $2, name = $3 WHERE id = $1
+`
+
+type SetTenantSlugParams struct {
+	ID   int64  `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+// Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
+// mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
+// tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
+// mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
+// workspace itu belum berisi anggota.
+func (q *Queries) SetTenantSlug(ctx context.Context, arg SetTenantSlugParams) error {
+	_, err := q.db.Exec(ctx, setTenantSlug, arg.ID, arg.Slug, arg.Name)
 	return err
 }
 

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/handler"
 	"go_starter/internal/mw"
 
@@ -82,6 +83,10 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		// Workspace lintas-platform (0005): tangguhkan/aktifkan/pulihkan. Suspend
 		// PLATFORM-ONLY dan sengaja tak punya padanan di sisi owner — kalau owner
 		// bisa membatalkannya sendiri, gunanya hilang.
+		//
+		// Di mode single daftar ini berisi tepat satu baris — tak berguna sebagai
+		// DAFTAR, tapi suspend/restore-nya tetap dibutuhkan sebagai maintenance
+		// mode (satu-satunya cara menutup aplikasi sementara tanpa restart).
 		r.Get("/workspaces", h.DevWorkspaces)
 		r.Post("/workspaces/{id}/suspend", h.DevWorkspaceSuspend)
 		r.Post("/workspaces/{id}/unsuspend", h.DevWorkspaceUnsuspend)
@@ -123,28 +128,31 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// bisa admin di A & member di B; alamat yang ikut berubah = tautan rusak).
 	registerWorkspaceRoutes(r, h)
 
-	// Workspace: pindah & buat baru. Butuh login TAPI di luar grup /admin —
-	// /workspace/new adalah tujuan Scope saat user belum punya workspace sama
-	// sekali (jadi TIDAK boleh butuh scope tenant yang belum ada).
-	r.Group(func(r chi.Router) {
-		r.Use(mw.RequireAuth)
-		r.Use(h.Scope)
-		r.Use(h.RefreshIdentity)
-		r.Post("/workspace/switch", h.WorkspaceSwitch)
-	})
-	r.Group(func(r chi.Router) {
-		r.Use(mw.RequireAuth)
-		// TANPA Scope: user tanpa workspace tak punya tenant untuk di-scope.
-		// Handler pakai db.WithSuper langsung (membership belum ada).
-		r.Get("/workspace/new", h.WorkspaceNewPage)
-		r.Post("/workspace/new", h.WorkspaceCreate)
+	// Workspace: pindah & buat baru. TIDAK DIDAFTARKAN di mode single (0006 §4) —
+	// di sana hanya ada satu aplikasi, jadi berpindah & membuat baru tak punya
+	// arti. Route-nya dihilangkan, bukan cuma menunya: menu tersembunyi + route
+	// hidup = pintu belakang.
+	if appmode.IsMulti() {
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireAuth)
+			r.Use(h.Scope)
+			r.Use(h.RefreshIdentity)
+			r.Post("/workspace/switch", h.WorkspaceSwitch)
+		})
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireAuth)
+			// TANPA Scope: user tanpa workspace tak punya tenant untuk di-scope.
+			// Handler pakai db.WithSuper langsung (membership belum ada).
+			r.Get("/workspace/new", h.WorkspaceNewPage)
+			r.Post("/workspace/new", h.WorkspaceCreate)
 
-		// Unarchive SENGAJA di luar /w/{workspace} (0005 §4): gerbang read-only
-		// workspace terarsip memblokir SEMUA POST di dalamnya, jadi pintu keluarnya
-		// harus berada di luar ruangan yang ia buka. Konsekuensinya handler ini
-		// memvalidasi keanggotaan & otoritasnya sendiri (isOwnerOf).
-		r.Post("/workspace/{workspace}/unarchive", h.WorkspaceUnarchive)
-	})
+			// Unarchive SENGAJA di luar /w/{workspace} (0005 §4): gerbang read-only
+			// workspace terarsip memblokir SEMUA POST di dalamnya, jadi pintu keluarnya
+			// harus berada di luar ruangan yang ia buka. Konsekuensinya handler ini
+			// memvalidasi keanggotaan & otoritasnya sendiri (isOwnerOf).
+			r.Post("/workspace/{workspace}/unarchive", h.WorkspaceUnarchive)
+		})
+	}
 
 	// Undangan — PUBLIK (penerima belum tentu punya akun). Tanpa Scope: penerima
 	// belum jadi anggota workspace mana pun saat membuka tautan.
@@ -177,7 +185,14 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 // miliknya), /invite/{token} (publik), /workspace/new (belum punya workspace).
 // Cakupan data menentukan bentuk path, bukan sebaliknya.
 func registerWorkspaceRoutes(r chi.Router, h *handler.Handler) {
-	r.Route("/w/{workspace}", func(r chi.Router) {
+	// Pola route mengikuti MODE (0006 §3-§4): "/w/{workspace}" atau "/app",
+	// TAK PERNAH keduanya. Kalau keduanya terdaftar, ada dua URL untuk halaman
+	// yang sama — test lulus lewat satu jalur sementara jalur lain rusak diam-diam.
+	pattern := handler.WorkspacePrefix + "/{workspace}"
+	if appmode.IsSingle() {
+		pattern = handler.SingleAppPrefix
+	}
+	r.Route(pattern, func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		// Scope menerjemahkan {workspace} → tenant_id + memvalidasi keanggotaan;
 		// bukan anggota → 404 (bukan 403: itu mengonfirmasi workspace-nya ada).
@@ -198,8 +213,14 @@ func registerWorkspaceRoutes(r chi.Router, h *handler.Handler) {
 		// Siklus hidup oleh OWNER (0005). Keduanya POST di dalam workspace, jadi
 		// otomatis tertolak saat workspace sudah diarsipkan — kecuali unarchive,
 		// yang justru karena itu diletakkan di luar prefix ini.
-		r.Post("/archive", h.WorkspaceArchive)
-		r.Post("/delete", h.WorkspaceDelete)
+		//
+		// TIDAK ADA di mode single (0006 §9): menghapus "workspace" di sana berarti
+		// menghapus SELURUH aplikasi — tak ada tempat untuk kembali, dan tak ada
+		// gunanya (menutup app sementara = suspend lewat /dev).
+		if appmode.IsMulti() {
+			r.Post("/archive", h.WorkspaceArchive)
+			r.Post("/delete", h.WorkspaceDelete)
+		}
 
 		// Anggota (model membership). Lihat = semua anggota; ubah/keluarkan/undang
 		// = owner/admin (di-guard handler via canManageMembers).

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
@@ -43,7 +44,7 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
 	byUser := h.membershipsByUser(r.Context(), users) // satu query batch (anti N+1)
 	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(r.Context()),
-		dev.UsersPage(toUserRows(users, byUser), canManageSuper))
+		dev.UsersPage(toUserRows(users, byUser), authz.AssignableRoles(appmode.IsSingle()), canManageSuper))
 }
 
 // DevUserSetRole — POST /dev/users/{id}/role. Ubah role (di-guard + audit).
@@ -167,7 +168,7 @@ func (h *Handler) devRowUpdated(w http.ResponseWriter, r *http.Request, targetID
 
 	sse := datastar.NewSSE(w, r)
 	var sb strings.Builder
-	if err := dev.UserRowNode(row, canManageSuper).Render(&sb); err != nil {
+	if err := dev.UserRowNode(row, authz.AssignableRoles(appmode.IsSingle()), canManageSuper).Render(&sb); err != nil {
 		h.Log.Error("dev users: render row", "err", err)
 		return
 	}

@@ -69,6 +69,20 @@ func ValidRoleName(s string) bool {
 	return s == RoleNameMember || s == RoleNameAdmin || s == RoleNameOwner
 }
 
+// AssignableRoles mengembalikan role TENANT yang boleh dipilih di panel,
+// terurut dari otoritas terendah. singleApp=true menghilangkan `owner`: mode
+// single-app tak mengenal pemilik workspace (0006 §7) — aplikasinya dimiliki
+// operator, dan puncak yang bisa DIANGKAT adalah admin.
+//
+// Satu sumber untuk semua dropdown role: kalau tiap view merakit daftarnya
+// sendiri, salah satu pasti masih menawarkan owner di mode single.
+func AssignableRoles(singleApp bool) []string {
+	if singleApp {
+		return []string{RoleNameMember, RoleNameAdmin}
+	}
+	return []string{RoleNameMember, RoleNameAdmin, RoleNameOwner}
+}
+
 // PlatformHomePath = rumah role PLATFORM (super_admin/staff). Panel lintas-
 // workspace, jadi ia satu-satunya home yang tak bergantung workspace.
 const PlatformHomePath = "/dev"

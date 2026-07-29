@@ -32,10 +32,11 @@ type InviteRow struct {
 // form undang, dan daftar undangan pending. canManage=false → hanya lihat.
 // selfID dipakai menyembunyikan aksi terhadap diri sendiri.
 //
-// base = prefix URL workspace ini (mis. "/w/acme"), DIOPER dari handler — view
+// roles = role yang boleh dipilih (mode single tak memuat "owner"). base =
+// prefix URL workspace ini (mis. "/w/acme"), DIOPER dari handler — view
 // tak boleh merakit path sendiri: sejak 0004 setiap aksi bergantung slug, dan
 // path yang di-hardcode di view akan diam-diam menunjuk workspace yang salah.
-func Members(base string, members []MemberRow, invites []InviteRow, canManage bool, selfID int64, errMsg string) g.Node {
+func Members(base string, roles []string, members []MemberRow, invites []InviteRow, canManage bool, selfID int64, errMsg string) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Anggota Workspace")),
 		h.P(h.Class("text-base-content/70 mb-4"),
@@ -47,7 +48,7 @@ func Members(base string, members []MemberRow, invites []InviteRow, canManage bo
 	if canManage {
 		body = append(body, inviteForm(base))
 	}
-	body = append(body, memberList(base, members, canManage, selfID))
+	body = append(body, memberList(base, roles, members, canManage, selfID))
 	if canManage && len(invites) > 0 {
 		body = append(body, inviteList(base, invites))
 	}
@@ -58,10 +59,10 @@ func Members(base string, members []MemberRow, invites []InviteRow, canManage bo
 
 // memberList = tabel anggota. Tabel dibungkus ui.TableScroll agar scroll-nya
 // terkurung, tak mendorong lebar halaman di mobile (konvensi mobile-first).
-func memberList(base string, members []MemberRow, canManage bool, selfID int64) g.Node {
+func memberList(base string, roles []string, members []MemberRow, canManage bool, selfID int64) g.Node {
 	rows := make([]g.Node, 0, len(members))
 	for _, m := range members {
-		rows = append(rows, memberRow(base, m, canManage, selfID))
+		rows = append(rows, memberRow(base, roles, m, canManage, selfID))
 	}
 	return h.Div(
 		h.Class("card bg-base-100 border border-base-300 min-w-0"),
@@ -82,7 +83,7 @@ func memberList(base string, members []MemberRow, canManage bool, selfID int64) 
 	)
 }
 
-func memberRow(base string, m MemberRow, canManage bool, selfID int64) g.Node {
+func memberRow(base string, roles []string, m MemberRow, canManage bool, selfID int64) g.Node {
 	id := strconv.FormatInt(m.UserID, 10)
 	roleCell := g.Node(h.Span(h.Class("badge badge-neutral"), g.Text(m.Role)))
 	action := g.Node(g.Text(""))
@@ -94,7 +95,7 @@ func memberRow(base string, m MemberRow, canManage bool, selfID int64) g.Node {
 			h.Class("flex items-center gap-2"),
 			h.Select(
 				h.Class("select select-sm"), h.Name("role"),
-				roleOpt("member", m.Role), roleOpt("admin", m.Role), roleOpt("owner", m.Role),
+				g.Group(roleOpts(roles, m.Role)),
 			),
 			h.Button(h.Type("submit"), h.Class("btn btn-sm"), g.Text("Simpan")),
 		)
@@ -114,6 +115,17 @@ func memberRow(base string, m MemberRow, canManage bool, selfID int64) g.Node {
 		h.Td(h.Class("py-2 pr-4"), roleCell),
 		h.Td(h.Class("py-2"), action),
 	)
+}
+
+// roleOpts merender opsi role yang BOLEH diberikan — daftarnya dioper handler,
+// bukan diputuskan di sini: mode single tak mengenal `owner` (0006 §7), dan view
+// tak boleh menanyakan mode aplikasi (konvensi view murni-data).
+func roleOpts(roles []string, current string) []g.Node {
+	out := make([]g.Node, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, roleOpt(r, current))
+	}
+	return out
 }
 
 func roleOpt(val, current string) g.Node {

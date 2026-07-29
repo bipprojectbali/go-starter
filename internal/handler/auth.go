@@ -90,19 +90,15 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 			return e
 		}
 		user = u
-		slug, e := uniqueSlug(r.Context(), q, slugify(workspace))
-		if e != nil {
-			return e
-		}
-		t, e := q.CreateTenant(r.Context(), db.CreateTenantParams{Name: workspace, Slug: slug})
+		// Penempatan berbeda per mode (0006 §6): multi = workspace baru + owner,
+		// single = gabung ke aplikasi tunggal sebagai MEMBER. Dipusatkan agar
+		// jalur ini & OAuth tak bisa menyimpang satu sama lain.
+		t, e := placeNewUser(r.Context(), q, u.ID, workspace)
 		if e != nil {
 			return e
 		}
 		tenantID = t.ID
-		_, e = q.CreateMembership(r.Context(), db.CreateMembershipParams{
-			UserID: u.ID, TenantID: t.ID, Role: authz.RoleNameOwner,
-		})
-		return e
+		return nil
 	})
 	if err != nil {
 		// Email/slug unik: pelanggaran constraint = email sudah terpakai.

@@ -41,8 +41,18 @@ func GuardSetRole(actor Actor, target Target, newRole Role) error {
 	if (newRole == RoleOwner || target.Role == RoleOwner) && actorRole < RoleOwner {
 		return ErrForbidden
 	}
-	// Aktor tak boleh memberi role di atas otoritasnya sendiri.
-	if newRole > actorRole {
+	// Aktor tak boleh memberi role SETARA atau di atas otoritasnya sendiri.
+	//
+	// `>=`, bukan `>`. Dengan `>` dulu, admin bisa mengangkat member jadi admin —
+	// yakni MEMPERBANYAK DIRINYA SENDIRI, sehingga atasannya kehilangan kendali
+	// atas siapa saja yang memegang wewenang itu. Di model multi-tenant hal ini
+	// tersamar karena masih ada owner di atas admin; di mode single-app (0006)
+	// admin adalah jabatan tertinggi yang bisa DIANGKAT, jadi celahnya terbuka
+	// penuh: siapa pun yang sekali diangkat bisa mengangkat sisanya.
+	//
+	// Aturannya: yang menentukan siapa jadi admin haruslah pihak DI ATAS admin —
+	// owner di mode multi, super_admin (env) di mode single.
+	if newRole >= actorRole {
 		return ErrForbidden
 	}
 	// Cegah self-demote (turunkan diri sendiri → bisa lockout).
