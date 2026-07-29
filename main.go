@@ -127,8 +127,12 @@ func run() error {
 	}
 	defer rc.Close()
 
-	// Session manager (scs + rueidis store).
-	sm := session.NewManager(rc)
+	// Session manager (scs + rueidis store). Opsi keamanan DITURUNKAN dari
+	// ENV=production — bukan env tersendiri yang bisa lupa diisi.
+	sm := session.NewManager(rc, session.Options{
+		Secure:     cfg.IsProduction(),
+		CookieName: cfg.SessionCookieName(),
+	})
 	session.Init(sm)
 
 	// Auto-migrate dengan advisory lock (aman multi-instance). Pakai migratePool

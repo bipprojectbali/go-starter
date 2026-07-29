@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -104,13 +105,10 @@ func TestMustLoad_ProductionRequiresSecrets(t *testing.T) {
 		MustLoad()
 	}()
 
-	// Production dgn semua secret → tak panic.
-	setMinimalEnv(t)
-	t.Setenv("ENV", "production")
-	t.Setenv("SESSION_KEY", "k")
-	t.Setenv("GOOGLE_CLIENT_ID", "a")
-	t.Setenv("GOOGLE_CLIENT_SECRET", "b")
-	t.Setenv("GOOGLE_REDIRECT_URL", "c")
+	// Production dgn semua secret → tak panic. Kini termasuk APP_DATABASE_URL &
+	// SESSION_KEY yang cukup panjang: keduanya jadi syarat boot (lihat
+	// TestMustLoad_ProdWajibAppDatabaseURL & TestMustLoad_ProdTolakSessionKeyLemah).
+	setProdEnv(t)
 	c := MustLoad()
 	if !c.IsProduction() || !c.GoogleEnabled() {
 		t.Error("production lengkap harus load bersih")
@@ -164,4 +162,110 @@ func TestLoadDotEnv_Parsing(t *testing.T) {
 	}
 	os.Unsetenv("KEY_A")
 	os.Unsetenv("KEY_B")
+}
+
+// setProdEnv menyiapkan environment production yang LENGKAP & sah. Test di
+// bawah lalu merusak satu hal saja — sehingga yang diuji benar-benar hal itu,
+// bukan kombinasi kekurangan.
+func setProdEnv(t *testing.T) {
+	t.Helper()
+	setMinimalEnv(t)
+	t.Setenv("ENV", "production")
+	t.Setenv("APP_DATABASE_URL", "postgres://app_rw@x")
+	t.Setenv("SESSION_KEY", strings.Repeat("k", MinSessionKeyLen))
+	t.Setenv("GOOGLE_CLIENT_ID", "id")
+	t.Setenv("GOOGLE_CLIENT_SECRET", "secret")
+	t.Setenv("GOOGLE_REDIRECT_URL", "https://x/cb")
+}
+
+// mustPanic menjalankan fn dan gagal bila TIDAK panic. Dipakai menguji fail-fast
+// config: kegagalan boot adalah perilaku yang disengaja, jadi ia harus diuji
+// seperti perilaku lain.
+func mustPanic(t *testing.T, nama string, fn func()) {
+	t.Helper()
+	defer func() {
+		if recover() == nil {
+			t.Errorf("%s: HARUS panic saat boot, tapi lolos", nama)
+		}
+	}()
+	fn()
+}
+
+// TestMustLoad_ProdWajibAppDatabaseURL: RLS adalah jaring pengaman TERAKHIR
+// isolasi tenant. Fallback diam-diam ke DATABASE_URL (role owner) membuat pool
+// runtime BYPASS RLS — satu query yang lupa `WHERE tenant_id` membocorkan data
+// lintas-pelanggan tanpa error dan tanpa jejak. Env yang lupa diisi tak boleh
+// bisa mematikannya.
+func TestMustLoad_ProdWajibAppDatabaseURL(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("APP_DATABASE_URL", "")
+	mustPanic(t, "APP_DATABASE_URL kosong di production", func() { MustLoad() })
+}
+
+// TestMustLoad_DevBolehTanpaAppDatabaseURL: dev sengaja TIDAK terpengaruh —
+// menjalankan Postgres kedua dengan role terpisah hanya untuk `make dev` adalah
+// gesekan yang tak sepadan, dan isolasi tetap benar via GUC+WHERE.
+func TestMustLoad_DevBolehTanpaAppDatabaseURL(t *testing.T) {
+	setMinimalEnv(t)
+	c := MustLoad()
+	if c.AppDatabaseURL != c.DatabaseURL {
+		t.Errorf("dev harus fallback ke DATABASE_URL, got %q", c.AppDatabaseURL)
+	}
+}
+
+// TestMustLoad_ProdTolakSessionKeyLemah: mustEnv hanya memastikan env TERISI.
+// "SESSION_KEY=rahasia" lolos pemeriksaan itu tapi tak melindungi apa pun —
+// justru menciptakan rasa aman yang keliru, yang lebih berbahaya daripada
+// kosong (kosong setidaknya menggagalkan boot).
+func TestMustLoad_ProdTolakSessionKeyLemah(t *testing.T) {
+	setProdEnv(t)
+	t.Setenv("SESSION_KEY", "rahasia")
+	mustPanic(t, "SESSION_KEY pendek", func() { MustLoad() })
+
+	setProdEnv(t)
+	t.Setenv("SESSION_KEY", "")
+	mustPanic(t, "SESSION_KEY kosong", func() { MustLoad() })
+}
+
+// TestMustLoad_ProdLengkapLolos: pagar-pagar di atas tak boleh menolak
+// konfigurasi production yang benar.
+func TestMustLoad_ProdLengkapLolos(t *testing.T) {
+	setProdEnv(t)
+	c := MustLoad()
+	if !c.IsProduction() {
+		t.Fatal("harus terbaca sebagai production")
+	}
+	if c.AppDatabaseURL == c.DatabaseURL {
+		t.Error("production harus memakai pool runtime terpisah")
+	}
+}
+
+// TestSessionCookieName_TakMembocorkanKunci: nama cookie TERLIHAT di browser.
+// Menaruh SESSION_KEY di sana berarti membocorkannya ke siapa pun yang membuka
+// devtools — nama diturunkan dari HASH, bukan dari kuncinya.
+func TestSessionCookieName_TakMembocorkanKunci(t *testing.T) {
+	key := strings.Repeat("s", MinSessionKeyLen)
+	c := &Config{SessionKey: key}
+	name := c.SessionCookieName()
+
+	if strings.Contains(name, key) || strings.Contains(name, key[:8]) {
+		t.Fatalf("nama cookie %q memuat potongan SESSION_KEY", name)
+	}
+	if name == "" {
+		t.Error("dengan SESSION_KEY terisi, nama cookie harus ditetapkan")
+	}
+	// Deterministik: nama cookie harus sama tiap boot, kalau tidak semua sesi
+	// hangus setiap kali aplikasi restart.
+	if again := c.SessionCookieName(); again != name {
+		t.Errorf("nama cookie harus stabil: %q vs %q", name, again)
+	}
+	// Kunci berbeda → nama berbeda (itulah gunanya: memisahkan deployment).
+	other := &Config{SessionKey: strings.Repeat("z", MinSessionKeyLen)}
+	if other.SessionCookieName() == name {
+		t.Error("deployment dengan kunci berbeda harus punya nama cookie berbeda")
+	}
+	// Dev tanpa SESSION_KEY → biarkan default scs.
+	if (&Config{}).SessionCookieName() != "" {
+		t.Error("tanpa SESSION_KEY harus memakai default scs")
+	}
 }

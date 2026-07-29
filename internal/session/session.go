@@ -29,12 +29,39 @@ const (
 // handler/middleware tidak pernah menyentuh string key langsung.
 var mgr *scs.SessionManager
 
+// Options = pengaturan session yang bergantung environment. Struct (bukan
+// deretan bool) supaya penambahan berikutnya tak mengubah signature — dan
+// supaya di titik pemanggilan terbaca apa artinya, bukan `NewManager(rc, true)`.
+type Options struct {
+	// Secure menandai cookie sesi hanya boleh dikirim lewat HTTPS. WAJIB true di
+	// production: tanpa ini cookie ikut terkirim pada request HTTP polos, dan
+	// siapa pun di jaringan yang sama bisa mencurinya.
+	Secure bool
+
+	// CookieName memisahkan sesi antar-deployment di host yang sama (mis. dua
+	// aplikasi di sub-path domain yang sama akan saling menimpa sesi bila nama
+	// cookie-nya sama). Kosong → default scs.
+	CookieName string
+}
+
 // NewManager membuat SessionManager dengan store rueidis.
-func NewManager(client rueidis.Client) *scs.SessionManager {
+//
+// Opsi keamanan DITURUNKAN dari environment oleh pemanggil (main), bukan dibaca
+// sendiri di sini: paket ini tak boleh bergantung config, dan yang lebih penting
+// — Secure tak boleh jadi env tersendiri yang bisa lupa diisi. Ia mengikuti
+// ENV=production yang sudah pasti ada.
+func NewManager(client rueidis.Client, opt Options) *scs.SessionManager {
 	sm := scs.New()
 	sm.Store = NewRueidisStore(client)
 	sm.Lifetime = 24 * time.Hour
 	sm.Cookie.HttpOnly = true
+	// HTTPS-only di production. Konsekuensi yang DISENGAJA: bila production
+	// ter-deploy tanpa HTTPS, login tak berfungsi sama sekali — gagal keras &
+	// langsung terlihat, jauh lebih baik daripada sesi bocor diam-diam.
+	sm.Cookie.Secure = opt.Secure
+	if opt.CookieName != "" {
+		sm.Cookie.Name = opt.CookieName
+	}
 	// Lax (BUKAN Strict): callback OAuth adalah navigasi top-level dari
 	// accounts.google.com kembali ke sini = cross-site. Strict menahan cookie
 	// pada request itu → state flow OAuth hilang → "state tidak valid". Lax

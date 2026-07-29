@@ -4,6 +4,8 @@ package config
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -12,6 +14,11 @@ import (
 
 	"go_starter/internal/appmode"
 )
+
+// MinSessionKeyLen = panjang minimum SESSION_KEY di production. 32 karakter
+// setara ~192 bit bila di-generate acak (base64) — cukup jauh di atas ambang
+// tebak-paksa, dan cukup rendah untuk tak menolak kunci yang sah.
+const MinSessionKeyLen = 32
 
 // Config menampung seluruh konfigurasi runtime aplikasi.
 type Config struct {
@@ -54,6 +61,21 @@ type Config struct {
 	// boot pertama. Slug-nya KONSTAN "app" (bukan dari nama ini) agar path selalu
 	// /app di semua deployment. APP_NAME, default "App".
 	AppName string
+}
+
+// SessionCookieName menurunkan nama cookie sesi dari SESSION_KEY, sehingga dua
+// deployment di host yang sama tak saling menimpa sesi (cookie di-scope per-host,
+// bukan per-port maupun per-path). Yang dipakai HASH-nya, bukan kuncinya —
+// nama cookie terlihat di browser, jadi menaruh kunci di sana justru
+// membocorkannya.
+//
+// Kosong (dev tanpa SESSION_KEY) → "" agar scs memakai default-nya.
+func (c *Config) SessionCookieName() string {
+	if c.SessionKey == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(c.SessionKey))
+	return "session_" + hex.EncodeToString(sum[:4])
 }
 
 // Location mem-parse AppTimezone jadi *time.Location. Sudah divalidasi di
@@ -121,15 +143,35 @@ func MustLoad() *Config {
 	// RLS mengikat. Kosong → fallback DATABASE_URL (dev: owner, RLS TAK mengikat —
 	// isolasi tetap benar via WHERE, tapi tak ada jaring RLS). Di production SANGAT
 	// disarankan set APP_DATABASE_URL ke role non-owner (defense-in-depth).
-	if c.AppDatabaseURL == "" {
-		c.AppDatabaseURL = c.DatabaseURL
-	}
 	if c.IsProduction() {
+		// APP_DATABASE_URL WAJIB di production — TIDAK boleh fallback ke owner.
+		// Fallback diam-diam berarti pool runtime berjalan sebagai role owner yang
+		// BYPASS RLS: satu query yang lupa `WHERE tenant_id` membocorkan data
+		// lintas-pelanggan, tanpa error, tanpa jejak. Jaring pengaman terakhir
+		// multi-tenancy tak boleh mati karena env yang lupa diisi.
+		if c.AppDatabaseURL == "" {
+			panic("config: APP_DATABASE_URL wajib di production — pool runtime harus " +
+				"role non-owner (app_rw NOBYPASSRLS) agar RLS mengikat. " +
+				"Fallback ke DATABASE_URL (owner) akan mematikan isolasi tenant secara senyap")
+		}
 		c.SessionKey = mustEnv("SESSION_KEY")
+		// Kunci lemah = kunci yang tak ada. Divalidasi PANJANGNYA, bukan cuma
+		// keberadaannya: "SESSION_KEY=rahasia" lolos mustEnv tapi tak melindungi
+		// apa pun, dan justru menciptakan rasa aman yang keliru.
+		if len(c.SessionKey) < MinSessionKeyLen {
+			panic(fmt.Sprintf("config: SESSION_KEY terlalu pendek (%d karakter, minimal %d) — "+
+				"buat dengan: openssl rand -base64 48", len(c.SessionKey), MinSessionKeyLen))
+		}
 		// Di production Google adalah jalur login utama — wajib ada.
 		c.GoogleClientID = mustEnv("GOOGLE_CLIENT_ID")
 		c.GoogleClientSecret = mustEnv("GOOGLE_CLIENT_SECRET")
 		c.GoogleRedirectURL = mustEnv("GOOGLE_REDIRECT_URL")
+	}
+	// Dev: kosong → fallback ke DATABASE_URL (owner; RLS tak mengikat, tapi
+	// isolasi tetap benar via GUC+WHERE). Sengaja TIDAK berlaku di production —
+	// lihat panic di atas.
+	if c.AppDatabaseURL == "" {
+		c.AppDatabaseURL = c.DatabaseURL
 	}
 	return c
 }

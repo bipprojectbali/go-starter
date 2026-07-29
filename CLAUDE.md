@@ -389,6 +389,32 @@ input.css, dikonsumsi saat `make css` — bukan dimuat browser). Tailwind CLI
 di-download `make setup` (gitignored, verifikasi integritas). Prinsip no-CDN:
 semua di-embed.
 
+## Konfigurasi produksi: gagal keras, jangan andalkan ingatan
+
+Prinsipnya: **yang berbahaya bila salah harus menggagalkan boot; yang bisa
+diturunkan otomatis jangan diminta ke manusia.** Warning di log adalah hal yang
+paling sering diabaikan — ia bukan pengaman.
+
+- **`APP_DATABASE_URL` WAJIB di production** (panic bila kosong). Dulu ia
+  fallback diam-diam ke `DATABASE_URL` (role owner, BYPASS RLS) — satu env yang
+  lupa diisi mematikan jaring pengaman terakhir isolasi tenant, tanpa error dan
+  tanpa jejak. Dev tetap boleh kosong (isolasi tetap benar via GUC+WHERE).
+- **`SESSION_KEY` divalidasi PANJANGNYA** (min 32, `config.MinSessionKeyLen`),
+  bukan cuma keberadaannya. `mustEnv` meloloskan `SESSION_KEY=rahasia` — kunci
+  lemah lebih berbahaya daripada kosong, sebab kosong menggagalkan boot sedangkan
+  lemah menciptakan rasa aman yang keliru.
+- **`SESSION_KEY` kini benar-benar DIPAKAI**: menurunkan nama cookie sesi
+  (`Config.SessionCookieName`) agar dua deployment di host sama tak saling
+  menimpa sesi. Yang dipakai HASH-nya — nama cookie terlihat di browser, jadi
+  menaruh kuncinya di sana justru membocorkannya. Sebelumnya env ini divalidasi
+  tapi nol pemakai: konfigurasi yang berbohong, pola yang sama dengan
+  `tenants.status` (0005) & `MAX_WORKSPACES_PER_USER` (0006).
+- **`Cookie.Secure` diturunkan dari `ENV=production`**, BUKAN env sendiri —
+  tak ada yang bisa lupa mengisinya. Konsekuensi disengaja: production tanpa
+  HTTPS = login tak berfungsi sama sekali (gagal keras, bukan bocor senyap).
+- **Jangan tambah env baru untuk hal yang bisa diturunkan** dari env yang sudah
+  ada. Tiap env baru adalah satu lagi hal yang bisa lupa diisi.
+
 ## Batasan
 
 - Semua interaktivitas = **Datastar** (satu paradigma). Jangan tambah framework JS.
