@@ -402,9 +402,13 @@ paling sering diabaikan — ia bukan pengaman.
   lupa `WHERE tenant_id` membaca 82 baris dari 15 tenant sebagai owner, vs 13
   baris dari 1 tenant sebagai `app_rw`. Yang ditanyakan ke Postgres jawabannya
   pasti: `rolsuper`/`rolbypassrls`/pemilik-tabel + `FORCE RLS`.
-  Ketatnya MENYESUAIKAN DIRI: production multi-tenant → menolak start (dengan SQL
-  siap tempel, sebab `app_rw` sengaja `NOLOGIN` dari migrasi 00007); dev atau
+  Ketatnya MENYESUAIKAN DIRI: production multi-tenant → menolak start; dev atau
   single-app → peringatan saja (satu tenant, tak ada yang bisa bocor ke siapa).
+  Menyiapkan `app_rw` di produksi HANYA butuh `ALTER ROLE app_rw LOGIN PASSWORD
+  '<pw>'` — migrasi 00007 sudah memberi seluruh GRANT + `ALTER DEFAULT
+  PRIVILEGES` (tabel dari migrasi berikutnya terjangkau otomatis), dan kolom
+  `GENERATED ALWAYS AS IDENTITY` tak menuntut GRANT sequence terpisah
+  (terverifikasi: semua INSERT/UPDATE/DELETE aplikasi lolos sebagai `app_rw`).
   Tak ada env baru untuk ini — aturan yang menyesuaikan diri mengalahkan aturan
   yang harus diingat.
 - **`APP_DATABASE_URL` = satu database, DUA ROLE** — bukan dua database. Owner

@@ -292,18 +292,19 @@ func verifyTenantIsolation(ctx context.Context, pool *pgxpool.Pool, cfg *config.
 	// Tidak mengikat. Seberapa keras responsnya bergantung apakah ada yang bisa
 	// bocor sama sekali.
 	if cfg.IsProduction() && appmode.IsMulti() {
-		// Pesan memuat SQL siap-tempel: role app_rw sengaja dibuat NOLOGIN oleh
-		// migrasi 00007 (kerangka, tanpa kredensial di repo), jadi tanpa ini
-		// operator harus meraba sendiri cara mengaktifkannya — friksi yang justru
-		// mendorong orang menyerah dan menyamakan DSN.
+		// Pesan memuat SATU perintah siap-tempel. Role app_rw beserta seluruh
+		// GRANT-nya sudah dibuat migrasi 00007 (termasuk ALTER DEFAULT PRIVILEGES,
+		// sehingga tabel dari migrasi berikutnya ikut terjangkau otomatis) — yang
+		// belum hanya kredensial login, sebab password tak boleh ada di repo.
+		// Menyuruh orang menjalankan ulang GRANT yang sudah ada hanya menambah
+		// friksi, dan friksi itulah yang mendorong mereka menyerah lalu
+		// menyamakan DSN dengan DATABASE_URL.
 		return fmt.Errorf("isolasi tenant TIDAK mengikat: %s.\n"+
 			"Pool runtime (APP_DATABASE_URL) harus memakai role non-owner tanpa BYPASSRLS, "+
 			"agar satu query yang lupa WHERE tenant_id mengembalikan 0 baris — bukan data "+
 			"pelanggan lain.\n"+
-			"Siapkan sekali di Postgres:\n"+
+			"Role app_rw & hak aksesnya SUDAH dibuat migrasi 00007; tinggal beri kredensial:\n"+
 			"  ALTER ROLE app_rw LOGIN PASSWORD '<password>';\n"+
-			"  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_rw;\n"+
-			"  GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_rw;\n"+
 			"lalu set APP_DATABASE_URL=postgres://app_rw:<password>@host:port/db",
 			st.Reason())
 	}
