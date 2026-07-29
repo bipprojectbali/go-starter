@@ -34,7 +34,17 @@ type Config struct {
 	// WAJIB di production (Google = jalur login utama).
 	GoogleClientID     string // GOOGLE_CLIENT_ID
 	GoogleClientSecret string // GOOGLE_CLIENT_SECRET
-	GoogleRedirectURL  string // GOOGLE_REDIRECT_URL (exact-match Google Console)
+
+	// AppBaseURL = alamat PUBLIK aplikasi tanpa trailing slash, mis.
+	// "https://app.example.com". APP_BASE_URL.
+	//
+	// Menggantikan GOOGLE_REDIRECT_URL: path callback sudah ada di routes.go
+	// (handler.PathGoogleCallback), jadi menyimpannya lagi di env berarti satu
+	// kebenaran di dua tempat — dan salah ketik berujung `redirect_uri_mismatch`
+	// yang tak menyebut sebabnya. Dari base ini dirakit redirect_uri OAuth DAN
+	// tautan undangan (yang sebelumnya menebak host dari header request — salah
+	// di belakang proxy, dan dapat dipalsukan klien).
+	AppBaseURL string
 
 	// SuperAdminEmails = super-admin "sejati" (root immutable). Email di sini
 	// selalu super_admin & kebal demote/block/delete lewat app. SUPER_ADMIN_EMAILS
@@ -99,9 +109,11 @@ func (c *Config) IsSuperAdminEmail(email string) bool {
 	return false
 }
 
-// GoogleEnabled melaporkan apakah OAuth Google terkonfigurasi (kredensial ada).
+// GoogleEnabled melaporkan apakah OAuth Google terkonfigurasi. AppBaseURL ikut
+// disyaratkan: tanpa alamat publik, redirect_uri tak bisa dirakit — dan Google
+// menolak permintaan tanpa redirect_uri yang cocok dengan Console.
 func (c *Config) GoogleEnabled() bool {
-	return c.GoogleClientID != "" && c.GoogleClientSecret != "" && c.GoogleRedirectURL != ""
+	return c.GoogleClientID != "" && c.GoogleClientSecret != "" && c.AppBaseURL != ""
 }
 
 // IsProduction melaporkan apakah aplikasi berjalan di mode production.
@@ -119,7 +131,7 @@ func MustLoad() *Config {
 		AutoMigrate:          getEnv("AUTO_MIGRATE", "true") == "true",
 		GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", ""),
-		GoogleRedirectURL:    getEnv("GOOGLE_REDIRECT_URL", ""),
+		AppBaseURL:           strings.TrimRight(getEnv("APP_BASE_URL", ""), "/"),
 		SuperAdminEmails:     parseEmailList(getEnv("SUPER_ADMIN_EMAILS", "")),
 		AppTimezone:          getEnv("APP_TIMEZONE", "Asia/Jakarta"),
 		MaxWorkspacesPerUser: getEnvInt("MAX_WORKSPACES_PER_USER", 3),
@@ -159,7 +171,14 @@ func MustLoad() *Config {
 		// Di production Google adalah jalur login utama — wajib ada.
 		c.GoogleClientID = mustEnv("GOOGLE_CLIENT_ID")
 		c.GoogleClientSecret = mustEnv("GOOGLE_CLIENT_SECRET")
-		c.GoogleRedirectURL = mustEnv("GOOGLE_REDIRECT_URL")
+		c.AppBaseURL = strings.TrimRight(mustEnv("APP_BASE_URL"), "/")
+		// HTTPS wajib: cookie sesi di-set Secure di production, jadi base URL
+		// http:// menghasilkan aplikasi yang tampak jalan tapi login-nya tak
+		// pernah berhasil — kegagalan yang mahal dilacak.
+		if !strings.HasPrefix(c.AppBaseURL, "https://") {
+			panic(fmt.Sprintf("config: APP_BASE_URL harus https:// di production (got %q) — "+
+				"cookie sesi Secure tak akan terkirim lewat http", c.AppBaseURL))
+		}
 	}
 	// Dev: kosong → fallback ke DATABASE_URL (owner; RLS tak mengikat, tapi
 	// isolasi tetap benar via GUC+WHERE). Sengaja TIDAK berlaku di production —

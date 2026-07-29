@@ -33,13 +33,25 @@ services:
       ENV: production
       AUTO_MIGRATE: "false"        # WAJIB false di prod — lifecycle migrasi dipisah
       DATABASE_URL: ${DATABASE_URL}
+      # Pool RUNTIME: role terbatas (app_rw) agar RLS mengikat — app MEMBUKTIKAN
+      # ini saat boot & menolak start bila tidak (production multi-tenant).
+      # Bila memakai PgBouncer, env INI yang lewat pooler; DATABASE_URL harus
+      # koneksi langsung (advisory lock migrasi butuh session tetap).
+      APP_DATABASE_URL: ${APP_DATABASE_URL}
       REDIS_ADDR: ${REDIS_ADDR}
       SESSION_KEY: ${SESSION_KEY}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
+      # Alamat publik app (tanpa path). redirect_uri OAuth & tautan undangan
+      # dirakit darinya; WAJIB https:// di production.
+      APP_BASE_URL: ${APP_BASE_URL}
       SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS}
       APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+      # Bentuk aplikasi: multi (/w/{slug}) atau single (/app). Lihat 0006.
+      APP_MODE: ${APP_MODE:-multi}
+      APP_NAME: ${APP_NAME:-App}
+      # Kuota AWAL; setelah boot pertama diatur dari /dev/settings tanpa restart.
+      MAX_WORKSPACES_PER_USER: ${MAX_WORKSPACES_PER_USER:-3}
     ports:
       - "8080:8080"
     # HEALTHCHECK: image distroless TANPA shell/curl → healthcheck internal CMD

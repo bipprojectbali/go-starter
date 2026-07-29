@@ -8,14 +8,14 @@ import (
 )
 
 func TestGoogleEnabled(t *testing.T) {
-	full := Config{GoogleClientID: "a", GoogleClientSecret: "b", GoogleRedirectURL: "c"}
+	full := Config{GoogleClientID: "a", GoogleClientSecret: "b", AppBaseURL: "https://c"}
 	if !full.GoogleEnabled() {
 		t.Error("ketiga kredensial terisi → enabled")
 	}
 	// Tiap satu kosong → disabled.
 	for _, c := range []Config{
-		{GoogleClientSecret: "b", GoogleRedirectURL: "c"},
-		{GoogleClientID: "a", GoogleRedirectURL: "c"},
+		{GoogleClientSecret: "b", AppBaseURL: "https://c"},
+		{GoogleClientID: "a", AppBaseURL: "https://c"},
 		{GoogleClientID: "a", GoogleClientSecret: "b"},
 		{},
 	} {
@@ -59,7 +59,7 @@ func setMinimalEnv(t *testing.T) {
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 	// bersihkan yang bisa mengganggu
 	for _, k := range []string{"PORT", "ENV", "AUTO_MIGRATE", "SESSION_KEY",
-		"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URL", "SUPER_ADMIN_EMAILS"} {
+		"GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_BASE_URL", "SUPER_ADMIN_EMAILS"} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
 	}
@@ -175,7 +175,7 @@ func setProdEnv(t *testing.T) {
 	t.Setenv("SESSION_KEY", strings.Repeat("k", MinSessionKeyLen))
 	t.Setenv("GOOGLE_CLIENT_ID", "id")
 	t.Setenv("GOOGLE_CLIENT_SECRET", "secret")
-	t.Setenv("GOOGLE_REDIRECT_URL", "https://x/cb")
+	t.Setenv("APP_BASE_URL", "https://x.example.com")
 }
 
 // mustPanic menjalankan fn dan gagal bila TIDAK panic. Dipakai menguji fail-fast

@@ -183,6 +183,9 @@ func run() error {
 		return err
 	}
 
+	// Alamat publik aplikasi — sumber redirect_uri OAuth & tautan undangan.
+	// Di-set SEBELUM wiring OAuth di bawah (yang merakit redirect_uri darinya).
+	handler.SetAppBaseURL(cfg.AppBaseURL)
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)
@@ -209,7 +212,11 @@ func run() error {
 	// Google OAuth — di-wire bila kredensial tersedia. Di dev tanpa kredensial,
 	// app tetap start (tombol Google membalas 503 saat diklik).
 	if cfg.GoogleEnabled() {
-		gp, err := oauth.New(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
+		// redirect_uri DIRAKIT dari base URL + path route (handler.PathGoogleCallback),
+		// bukan dibaca dari env tersendiri: path yang sama tak boleh hidup di dua
+		// tempat, sebab salah ketik di salah satunya hanya muncul sebagai
+		// `redirect_uri_mismatch` dari Google — pesan yang tak menyebut sebabnya.
+		gp, err := oauth.New(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, handler.GoogleRedirectURL())
 		if err != nil {
 			return err
 		}

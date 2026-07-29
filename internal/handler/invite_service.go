@@ -118,9 +118,5 @@ func inviteErrText(err error) string {
 // inviteLink merakit URL undangan absolut dari request (skema + host). Email
 // BELUM dikirim (task terbuka) — link ditampilkan di UI untuk disalin manual.
 func inviteLink(r *http.Request, token string) string {
-	scheme := "http"
-	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host + "/invite/" + token
+	return baseFrom(r) + "/invite/" + token
 }
