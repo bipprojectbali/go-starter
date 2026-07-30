@@ -42,21 +42,37 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 
 	// Login Google — SELALU aktif (jalur login utama di produksi). Path pakai
 	// prefix /api/auth/ agar exact-match dengan redirect URI di Google Console.
-	r.Get("/api/auth/google", h.GoogleLogin)
+	//
+	// GoogleLogin ikut dijaga RequireGuest — ia jalur MASUK, dan memulainya saat
+	// sudah masuk berakhir menimpa sesi aktif tanpa pernah menyebutkannya.
+	// CALLBACK-nya TIDAK dijaga: ia menyelesaikan alur yang dimulai saat pengunjung
+	// masih tamu, dan menolaknya di tengah jalan justru mematahkan login yang sah.
+	r.With(h.RequireGuest).Get("/api/auth/google", h.GoogleLogin)
 	r.Get(handler.PathGoogleCallback, h.GoogleCallback)
 
-	// GET /login selalu ada (target redirect RequireAuth); rendernya adaptif
-	// (form password hanya muncul di dev — lihat handler.SetDevMode).
-	r.Get("/login", h.LoginPage)
+	// Logout SELALU tersedia, tanpa gerbang tamu: ia justru jalan keluarnya.
 	r.Post("/logout", h.Logout)
 
-	// Auth password — DEV-ONLY. Di produksi permukaan serang ini tidak ada;
-	// hanya untuk mempermudah agen/dev masuk ke runtime.
-	if devMode {
-		r.Post("/login", h.Login)
-		r.Get("/register", h.RegisterPage)
-		r.Post("/register", h.Register)
-	}
+	// Halaman masuk & daftar — HANYA untuk yang belum masuk (RequireGuest).
+	// Tanpa gerbang itu, /login tetap terbuka bagi yang sudah login: header
+	// menampilkan email orang yang SEDANG masuk sementara isinya menawarkan
+	// "Masuk" dan "Belum punya akun? Daftar" — satu halaman berbicara dua hal
+	// yang bertentangan, dan mengisi formnya diam-diam MENGGANTI sesi aktif.
+	//
+	// GET /login tetap selalu terdaftar (target redirect RequireAuth); rendernya
+	// adaptif — form password hanya muncul di dev (handler.SetDevMode).
+	r.Group(func(r chi.Router) {
+		r.Use(h.RequireGuest)
+		r.Get("/login", h.LoginPage)
+
+		// Auth password — DEV-ONLY. Di produksi permukaan serang ini tidak ada;
+		// hanya untuk mempermudah agen/dev masuk ke runtime.
+		if devMode {
+			r.Post("/login", h.Login)
+			r.Get("/register", h.RegisterPage)
+			r.Post("/register", h.Register)
+		}
+	})
 
 	// Semua route terproteksi memakai urutan middleware sama:
 	// RequireAuth (authn) → RefreshIdentity (role/status SEGAR dari DB, self-heal
