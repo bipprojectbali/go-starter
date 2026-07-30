@@ -3,58 +3,14 @@ package handler
 import (
 	"net/http"
 
-	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
-	"go_starter/internal/ui/pages/panel"
 )
 
-// members.go — kelola ANGGOTA workspace aktif (model membership). Dipisah dari
-// workspace.go (pengaturan nama) agar tiap file di bawah batas handler 150 baris.
-
-// MembersPage — GET /w/{workspace}/members. Daftar anggota + undangan pending.
-func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	tenantID := session.TenantID(ctx)
-	rows, err := h.q(ctx).ListMembersByTenant(ctx, tenantID)
-	if err != nil {
-		h.Log.Error("members: list", "err", err)
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	members := make([]panel.MemberRow, 0, len(rows))
-	for _, m := range rows {
-		avatar := ""
-		if m.AvatarUrl != nil {
-			avatar = *m.AvatarUrl
-		}
-		members = append(members, panel.MemberRow{
-			UserID: m.UserID, Email: m.Email, Role: m.Role,
-			AvatarURL: avatar, Status: m.Status,
-		})
-	}
-	// Undangan pending (fail-soft: gagal → daftar kosong, halaman tetap tampil).
-	invites := []panel.InviteRow{}
-	if inv, e := h.q(ctx).ListInvitesByTenant(ctx, tenantID); e == nil {
-		for _, i := range inv {
-			invites = append(invites, panel.InviteRow{
-				ID: i.ID, Email: i.Email, Role: i.Role,
-				Link: inviteLink(r, i.Token), Expires: fmtLocal(i.ExpiresAt),
-			})
-		}
-	} else {
-		h.Log.Error("members: list invites", "err", e)
-	}
-
-	// Workspace terarsip = hanya-baca: sembunyikan aksi kelola agar user tak
-	// menekan tombol yang pasti ditolak gerbang lifecycle (0005 §4).
-	canManage := canManageMembers(ctx) && !IsReadOnly(ctx)
-	h.renderWorkspaceShell(w, r, "Anggota", "/members",
-		panel.Members(wsPath(slugFromRequest(r), ""), authz.AssignableRoles(appmode.IsSingle()),
-			members, invites, canManage,
-			session.UserID(ctx), wsErrMsg(r.URL.Query().Get("err"))))
-}
+// members.go — AKSI atas anggota workspace aktif: ubah role & keluarkan.
+// Halaman daftarnya ada di members_page.go (aturan apa yang boleh DILIHAT tumbuh
+// bersama kebijakan privasi, bukan bersama daftar aksi).
 
 // MemberSetRole — POST /w/{workspace}/members/{id}/role. Ubah role anggota di workspace
 // AKTIF. Owner/admin saja; owner terakhir tak boleh diturunkan (workspace yatim).

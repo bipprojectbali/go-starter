@@ -291,6 +291,14 @@ men-supersede pemilihan-via-session di 0003 #4. Gotcha yang mahal ditemukan ulan
   `acme`. Keputusan bypass diambil dari ROLE, tak pernah dari data DB.
 - **`/dev`, `/notifications`, `/invite/{token}`, `/workspace/new` SENGAJA tanpa
   slug** — cakupan datanya bukan satu tenant. Path mengikuti cakupan data.
+- **PII disamarkan di HANDLER, bukan di view.** Halaman anggota terbuka untuk
+  semua anggota (0004), tapi email rekan disamarkan bagi yang tak mengelola
+  (`maskEmail`). Kalau view yang menyamarkan, alamat ASLI tetap harus dioper ke
+  sana — dan satu pemakaian yang lupa akan mengirimnya ke browser, tempat ia
+  terbaca di view-source meski tak tampak di layar. Domain DIPERTAHANKAN (itu
+  yang membedakan rekan satu organisasi dari orang luar); panjang bagian lokal
+  TIDAK dibocorkan; email sendiri selalu utuh. Penyamaran WAJIB dijelaskan di
+  halaman — tanpa keterangan ia terbaca seperti data rusak.
 - **View TAK BOLEH merakit path workspace sendiri** — oper `base` dari handler
   (`panel.Members`, `panel.WorkspaceView.Base`). Pelanggarannya senyap: form
   tetap ter-render rapi, baru ketahuan saat di-SUBMIT (pernah terjadi — semua

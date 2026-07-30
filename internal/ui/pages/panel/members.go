@@ -69,6 +69,14 @@ func memberList(base string, roles []string, members []MemberRow, canManage bool
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-2"), g.Text("Anggota")),
+			// Penyamaran WAJIB dijelaskan. Tanpa keterangan ini, "mal•••@gmail.com"
+			// terbaca seperti data rusak — dan orang akan melaporkannya sebagai bug
+			// alih-alih memahaminya sebagai perlindungan.
+			g.If(!canManage, h.P(
+				h.Class("text-xs text-base-content/60 mb-2"),
+				g.Text("Alamat email rekan disamarkan. Hanya owner & admin workspace "+
+					"yang melihatnya utuh."),
+			)),
 			ui.TableScroll(h.Table(
 				h.Class("w-full text-sm"),
 				h.THead(h.Tr(
