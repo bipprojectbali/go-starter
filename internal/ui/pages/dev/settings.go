@@ -21,6 +21,14 @@ type SettingsView struct {
 	OverrideN    int    // berapa user memegang hak khusus — konteks dampak
 	Msg          string // pesan sukses
 	Err          string // pesan galat
+
+	// SingleMode = aplikasi masih berjalan sebagai satu aplikasi. Setelah naik ke
+	// multi ini permanen false — form kenaikan diganti keterangan keadaan, sebab
+	// tombol yang tak punya efek lebih buruk daripada tombol yang tak ada.
+	SingleMode bool
+	// PrimaryName = nama workspace primer, ditampilkan agar operator tahu PERSIS
+	// apa yang akan tetap ada setelah kenaikan (alamatnya pun tak berubah).
+	PrimaryName string
 }
 
 // Settings merender form pengaturan platform.
@@ -36,7 +44,7 @@ func Settings(v SettingsView) g.Node {
 	if v.Msg != "" {
 		body = append(body, ui.Alert(ui.VariantDefault, "settings-msg", g.Text(v.Msg)))
 	}
-	body = append(body, quotaCard(v))
+	body = append(body, tenancyCard(v), quotaCard(v))
 	return h.Div(h.Class("grid gap-4 min-w-0"), g.Group(body))
 }
 
@@ -85,4 +93,71 @@ func overrideNote(n int) string {
 		return "Saat ini tidak ada user dengan hak khusus."
 	}
 	return strconv.Itoa(n) + " user memegang hak khusus dan TIDAK ikut berubah."
+}
+
+// tenancyCard = kenaikan mode tenancy: satu aplikasi → multi-workspace.
+//
+// SEKALI JALAN, dan itu ditegakkan DATABASE (trigger menolak penurunan), bukan
+// oleh ketiadaan tombol di sini. Karena itu kartunya harus jujur soal
+// permanennya: aksi ireversibel yang disajikan seperti toggle biasa adalah
+// jebakan, bukan fitur.
+//
+// Konfirmasi lewat mengetik nama workspace primer — bukan checkbox. Checkbox
+// bisa dicentang tanpa dibaca; menyalin nama menuntut orangnya melihat objek
+// yang terlibat.
+func tenancyCard(v SettingsView) g.Node {
+	if !v.SingleMode {
+		// Sudah multi. Tak ada form — hanya keadaan, supaya tak ada yang mencari
+		// tombol turun yang memang tak akan pernah ada.
+		return h.Div(
+			h.Class("card bg-base-100 border border-base-300 min-w-0"),
+			h.Div(
+				h.Class("card-body min-w-0"),
+				h.H2(h.Class("font-semibold mb-1"), g.Text("Mode Tenancy")),
+				h.P(h.Class("text-sm text-base-content/70"),
+					g.Text("Aplikasi ini berjalan sebagai MULTI-WORKSPACE. Setiap user "+
+						"dapat memiliki workspace sendiri, dibatasi kuota di bawah.")),
+				h.P(h.Class("text-xs text-base-content/60 mt-2"),
+					g.Text("Mode ini permanen — turun kembali ke satu aplikasi akan "+
+						"menyembunyikan setiap workspace selain yang utama, jadi database menolaknya.")),
+			),
+		)
+	}
+	return h.Div(
+		h.Class("card bg-base-100 border border-warning/40 min-w-0"),
+		h.Div(
+			h.Class("card-body min-w-0"),
+			h.H2(h.Class("font-semibold mb-1"), g.Text("Mode Tenancy")),
+			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+				g.Text("Aplikasi ini berjalan sebagai SATU APLIKASI. Semua orang bekerja "+
+					"di ruang yang sama, dan tak ada yang bisa membuat workspace sendiri.")),
+			// Yang PALING sering ditanyakan sebelum menekan: apa yang berubah, dan
+			// apakah tautan lama tetap hidup. Dijawab sebelum ditanya.
+			h.Ul(
+				h.Class("text-sm list-disc pl-5 mb-3 space-y-1 text-base-content/80"),
+				h.Li(g.Text("Setiap user dapat membuat workspace sendiri (dibatasi kuota).")),
+				h.Li(g.Text("Menu ganti workspace muncul, dan alamat "+
+					"ruang kerja saat ini TIDAK berubah — tak ada tautan yang mati.")),
+				h.Li(g.Text("Berlaku seketika, tanpa restart.")),
+				h.Li(h.Class("text-warning"),
+					g.Text("PERMANEN: tidak ada jalan kembali ke satu aplikasi.")),
+			),
+			h.FormEl(
+				h.Method("post"), h.Action("/dev/settings/tenancy"),
+				h.Class("flex flex-wrap items-end gap-3 min-w-0"),
+				h.Div(
+					h.Class("grid gap-2 min-w-0"),
+					ui.Label("Ketik nama aplikasi untuk mengonfirmasi: "+v.PrimaryName, h.For("confirm")),
+					ui.Input(
+						h.ID("confirm"), h.Name("confirm"), h.Type("text"),
+						h.Required(), h.AutoComplete("off"),
+						h.Placeholder(v.PrimaryName),
+						h.Class("input"),
+					),
+				),
+				h.Button(h.Type("submit"), h.Class("btn btn-warning"),
+					g.Text("Naikkan ke multi-workspace")),
+			),
+		),
+	)
 }

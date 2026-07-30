@@ -104,6 +104,10 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 			r.Use(mw.RequireEnforce("platform:settings", "write"))
 			r.Get("/settings", h.DevSettings)
 			r.Post("/settings/quota", h.DevSettingsQuota)
+			// Kenaikan mode tenancy: single → multi, SEKALI JALAN (0007). Di-gate
+			// platform:settings yang sama — ini keputusan paling fundamental di
+			// halaman ini, jadi tak boleh lebih longgar dari kuota.
+			r.Post("/settings/tenancy", h.DevSettingsTenancy)
 			r.Post("/users/{id}/quota", h.DevUserQuota)
 			r.Post("/users/{id}/quota/reset", h.DevUserQuotaReset)
 		})

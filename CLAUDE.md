@@ -257,8 +257,14 @@ lahir sebagai **single** dan boleh **dinaikkan** ke multi; turun **tak pernah**.
   dipulihkan meracuni test lain dengan gejala di tempat tak berhubungan.
   `setupTest` menyetel MULTI secara eksplisit (seed-nya workspace biasa, bukan
   primer); default paket adalah Single.
-- **Menaikkan mode belum punya UI.** `UpgradeToMulti` tersedia & diuji, pemicunya
-  masih manual. Task terbuka, bukan lupa.
+- **Menaikkan mode ada di `/dev/settings`** (kartu Mode Tenancy), di-gate
+  `platform:settings` yang sama seperti kuota — ini keputusan paling fundamental
+  di halaman itu, jadi tak boleh lebih longgar. Konfirmasi = MENGETIK nama
+  aplikasi, bukan checkbox (checkbox bisa dicentang tanpa dibaca; menyalin nama
+  menuntut orangnya melihat objek yang terlibat). Setelah naik, formnya HILANG
+  diganti keterangan keadaan — tombol tanpa efek lebih buruk daripada tombol yang
+  tak ada. Wajib ter-audit: perubahan bentuk aplikasi yang tak bisa dibatalkan
+  harus punya jawaban untuk "siapa & kapan".
 
 ## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002, 0003 & 0004
 

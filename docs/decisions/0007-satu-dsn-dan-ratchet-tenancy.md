@@ -205,5 +205,11 @@ tetap menerima arah apa pun — yang menahan adalah trigger.
   bukan lagi "tak ada owner" (sekarang ada), melainkan bahwa admin adalah
   pembantu operasional dan mengganti nama aplikasi tak boleh menuntut orang
   menyunting `.env` lalu restart.
-- Belum ada UI untuk menaikkan mode. `UpgradeToMulti` tersedia dan diuji;
-  pemicunya masih manual. **Task terbuka, bukan lupa.**
+- Kenaikan mode dilakukan dari `/dev/settings` (kartu Mode Tenancy), di-gate
+  `platform:settings`. Konfirmasi berupa **mengetik nama aplikasi**, bukan
+  checkbox — checkbox bisa dicentang tanpa dibaca, sementara menyalin nama
+  menuntut orangnya melihat objek yang terlibat. Setelah naik, formnya hilang
+  dan diganti keterangan keadaan: tombol yang tak punya efek lebih buruk
+  daripada tombol yang tak ada. Kenaikan wajib ter-audit
+  (`platform.tenancy.upgrade`) — perubahan bentuk aplikasi yang tak bisa
+  dibatalkan harus punya jawaban untuk "siapa dan kapan".

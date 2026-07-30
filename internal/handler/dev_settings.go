@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
 	"go_starter/internal/settings"
@@ -24,8 +25,19 @@ func (h *Handler) DevSettings(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.Log.Error("settings: hitung override", "err", err)
 	}
+	// Nama workspace primer dipakai sebagai frasa konfirmasi kenaikan mode.
+	// Fail-soft: gagal baca → nama kosong, dan handler POST tetap menolak karena
+	// konfirmasinya tak akan cocok (arah aman untuk aksi permanen).
+	primaryName := ""
+	if prim, e := h.primaryTenant(ctx); e == nil {
+		primaryName = prim.Name
+	} else {
+		h.Log.Error("settings: baca workspace primer", "err", e)
+	}
 	h.renderShell(w, r, "Pengaturan", "go_starter /dev", "/dev/settings", devNav(r.Context()),
 		dev.Settings(dev.SettingsView{
+			SingleMode:   appmode.IsSingle(),
+			PrimaryName:  primaryName,
 			QuotaDefault: settings.WorkspaceQuotaDefault(),
 			QuotaMin:     settings.MinWorkspaceQuota,
 			QuotaMax:     settings.MaxWorkspaceQuota,
@@ -111,6 +123,8 @@ func settingsErr(code string) string {
 	case "quota":
 		return "Kuota harus antara " + strconv.Itoa(settings.MinWorkspaceQuota) +
 			" dan " + strconv.Itoa(settings.MaxWorkspaceQuota)
+	case "confirm":
+		return "Konfirmasi tidak cocok — ketik nama aplikasi persis seperti yang tertulis"
 	case "failed":
 		return "Gagal menyimpan pengaturan"
 	default:
@@ -119,8 +133,13 @@ func settingsErr(code string) string {
 }
 
 func settingsMsg(code string) string {
-	if code == "saved" {
+	switch code {
+	case "saved":
 		return "Pengaturan disimpan dan langsung berlaku"
+	case "tenancy":
+		return "Aplikasi kini berjalan sebagai multi-workspace. Berlaku seketika — " +
+			"alamat ruang kerja yang sudah ada tidak berubah."
+	default:
+		return ""
 	}
-	return ""
 }
