@@ -43,9 +43,13 @@ WHERE id = $1 AND status = 'suspended' AND deleted_at IS NULL;
 -- OWNER. Workspace jadi READ-ONLY tapi datanya utuh. Guard `status = 'active'`
 -- mencegah archive menimpa SUSPENSI platform — kalau tidak, owner bisa keluar
 -- dari suspensi lewat pintu samping (archive lalu unarchive).
+--
+-- `NOT is_primary`: mengarsipkan rumah aplikasi menjadikan SELURUH aplikasi
+-- read-only lewat tombol yang tampak rutin. Guard-nya di SQL, bukan cuma di
+-- handler — jalur yang tak lewat handler pun harus tertahan.
 UPDATE tenants
 SET status = 'archived', archived_at = now()
-WHERE id = $1 AND status = 'active' AND deleted_at IS NULL;
+WHERE id = $1 AND status = 'active' AND deleted_at IS NULL AND NOT is_primary;
 
 -- name: UnarchiveTenant :exec
 -- OWNER. Hanya dari 'archived' — tak bisa dipakai membatalkan suspensi platform.
@@ -55,7 +59,12 @@ WHERE id = $1 AND status = 'archived' AND deleted_at IS NULL;
 
 -- name: SoftDeleteTenant :exec
 -- Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
-UPDATE tenants SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL;
+--
+-- `NOT is_primary`: rumah aplikasi tak bisa dihapus dari dalam aplikasi itu
+-- sendiri. Di mode single ia satu-satunya workspace — menghapusnya berarti
+-- menghapus aplikasinya, lewat tombol yang di workspace lain berarti "hapus
+-- salah satu dari beberapa".
+UPDATE tenants SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL AND NOT is_primary;
 
 -- name: RestoreTenant :exec
 -- Batalkan penghapusan dalam masa tenggang. Status dikembalikan ke 'active':
@@ -92,15 +101,16 @@ LIMIT $1 OFFSET $2;
 -- name: CountTenantsForPlatform :one
 SELECT count(*)::bigint FROM tenants;
 
--- name: CountTenants :one
--- Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
--- 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
-SELECT count(*)::bigint FROM tenants WHERE deleted_at IS NULL;
+-- name: GetPrimaryTenant :one
+-- Workspace PRIMER = rumah aplikasi. Dicari lewat kolom is_primary, BUKAN lewat
+-- perbandingan slug: yang bergantung padanya adalah penolakan arsip/hapus, dan
+-- aturan sepenting itu tak boleh bergantung pada string yang kebetulan cocok.
+SELECT * FROM tenants WHERE is_primary;
 
--- name: SetTenantSlug :exec
--- Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
--- mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
--- tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
--- mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
--- workspace itu belum berisi anggota.
-UPDATE tenants SET slug = $2, name = $3 WHERE id = $1;
+-- name: CreatePrimaryTenant :one
+-- Dipanggil SEKALI saat boot pertama. Unique partial index di tenants menjamin
+-- hanya ada satu primer — dua instance yang boot bersamaan, satu akan gagal, dan
+-- itu jauh lebih baik daripada dua "rumah aplikasi".
+INSERT INTO tenants (name, slug, is_primary)
+VALUES ($1, $2, true)
+RETURNING *;

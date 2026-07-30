@@ -30,7 +30,7 @@ func (q *Queries) CountQuotaOverrides(ctx context.Context) (int64, error) {
 const createOAuthUser = `-- name: CreateOAuthUser :one
 INSERT INTO users (email, email_verified, avatar_url)
 VALUES ($1, true, $2)
-RETURNING id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota
+RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at
 `
 
 type CreateOAuthUserParams struct {
@@ -46,12 +46,12 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.ID,
 		&i.Email,
 		&i.PassHash,
-		&i.CreatedAt,
 		&i.EmailVerified,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -59,7 +59,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, pass_hash)
 VALUES ($1, $2)
-RETURNING id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota
+RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at
 `
 
 type CreateUserParams struct {
@@ -76,18 +76,18 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ID,
 		&i.Email,
 		&i.PassHash,
-		&i.CreatedAt,
 		&i.EmailVerified,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users WHERE id = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -97,18 +97,18 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.ID,
 		&i.Email,
 		&i.PassHash,
-		&i.CreatedAt,
 		&i.EmailVerified,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users WHERE email = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users WHERE email = $1 AND deleted_at IS NULL
 `
 
 // Soft-delete gotcha: user terhapus tak boleh login.
@@ -119,18 +119,18 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ID,
 		&i.Email,
 		&i.PassHash,
-		&i.CreatedAt,
 		&i.EmailVerified,
 		&i.Status,
 		&i.AvatarUrl,
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, pass_hash, created_at, email_verified, status, avatar_url, deleted_at, workspace_quota FROM users
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users
 WHERE deleted_at IS NULL
   AND (created_at, id) < ($1::timestamptz, $2::bigint)
 ORDER BY created_at DESC, id DESC
@@ -157,12 +157,12 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.ID,
 			&i.Email,
 			&i.PassHash,
-			&i.CreatedAt,
 			&i.EmailVerified,
 			&i.Status,
 			&i.AvatarUrl,
 			&i.DeletedAt,
 			&i.WorkspaceQuota,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
 
@@ -74,6 +75,19 @@ func setupTest(t *testing.T) (*testEnv, int64) {
 	sm.Lifetime = time.Hour
 	session.Init(sm)
 
+	// Mode DEFAULT untuk test = MULTI, dan itu harus eksplisit sejak 0007.
+	// Nilai bawaan paket kini Single (deployment baru lahir sebagai satu
+	// aplikasi), sementara seed di atas adalah workspace BIASA — bukan yang
+	// primer. Membiarkannya single membuat jalur seperti placeNewUser mencari
+	// workspace primer yang tak ada, dan kegagalannya muncul jauh dari sebabnya
+	// (register berbalas "email sudah terdaftar").
+	//
+	// Test yang memang menguji mode single memakai withMode; yang di sini hanya
+	// menetapkan latar yang sesuai dengan data seed-nya.
+	prevMode := appmode.Current()
+	appmode.Set(appmode.Multi)
+	t.Cleanup(func() { appmode.Set(prevMode) })
+
 	h := &Handler{Pool: pool, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	return &testEnv{h: h, sm: sm, q: q, tenantID: tenant.ID}, u.ID
 }
@@ -112,6 +126,20 @@ func (e *testEnv) seedUserOnly(t *testing.T, email string) db.User {
 		t.Fatalf("seed user %s: %v", email, err)
 	}
 	return u
+}
+
+// countTenants menghitung workspace yang masih hidup. Query langsung, bukan
+// lewat sqlc: hitungan ini hanya dipakai test (untuk membuktikan sesuatu TIDAK
+// membuat workspace baru), dan query aplikasi yang tak pernah dipanggil aplikasi
+// adalah beban yang menyamar sebagai fitur.
+func (e *testEnv) countTenants(t *testing.T) int64 {
+	t.Helper()
+	var n int64
+	if err := e.h.Pool.QueryRow(t.Context(),
+		"SELECT count(*) FROM tenants WHERE deleted_at IS NULL").Scan(&n); err != nil {
+		t.Fatalf("hitung tenants: %v", err)
+	}
+	return n
 }
 
 // sessionCtx membungkus context ber-session aktif (scs butuh request melewati

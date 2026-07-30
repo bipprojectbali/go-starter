@@ -131,14 +131,14 @@ func TestAdoptTenantBySlug_PlatformIkutPath(t *testing.T) {
 	env.withSession(t, uid, func(sc sessionCtx) {
 		// Mulai dari workspace seed, lalu "buka" workspace lain lewat slug.
 		session.SetActiveTenant(sc.ctx, env.tenantID, "Test", "test")
-		if !env.h.adoptTenantBySlug(sc.ctx, "asing") {
+		if _, ok := env.h.adoptTenantBySlug(sc.ctx, "asing"); !ok {
 			t.Fatal("platform harus bisa membuka workspace mana pun lewat slug")
 		}
 		if got := session.TenantID(sc.ctx); got != asing.ID {
 			t.Errorf("konteks aktif = %d, want %d (harus ikut PATH, bukan session)", got, asing.ID)
 		}
 		// Slug tak dikenal tetap ditolak — bypass RLS bukan berarti bypass 404.
-		if env.h.adoptTenantBySlug(sc.ctx, "tak-ada") {
+		if _, ok := env.h.adoptTenantBySlug(sc.ctx, "tak-ada"); ok {
 			t.Error("slug tak dikenal harus ditolak walau role platform")
 		}
 	})

@@ -102,18 +102,15 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Postgres — DUA pool (defense-in-depth RLS):
-	//   migratePool (DATABASE_URL, role owner)  → migrasi + boot, BYPASS RLS.
-	//   pool (APP_DATABASE_URL, role app_rw)     → runtime handler, RLS MENGIKAT.
-	// Di dev keduanya bisa DSN sama (owner) — RLS tak mengikat, tapi isolasi tetap
-	// benar via GUC+WHERE. Di prod, app_rw NOBYPASSRLS = jaring pengaman terakhir.
-	migratePool, err := pgxpool.New(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return err
-	}
-	defer migratePool.Close()
-
-	pool, err := pgxpool.New(ctx, cfg.AppDatabaseURL)
+	// Postgres — SATU pool, satu DSN. Koneksi terbuka sebagai owner (migrasi butuh
+	// ALTER/CREATE POLICY), lalu setiap transaksi aplikasi menurunkan haknya ke
+	// app_rw lewat SET LOCAL ROLE (db.WithTenant/WithSuper) sehingga RLS mengikat.
+	//
+	// Dulu ini dua pool dengan dua DSN, karena owner selalu bypass RLS. Harganya:
+	// satu env lagi yang bisa lupa diisi, satu password lagi yang bisa bocor, satu
+	// entri lagi di userlist.txt PgBouncer — dan bila DSN kedua diisi sama dengan
+	// yang pertama, semuanya lolos sambil tetap membocorkan data.
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -136,10 +133,11 @@ func run() error {
 	})
 	session.Init(sm)
 
-	// Auto-migrate dengan advisory lock (aman multi-instance). Pakai migratePool
-	// (owner) — migrasi ALTER/CREATE POLICY butuh privilege owner, bukan app_rw.
+	// Auto-migrate dengan advisory lock (aman multi-instance). Memakai pool
+	// LANGSUNG — bukan lewat WithTenant/WithSuper — supaya haknya tetap owner:
+	// ALTER/CREATE POLICY di luar jangkauan app_rw, dan memang harus begitu.
 	if cfg.AutoMigrate {
-		if err := database.MigrateWithLock(ctx, migratePool, migrationsEmbed); err != nil {
+		if err := database.MigrateWithLock(ctx, pool, migrationsEmbed); err != nil {
 			return err
 		}
 		log.Info("migrations applied")
@@ -159,27 +157,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	// Mode aplikasi di-set SEBELUM apa pun yang membentuk URL atau mendaftarkan
-	// route (0006): mode menentukan bentuk keduanya, dan route dipasang sekali.
-	appmode.Set(cfg.AppMode)
-	// Mode single butuh TEPAT SATU tenant. Sengaja fail-fast: DB berisi >1
-	// workspace + APP_MODE=single = app menolak start, sebab memilih diam-diam
-	// salah satu membuat sisanya lenyap dari pandangan tanpa jejak.
-	if err := handler.BootstrapSingleApp(ctx, migratePool, cfg.AppName); err != nil {
+	// Workspace primer + mode tenancy, keduanya dari DATABASE (0007). Mode tak
+	// lagi datang dari env: env bisa dibalik, dan menurunkannya kembali ke single
+	// setelah ada banyak workspace menyembunyikan sisanya. Nilainya kini dijaga
+	// trigger DB yang menolak penurunan — mustahil, bukan sekadar dicegah.
+	//
+	// Dijalankan setelah migrasi (tabelnya harus ada) dan sebelum route
+	// didaftarkan (menu bergantung mode).
+	mode, err := handler.BootstrapPrimary(ctx, pool, cfg.AppName)
+	if err != nil {
 		return err
 	}
-	log.Info("mode aplikasi", "mode", cfg.AppMode.String())
+	appmode.Set(mode)
+	log.Info("mode tenancy", "mode", mode.String())
 
-	// BUKTIKAN isolasi tenant mengikat pada koneksi runtime — jangan percaya env.
-	// Urutannya penting: SETELAH migrasi (tabel & policy harus sudah ada) dan
-	// SETELAH appmode.Set (ketatnya bergantung mode), SEBELUM melayani request.
-	//
-	// Kenapa di sini, bukan di config: string DSN tak membuktikan apa pun. Mengisi
-	// APP_DATABASE_URL dengan nilai yang SAMA seperti DATABASE_URL lolos setiap
-	// pemeriksaan env sambil tetap menjalankan pool sebagai owner — lalu satu
-	// query yang lupa `WHERE tenant_id` membocorkan data lintas-pelanggan tanpa
-	// error. Yang bisa ditanyakan ke database jawabannya pasti.
-	if err := verifyTenantIsolation(ctx, pool, cfg, log); err != nil {
+	// BUKTIKAN isolasi tenant mengikat — jangan percaya konfigurasi. Dijalankan
+	// SETELAH migrasi (tabel & policy harus sudah ada), SEBELUM melayani request.
+	if err := verifyTenantIsolation(ctx, pool, log); err != nil {
 		return err
 	}
 
@@ -271,17 +265,26 @@ func run() error {
 	}
 }
 
-// verifyTenantIsolation memastikan pool runtime benar-benar terikat RLS.
+// verifyTenantIsolation MEMBUKTIKAN isolasi tenant mengikat — dengan bertanya ke
+// database, bukan dengan memeriksa env.
 //
-// Keras di MULTI-tenant (menolak start), sekadar catatan di single-app: di sana
-// hanya ada satu tenant, jadi tak ada yang bisa bocor ke siapa pun — memaksa
-// operator menyiapkan role terpisah untuk perlindungan yang tak ia butuhkan
-// hanyalah gesekan. Aturannya menyesuaikan diri sendiri, tanpa env tambahan.
+// Pemeriksaan dilakukan di dalam WithSuper, artinya pada transaksi yang sudah
+// menurunkan haknya ke app_rw — persis keadaan setiap query aplikasi. Memeriksa
+// pool telanjang akan menjawab pertanyaan yang salah: di sana koneksi memang
+// masih owner, dan memang seharusnya (migrasi butuh itu).
 //
-// Dev tetap boleh longgar: menjalankan Postgres dengan role terpisah hanya untuk
-// `make dev` tak sepadan, dan isolasi di sana tetap benar via GUC + WHERE.
-func verifyTenantIsolation(ctx context.Context, pool *pgxpool.Pool, cfg *config.Config, log *slog.Logger) error {
-	st, err := db.CheckRLS(ctx, pool, "audit_logs")
+// Berlaku SAMA di dev maupun production, dan itu perubahan dari sebelumnya.
+// Dulu dev sengaja dilonggarkan karena mengikat RLS menuntut role & DSN kedua —
+// gesekan yang tak sepadan untuk `make dev`. Dengan SET LOCAL ROLE gesekan itu
+// nol, jadi tak ada lagi alasan membiarkan dev berbeda. Justru sebaliknya:
+// query yang lupa `WHERE tenant_id` sekarang gagal di laptop, bukan di produksi.
+func verifyTenantIsolation(ctx context.Context, pool *pgxpool.Pool, log *slog.Logger) error {
+	var st db.RLSStatus
+	err := db.WithSuper(ctx, pool, func(q *db.Queries) error {
+		var e error
+		st, e = db.CheckRLSTx(ctx, q, "audit_logs")
+		return e
+	})
 	if err != nil {
 		return err
 	}
@@ -289,29 +292,15 @@ func verifyTenantIsolation(ctx context.Context, pool *pgxpool.Pool, cfg *config.
 		log.Info("isolasi tenant: RLS mengikat", "role", st.User)
 		return nil
 	}
-	// Tidak mengikat. Seberapa keras responsnya bergantung apakah ada yang bisa
-	// bocor sama sekali.
-	if cfg.IsProduction() && appmode.IsMulti() {
-		// Pesan memuat SATU perintah siap-tempel. Role app_rw beserta seluruh
-		// GRANT-nya sudah dibuat migrasi 00007 (termasuk ALTER DEFAULT PRIVILEGES,
-		// sehingga tabel dari migrasi berikutnya ikut terjangkau otomatis) — yang
-		// belum hanya kredensial login, sebab password tak boleh ada di repo.
-		// Menyuruh orang menjalankan ulang GRANT yang sudah ada hanya menambah
-		// friksi, dan friksi itulah yang mendorong mereka menyerah lalu
-		// menyamakan DSN dengan DATABASE_URL.
-		return fmt.Errorf("isolasi tenant TIDAK mengikat: %s.\n"+
-			"Pool runtime (APP_DATABASE_URL) harus memakai role non-owner tanpa BYPASSRLS, "+
-			"agar satu query yang lupa WHERE tenant_id mengembalikan 0 baris — bukan data "+
-			"pelanggan lain.\n"+
-			"Role app_rw & hak aksesnya SUDAH dibuat migrasi 00007; tinggal beri kredensial:\n"+
-			"  ALTER ROLE app_rw LOGIN PASSWORD '<password>';\n"+
-			"lalu set APP_DATABASE_URL=postgres://app_rw:<password>@host:port/db",
-			st.Reason())
-	}
-	log.Warn("isolasi tenant TIDAK mengikat — RLS tak jadi jaring pengaman",
-		"sebab", st.Reason(),
-		"catatan", "dapat diterima di dev/single-app; WAJIB diperbaiki sebelum production multi-tenant")
-	return nil
+	// Tak mengikat = menolak start, tanpa pengecualian. Bukan kekakuan: penyebab
+	// yang mungkin tinggal sedikit sejak APP_DATABASE_URL hilang, dan semuanya
+	// berarti jaringnya memang tak terpasang.
+	return fmt.Errorf("isolasi tenant TIDAK mengikat: %s.\n"+
+		"Setiap transaksi aplikasi menurunkan haknya ke app_rw (SET LOCAL ROLE), jadi ini "+
+		"berarti role itu tak terpasang benar. Periksa: migrasi sudah jalan sampai selesai? "+
+		"`GRANT app_rw TO CURRENT_USER` ada (dibutuhkan bila DATABASE_URL memakai owner "+
+		"non-superuser)? FORCE ROW LEVEL SECURITY masih aktif di tabel ber-tenant?",
+		st.Reason())
 }
 
 // loadSettings membaca seluruh pengaturan platform jadi map siap-cache.

@@ -138,7 +138,7 @@ func TestPlatformTembusSuspensi(t *testing.T) {
 			env.tenantID, "Test", "test", "")
 		// adoptTenantBySlug = jalur platform. Ia HANYA memeriksa keberadaan slug,
 		// tak peduli status — itulah yang membuat penyelidikan mungkin.
-		if !env.h.adoptTenantBySlug(sc.ctx, "test") {
+		if _, ok := env.h.adoptTenantBySlug(sc.ctx, "test"); !ok {
 			t.Error("platform harus tetap bisa membuka workspace yang ditangguhkan")
 		}
 	})

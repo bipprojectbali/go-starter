@@ -18,6 +18,10 @@ type Querier interface {
 	// OWNER. Workspace jadi READ-ONLY tapi datanya utuh. Guard `status = 'active'`
 	// mencegah archive menimpa SUSPENSI platform — kalau tidak, owner bisa keluar
 	// dari suspensi lewat pintu samping (archive lalu unarchive).
+	//
+	// `NOT is_primary`: mengarsipkan rumah aplikasi menjadikan SELURUH aplikasi
+	// read-only lewat tombol yang tampak rutin. Guard-nya di SQL, bukan cuma di
+	// handler — jalur yang tak lewat handler pun harus tertahan.
 	ArchiveTenant(ctx context.Context, id int64) error
 	// Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
 	// membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
@@ -26,6 +30,12 @@ type Querier interface {
 	// workspace yang sudah dihapus terasa seperti bug, dan mendorong user memurge
 	// lebih cepat — kebalikan dari tujuan masa tenggang. Yang TERARSIP TETAP
 	// dihitung: datanya masih disimpan & bisa diaktifkan kapan saja.
+	//
+	// Workspace PRIMER juga tak dihitung (0007): kuota membatasi berapa banyak yang
+	// boleh DIBUAT, dan rumah aplikasi tak dibuat siapa pun — ia sudah ada sebelum
+	// user pertama mendaftar. Tanpa pengecualian ini, super_admin yang jadi ownernya
+	// memakai jatahnya sendiri, dan dengan default 1 orang yang MENETAPKAN aturan
+	// kuota justru tak bisa membuat workspace apa pun.
 	CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error)
 	// Bagian "perlu tindakan" dari badge. Undangan pending SENGAJA tak pernah
 	// ter-auto-read: ia tugas, bukan kabar — lihat MarkNotificationsRead.
@@ -38,9 +48,6 @@ type Querier interface {
 	// Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir
 	// (workspace tanpa owner = yatim).
 	CountTenantOwners(ctx context.Context, tenantID int64) (int64, error)
-	// Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
-	// 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
-	CountTenants(ctx context.Context) (int64, error)
 	CountTenantsForPlatform(ctx context.Context) (int64, error)
 	// Badge sidebar — dirender di SETIAP halaman, ditopang index partial
 	// idx_notif_unread agar tak menyentuh baris yang sudah terbaca.
@@ -59,6 +66,10 @@ type Querier interface {
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
 	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
+	// Dipanggil SEKALI saat boot pertama. Unique partial index di tenants menjamin
+	// hanya ada satu primer — dua instance yang boot bersamaan, satu akan gagal, dan
+	// itu jauh lebih baik daripada dua "rumah aplikasi".
+	CreatePrimaryTenant(ctx context.Context, arg CreatePrimaryTenantParams) (Tenant, error)
 	// Buat tenant baru (dipanggil saat register/oauth user baru — 1 user = 1 tenant).
 	CreateTenant(ctx context.Context, arg CreateTenantParams) (Tenant, error)
 	// users = tabel GLOBAL (identitas murni, TANPA tenant/role — keduanya pindah ke
@@ -80,6 +91,10 @@ type Querier interface {
 	// (memastikan tenant aktif di session memang milik user; anti tenant-forcing).
 	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
 	GetOAuthAccount(ctx context.Context, arg GetOAuthAccountParams) (OauthAccount, error)
+	// Workspace PRIMER = rumah aplikasi. Dicari lewat kolom is_primary, BUKAN lewat
+	// perbandingan slug: yang bergantung padanya adalah penolakan arsip/hapus, dan
+	// aturan sepenting itu tak boleh bergantung pada string yang kebetulan cocok.
+	GetPrimaryTenant(ctx context.Context) (Tenant, error)
 	// Baca satu pengaturan platform. Tak ditemukan = keadaan SAH (pemanggil jatuh ke
 	// default bawaan kode), bukan error yang perlu diributkan.
 	GetSetting(ctx context.Context, key string) (PlatformSetting, error)
@@ -113,6 +128,9 @@ type Querier interface {
 	// middleware Scope, jadi tanpa filter ini user bisa dilempar ke workspace yang
 	// sudah dihapus. status ikut dikembalikan agar switcher bisa menandai yang
 	// suspended/archived alih-alih membiarkan user menabrak 403 setelah mengklik.
+	// is_primary ikut dikembalikan karena sidebar menghitung sisa kuota dari daftar
+	// ini; tanpanya hitungannya akan BERBEDA dari CountOwnedWorkspaces, dan user
+	// melihat tombol "Buat workspace" yang lalu ditolak (atau sebaliknya).
 	ListMembershipsByUser(ctx context.Context, userID int64) ([]ListMembershipsByUserRow, error)
 	// Membership BANYAK user sekaligus (panel /dev: tampilkan workspace+role tiap
 	// user). Satu query untuk semua id → hindari N+1 (Rule 13).
@@ -173,13 +191,12 @@ type Querier interface {
 	// workspace yang dihapus saat ter-arsip pun kembali sebagai aktif — pemulihan
 	// harus meninggalkan keadaan yang bisa langsung dipakai, bukan setengah jalan.
 	RestoreTenant(ctx context.Context, id int64) error
-	// Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
-	// mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
-	// tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
-	// mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
-	// workspace itu belum berisi anggota.
-	SetTenantSlug(ctx context.Context, arg SetTenantSlugParams) error
 	// Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
+	//
+	// `NOT is_primary`: rumah aplikasi tak bisa dihapus dari dalam aplikasi itu
+	// sendiri. Di mode single ia satu-satunya workspace — menghapusnya berarti
+	// menghapus aplikasinya, lewat tombol yang di workspace lain berarti "hapus
+	// salah satu dari beberapa".
 	SoftDeleteTenant(ctx context.Context, id int64) error
 	SoftDeleteUser(ctx context.Context, id int64) error
 	// PLATFORM-ONLY (super_admin/staff). Owner tak bisa membatalkannya sendiri —

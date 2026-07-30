@@ -204,7 +204,11 @@ func (h *Handler) workspaceOptions(ctx context.Context) ([]ui.WorkspaceOption, b
 	owned := 0
 	for _, m := range rows {
 		out = append(out, ui.WorkspaceOption{TenantID: m.TenantID, Name: m.Name, Role: m.Role})
-		if m.Role == authz.RoleNameOwner {
+		// Workspace primer TIDAK dihitung — sama persis dengan CountOwnedWorkspaces
+		// yang menegakkan kuota. Dua hitungan yang berbeda sedikit saja membuat
+		// user melihat tombol yang lalu ditolak (atau kehilangan tombol yang masih
+		// jadi haknya).
+		if m.Role == authz.RoleNameOwner && !m.IsPrimary {
 			owned++
 		}
 	}

@@ -19,7 +19,10 @@ SELECT * FROM memberships WHERE user_id = $1 AND tenant_id = $2;
 -- middleware Scope, jadi tanpa filter ini user bisa dilempar ke workspace yang
 -- sudah dihapus. status ikut dikembalikan agar switcher bisa menandai yang
 -- suspended/archived alih-alih membiarkan user menabrak 403 setelah mengklik.
-SELECT m.tenant_id, m.role, t.name, t.slug, t.status
+-- is_primary ikut dikembalikan karena sidebar menghitung sisa kuota dari daftar
+-- ini; tanpanya hitungannya akan BERBEDA dari CountOwnedWorkspaces, dan user
+-- melihat tombol "Buat workspace" yang lalu ditolak (atau sebaliknya).
+SELECT m.tenant_id, m.role, t.name, t.slug, t.status, t.is_primary
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
 WHERE m.user_id = $1 AND t.deleted_at IS NULL
@@ -58,10 +61,16 @@ ORDER BY m.user_id, m.created_at, m.id;
 -- workspace yang sudah dihapus terasa seperti bug, dan mendorong user memurge
 -- lebih cepat — kebalikan dari tujuan masa tenggang. Yang TERARSIP TETAP
 -- dihitung: datanya masih disimpan & bisa diaktifkan kapan saja.
+--
+-- Workspace PRIMER juga tak dihitung (0007): kuota membatasi berapa banyak yang
+-- boleh DIBUAT, dan rumah aplikasi tak dibuat siapa pun — ia sudah ada sebelum
+-- user pertama mendaftar. Tanpa pengecualian ini, super_admin yang jadi ownernya
+-- memakai jatahnya sendiri, dan dengan default 1 orang yang MENETAPKAN aturan
+-- kuota justru tak bisa membuat workspace apa pun.
 SELECT count(*)::bigint
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
-WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL;
+WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL AND NOT t.is_primary;
 
 -- name: CountTenantOwners :one
 -- Jumlah owner di satu workspace — cegah menghapus/menurunkan owner terakhir

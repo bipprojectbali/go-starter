@@ -11,20 +11,20 @@ import (
 type ActivityPresence struct {
 	UserID     int64              `json:"user_id"`
 	BucketAt   pgtype.Timestamptz `json:"bucket_at"`
+	TenantID   int64              `json:"tenant_id"`
 	Hits       int32              `json:"hits"`
 	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
-	TenantID   int64              `json:"tenant_id"`
 }
 
 type AuditLog struct {
 	ID          int64              `json:"id"`
 	ActorUserID *int64             `json:"actor_user_id"`
+	TenantID    *int64             `json:"tenant_id"`
 	Action      string             `json:"action"`
 	TargetType  string             `json:"target_type"`
 	TargetID    *int64             `json:"target_id"`
 	Metadata    []byte             `json:"metadata"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	TenantID    *int64             `json:"tenant_id"`
 }
 
 type Invite struct {
@@ -60,10 +60,10 @@ type Notification struct {
 type OauthAccount struct {
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`
+	TenantID    int64              `json:"tenant_id"`
 	Provider    string             `json:"provider"`
 	ProviderUid string             `json:"provider_uid"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	TenantID    int64              `json:"tenant_id"`
 }
 
 type PlatformSetting struct {
@@ -84,22 +84,23 @@ type Tenant struct {
 	Name          string             `json:"name"`
 	Slug          string             `json:"slug"`
 	Status        string             `json:"status"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	IsPrimary     bool               `json:"is_primary"`
 	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
 	SuspendedAt   pgtype.Timestamptz `json:"suspended_at"`
 	SuspendedBy   *int64             `json:"suspended_by"`
 	SuspendReason *string            `json:"suspend_reason"`
 	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {
 	ID             int64              `json:"id"`
 	Email          string             `json:"email"`
 	PassHash       *string            `json:"pass_hash"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	EmailVerified  bool               `json:"email_verified"`
 	Status         string             `json:"status"`
 	AvatarUrl      *string            `json:"avatar_url"`
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 	WorkspaceQuota *int32             `json:"workspace_quota"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }

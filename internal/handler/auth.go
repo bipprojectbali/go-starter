@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/auth"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
@@ -28,7 +29,7 @@ func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 
 // RegisterPage — GET /register (full page). ?err= → alert (pola PRG).
 func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Daftar", pages.Register(authErrMsg(r.URL.Query().Get("err"))))
+	h.renderPage(w, r, "Daftar", pages.Register(authErrMsg(r.URL.Query().Get("err")), appmode.IsMulti()))
 }
 
 // authErrMsg memetakan kode error auth (query ?err=) ke pesan ramah. Kode ringkas
@@ -57,8 +58,12 @@ func authErrMsg(code string) string {
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	email := strings.TrimSpace(strings.ToLower(r.FormValue("email")))
 	password := r.FormValue("password")
+	// Nama workspace hanya relevan di mode MULTI (pendaftar membuat workspace-nya
+	// sendiri). Di mode single ia bergabung ke aplikasi yang sudah ada & sudah
+	// bernama — mewajibkannya di sana membuat pendaftaran mustahil diselesaikan,
+	// sebab formnya pun tak menanyakannya.
 	workspace := strings.TrimSpace(r.FormValue("workspace"))
-	if workspace == "" || len(workspace) > maxWorkspaceNameLen {
+	if appmode.IsMulti() && (workspace == "" || len(workspace) > maxWorkspaceNameLen) {
 		http.Redirect(w, r, "/register?err=workspace", http.StatusSeeOther)
 		return
 	}
@@ -229,6 +234,18 @@ func (h *Handler) startIdentity(r *http.Request, u db.User, method string, prefe
 		tenantRole = authz.RoleNameMember
 	)
 	if err := db.WithSuper(r.Context(), h.Pool, func(q *db.Queries) error {
+		// super_admin = OWNER workspace primer (0007). Dilakukan SEBELUM membaca
+		// keanggotaan, supaya baris yang baru dibuat ikut terpilih di login yang
+		// SAMA — kalau sesudahnya, super_admin pertama mendarat tanpa workspace
+		// dan diarahkan ke /workspace/new padahal rumahnya sudah ada.
+		//
+		// Fail-soft: kehilangan kepemilikan sementara jauh lebih ringan daripada
+		// super_admin yang tak bisa masuk sama sekali.
+		if isRoot {
+			if e := h.ensurePrimaryOwner(r.Context(), q, u.ID); e != nil {
+				h.Log.Warn("startIdentity: pasang owner workspace primer", "uid", u.ID, "err", e)
+			}
+		}
 		ms, e := q.ListMembershipsByUser(r.Context(), u.ID)
 		if e != nil || len(ms) == 0 {
 			return e // tanpa workspace → tenant tetap 0 (Scope arahkan buat baru)

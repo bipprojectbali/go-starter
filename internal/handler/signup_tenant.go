@@ -34,9 +34,9 @@ import (
 // di mode single ia diabaikan — aplikasinya sudah ada dan bernama.
 func placeNewUser(ctx context.Context, q *db.Queries, userID int64, wantName string) (db.Tenant, error) {
 	if appmode.IsSingle() {
-		t, err := q.GetTenantBySlug(ctx, appmode.SingleSlug)
+		t, err := q.GetPrimaryTenant(ctx)
 		if err != nil {
-			// Tenant tunggal dibuat saat startup (BootstrapSingleApp), jadi absennya
+			// Workspace primer dibuat saat startup (BootstrapPrimary), jadi absennya
 			// di sini = bug wiring, bukan keadaan yang perlu ditangani diam-diam.
 			return db.Tenant{}, err
 		}

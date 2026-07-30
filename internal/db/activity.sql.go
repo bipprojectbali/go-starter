@@ -12,7 +12,7 @@ import (
 )
 
 const listAuthEvents = `-- name: ListAuthEvents :many
-SELECT id, actor_user_id, action, target_type, target_id, metadata, created_at, tenant_id FROM audit_logs
+SELECT id, actor_user_id, tenant_id, action, target_type, target_id, metadata, created_at FROM audit_logs
 WHERE action IN ('auth.login', 'auth.logout')
 ORDER BY created_at DESC, id DESC
 LIMIT $1
@@ -31,12 +31,12 @@ func (q *Queries) ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLo
 		if err := rows.Scan(
 			&i.ID,
 			&i.ActorUserID,
+			&i.TenantID,
 			&i.Action,
 			&i.TargetType,
 			&i.TargetID,
 			&i.Metadata,
 			&i.CreatedAt,
-			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}

@@ -2,88 +2,97 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"go_starter/internal/appmode"
 	"go_starter/internal/db"
+	"go_starter/internal/settings"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// bootstrap.go — penyiapan keadaan awal mode single (keputusan 0006 §5, §10).
-// Dijalankan SEKALI saat startup, sebelum server melayani request.
+// bootstrap.go — keadaan awal aplikasi (keputusan 0006 & 0007). Dijalankan
+// SEKALI saat startup, sebelum server melayani request.
 
-// BootstrapSingleApp memastikan mode single punya TEPAT SATU tenant, dan menolak
-// start bila keadaan DB bertentangan dengan mode yang diminta.
+// BootstrapPrimary memastikan ada workspace PRIMER — rumah aplikasi — dan
+// mengembalikan mode tenancy yang berlaku.
 //
-// Dua hal yang dikerjakannya, keduanya sengaja di startup — bukan lazily saat
-// request pertama:
+// Keduanya sekaligus karena saling terkait: mode dibaca dari DB, dan workspace
+// primer adalah satu-satunya workspace di mode single. Memisahkannya berarti dua
+// pembacaan yang bisa saling bertentangan.
 //
-//  1. Tenant tunggal dibuat bila belum ada. Aplikasi jadi tak pernah berada di
+// Yang dikerjakan:
+//
+//  1. Workspace primer dibuat bila belum ada. Aplikasi jadi tak pernah berada di
 //     keadaan "belum ada workspace", sehingga tak perlu jalur khusus untuk user
 //     pertama — dan keadaan paling jarang diuji adalah yang paling sering rusak.
 //
-//  2. GAGAL KERAS bila sudah ada lebih dari satu tenant. Memilih diam-diam salah
-//     satu berarti tenant lain LENYAP dari pandangan tanpa jejak: kehilangan data
-//     yang terlihat seperti bug UI. Operator harus memutuskan sendiri.
+//  2. Mode dibaca dari platform_settings. Nol baris = single: setiap aplikasi
+//     lahir sebagai satu aplikasi, dan multi-tenant adalah sesuatu yang dinaikkan.
 //
-// Arah sebaliknya (single → multi) tak butuh apa-apa: tenant tunggal menjadi
-// workspace pertama dari banyak.
-func BootstrapSingleApp(ctx context.Context, pool *pgxpool.Pool, appName string) error {
-	if !appmode.IsSingle() {
-		return nil
-	}
-	return db.WithSuper(ctx, pool, func(q *db.Queries) error {
-		n, err := q.CountTenants(ctx)
-		if err != nil {
-			return fmt.Errorf("hitung tenant: %w", err)
-		}
-		if n > 1 {
-			return fmt.Errorf(
-				"APP_MODE=single tetapi database berisi %d workspace — "+
-					"menjalankan mode single akan menyembunyikan sisanya. "+
-					"Pakai APP_MODE=multi, atau pindahkan/hapus workspace lain lebih dulu", n)
-		}
-		if n == 1 {
-			// Sudah ada tepat satu. Slug-nya WAJIB %q: kalau tidak, /app menunjuk
-			// tenant yang tak pernah bisa di-resolve dan SETIAP halaman berakhir 404
-			// — kegagalan yang membingungkan karena datanya jelas ada.
-			if _, err := q.GetTenantBySlug(ctx, appmode.SingleSlug); err == nil {
-				return nil // sudah benar
+// Perhatikan yang TIDAK ada di sini lagi: pemeriksaan "mode single tapi DB berisi
+// >1 workspace → tolak start". Keadaan itu tak bisa terjadi — untuk punya banyak
+// workspace, mode harus sudah naik ke multi, dan trigger DB tak mengizinkannya
+// turun kembali. Aturan yang dulu harus diperiksa kini mustahil dilanggar.
+func BootstrapPrimary(ctx context.Context, pool *pgxpool.Pool, appName string) (appmode.Mode, error) {
+	var mode appmode.Mode
+	err := db.WithSuper(ctx, pool, func(q *db.Queries) error {
+		if _, err := q.GetPrimaryTenant(ctx); err != nil {
+			if !errors.Is(err, pgx.ErrNoRows) {
+				return fmt.Errorf("baca workspace primer: %w", err)
 			}
-			// Slug belum cocok. Boleh DIADOPSI hanya bila workspace itu masih
-			// KOSONG (nol anggota) — keadaan normal untuk DB baru, karena migrasi
-			// 00007 membuat tenant "default" sebagai wadah backfill. Mengubah slug
-			// workspace yang sudah dipakai orang adalah hal lain sama sekali: itu
-			// mematikan setiap tautan yang sudah tersebar (alasan slug immutable
-			// sejak 0004), jadi di situ operator yang harus memutuskan.
-			rows, err := q.ListTenantsForPlatform(ctx, db.ListTenantsForPlatformParams{Limit: 1, Offset: 0})
-			if err != nil {
-				return fmt.Errorf("baca workspace tunggal: %w", err)
-			}
-			if len(rows) == 0 {
-				return fmt.Errorf("workspace tunggal tak terbaca")
-			}
-			if rows[0].MemberCount > 0 {
-				return fmt.Errorf(
-					"APP_MODE=single: ada 1 workspace (%q, slug %q) yang sudah berisi %d anggota, "+
-						"tetapi slug-nya bukan %q. Mengubah slug akan mematikan tautan yang sudah "+
-						"tersebar — ubah manual di database bila memang diinginkan, atau pakai APP_MODE=multi",
-					rows[0].Name, rows[0].Slug, rows[0].MemberCount, appmode.SingleSlug)
-			}
-			if err := q.SetTenantSlug(ctx, db.SetTenantSlugParams{
-				ID: rows[0].ID, Slug: appmode.SingleSlug, Name: appName,
+			// Belum ada → buat. Namanya dari APP_NAME: migrasi tak tahu apa-apa
+			// tentang aplikasi di atasnya, jadi ia bukan tempat menaruh seed.
+			if _, err := q.CreatePrimaryTenant(ctx, db.CreatePrimaryTenantParams{
+				Name: appName, Slug: appmode.PrimarySlug,
 			}); err != nil {
-				return fmt.Errorf("adopsi workspace kosong jadi aplikasi tunggal: %w", err)
+				return fmt.Errorf("buat workspace primer: %w", err)
 			}
-			return nil
 		}
-		// Belum ada apa pun → buat tenant tunggal.
-		if _, err := q.CreateTenant(ctx, db.CreateTenantParams{
-			Name: appName, Slug: appmode.SingleSlug,
-		}); err != nil {
-			return fmt.Errorf("buat aplikasi tunggal: %w", err)
+
+		s, err := q.GetSetting(ctx, appmode.SettingKey)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				mode = appmode.Single // belum pernah dinaikkan
+				return nil
+			}
+			return fmt.Errorf("baca mode tenancy: %w", err)
 		}
+		m, ok := appmode.Parse(s.Value)
+		if !ok {
+			// Nilai terisi tapi tak dikenal = data rusak, bukan keadaan awal.
+			// Menjalankan mode yang tak diminta siapa pun lebih buruk daripada
+			// menolak start: yang pertama menyembunyikan data secara senyap.
+			return fmt.Errorf("nilai %s di platform_settings tak dikenal: %q (harus %q atau %q)",
+				appmode.SettingKey, s.Value, appmode.NameSingle, appmode.NameMulti)
+		}
+		mode = m
 		return nil
 	})
+	return mode, err
+}
+
+// UpgradeToMulti menaikkan aplikasi dari satu-app ke multi-tenant. SEKALI JALAN:
+// trigger database menolak penurunan, jadi tak ada pasangan DowngradeToSingle —
+// dan memang tak boleh ada.
+//
+// Berlaku SEKETIKA tanpa restart: seluruh route sudah berbentuk /w/{slug} sejak
+// mode single, jadi yang berubah hanya apa yang boleh dilihat & dilakukan
+// (menu ganti-workspace, tombol buat-workspace muncul). Workspace primer tetap
+// di alamat yang sama — nol tautan mati.
+func UpgradeToMulti(ctx context.Context, q *db.Queries, actorID int64) error {
+	if err := q.UpsertSetting(ctx, db.UpsertSettingParams{
+		Key:       appmode.SettingKey,
+		Value:     appmode.NameMulti,
+		UpdatedBy: &actorID,
+	}); err != nil {
+		return fmt.Errorf("naikkan mode tenancy: %w", err)
+	}
+	// DB dulu, cache & state proses kemudian — kalau terbalik, tulis yang gagal
+	// meninggalkan aplikasi mengira dirinya multi sementara DB berkata lain.
+	settings.Set(appmode.SettingKey, appmode.NameMulti)
+	appmode.Set(appmode.Multi)
+	return nil
 }

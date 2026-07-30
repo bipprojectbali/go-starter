@@ -1,7 +1,27 @@
 # 0006 — Mode aplikasi: single-app vs multi-tenant (`APP_MODE`)
 
-Status: **Diterima** (2026-07-29) — melengkapi [0004](0004-workspace-di-path-url.md)
-(workspace di path) & [0003](0003-membership-multi-workspace.md) (membership)
+Status: **Sebagian di-supersede** (2026-07-30) oleh
+[0007](0007-satu-dsn-dan-ratchet-tenancy.md) — melengkapi
+[0004](0004-workspace-di-path-url.md) (workspace di path) &
+[0003](0003-membership-multi-workspace.md) (membership)
+
+> **Yang sudah tidak berlaku** (lihat 0007):
+> - **Bentuk URL per-mode.** `/app/...` dihapus; kedua mode memakai `/w/{slug}`,
+>   dengan workspace primer ber-slug `app`. Alasannya: menaikkan mode dulu
+>   mengubah setiap alamat yang sudah tersebar.
+> - **`APP_MODE` dari env.** Mode pindah ke `platform_settings.tenancy_mode`
+>   dengan trigger yang menolak penurunan. Env bisa dibalik; ratchet DB tidak.
+> - **Route mode-lain tak didaftarkan** (§9). Seluruh route kini selalu
+>   terdaftar; yang menahan zona bahaya adalah `tenants.is_primary`, dijaga di
+>   handler dan di SQL. Route bersyarat telanjur salah begitu mode bisa naik
+>   saat jalan.
+> - **"Di mode single tak ada owner"** (§7). Sejak 0007 workspace primer punya
+>   owner: super_admin. Kelonggaran `canEditWorkspace` untuk admin TETAP ada,
+>   tapi alasannya kini bahwa admin adalah pembantu operasional.
+>
+> Yang MASIH berlaku: mode single = multi-tenant dengan N=1 (bukan jalur kode
+> kedua), pendaftar di mode single jadi `member` bukan owner, `GuardSetRole`
+> memakai `>=`, dan `wsPath` sebagai satu-satunya tempat bentuk URL diputuskan.
 
 ## Konteks
 

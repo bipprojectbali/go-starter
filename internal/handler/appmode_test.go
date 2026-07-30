@@ -13,10 +13,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// appmode_test.go — keputusan 0006. Yang dijaga di sini adalah hal yang paling
-// mudah rusak diam-diam: jalur yang membentuk URL hanya diuji di SATU mode, lalu
-// mode yang lain patah tanpa ada yang tahu. Karena itu tiap kasus di bawah
-// dijalankan di kedua mode, bukan di mode yang kebetulan aktif.
+// appmode_test.go — keputusan 0006 & 0007. Yang dijaga di sini adalah hal yang
+// paling mudah rusak diam-diam: perilaku yang hanya diuji di SATU mode, lalu mode
+// yang lain patah tanpa ada yang tahu. Karena itu tiap kasus di bawah dijalankan
+// di kedua mode, bukan di mode yang kebetulan aktif.
 
 // withMode menjalankan fn dalam mode tertentu dan SELALU memulihkannya.
 // Mode adalah state paket (di-set sekali saat startup di produksi), jadi test
@@ -30,69 +30,56 @@ func withMode(t *testing.T, m appmode.Mode, fn func()) {
 	fn()
 }
 
-// TestWsPath_BentukPerMode: satu fungsi, dua bentuk URL. Inilah alasan 0006
-// murah — seluruh handler & view sudah lewat sini sejak 0004.
-func TestWsPath_BentukPerMode(t *testing.T) {
-	withMode(t, appmode.Multi, func() {
-		cases := map[string]string{
-			"":          "/w/acme",
-			"/":         "/w/acme",
-			"/members":  "/w/acme/members",
-			"/settings": "/w/acme/settings",
-		}
-		for sub, want := range cases {
-			if got := wsPath("acme", sub); got != want {
-				t.Errorf("multi wsPath(acme, %q) = %q, want %q", sub, got, want)
-			}
-		}
-		// Tanpa slug di mode multi = belum punya workspace.
-		if got := wsPath("", "/members"); got != "/workspace/new" {
-			t.Errorf("multi tanpa slug harus ke /workspace/new, got %q", got)
-		}
-	})
-
-	withMode(t, appmode.Single, func() {
-		cases := map[string]string{
-			"":          "/app",
-			"/":         "/app",
-			"/members":  "/app/members",
-			"/settings": "/app/settings",
-		}
-		for sub, want := range cases {
-			// Slug diabaikan di mode single — apa pun isinya, hasilnya sama.
-			for _, slug := range []string{"", "acme", appmode.SingleSlug} {
-				if got := wsPath(slug, sub); got != want {
-					t.Errorf("single wsPath(%q, %q) = %q, want %q", slug, sub, got, want)
+// TestWsPath_SatuBentukDuaMode: INTI 0007. Mode single dulu memakai bentuk URL
+// sendiri (/app/...), sehingga menaikkan aplikasi ke multi mengubah SETIAP alamat
+// yang sudah tersebar — bookmark, tautan di email, dokumentasi turunan. Dengan
+// satu bentuk, kenaikan mode tak menyentuh satu tautan pun.
+func TestWsPath_SatuBentukDuaMode(t *testing.T) {
+	cases := map[string]string{
+		"":          "/w/app",
+		"/":         "/w/app",
+		"/members":  "/w/app/members",
+		"/settings": "/w/app/settings",
+	}
+	// Hasilnya HARUS identik di kedua mode. Kalau kelak seseorang menambahkan
+	// cabang mode di wsPath, salah satu iterasi ini gagal.
+	for _, m := range []appmode.Mode{appmode.Single, appmode.Multi} {
+		withMode(t, m, func() {
+			for sub, want := range cases {
+				if got := wsPath(appmode.PrimarySlug, sub); got != want {
+					t.Errorf("%s: wsPath(app, %q) = %q, want %q", m, sub, got, want)
 				}
 			}
-		}
-	})
+			// Slug lain pun berbentuk sama — tak ada yang istimewa soal "app".
+			if got := wsPath("acme", "/members"); got != "/w/acme/members" {
+				t.Errorf("%s: wsPath(acme, /members) = %q", m, got)
+			}
+			// Tanpa slug = belum punya workspace.
+			if got := wsPath("", "/members"); got != "/workspace/new" {
+				t.Errorf("%s: tanpa slug harus ke /workspace/new, got %q", m, got)
+			}
+		})
+	}
 }
 
-// TestSlugFromRequest_SingleSelaluTerisi: kunci kenapa Scope tak butuh cabang
-// mode. Route /app tak punya segmen slug untuk dibaca chi; kalau helper ini
-// mengembalikan "", Scope akan jatuh ke jalur "tanpa slug" dan mode single
-// kehilangan seluruh penegakan berbasis slug.
-func TestSlugFromRequest_SingleSelaluTerisi(t *testing.T) {
-	withMode(t, appmode.Single, func() {
-		// Request polos, TANPA route context chi sama sekali.
-		req := httptest.NewRequest(http.MethodGet, "/app/members", nil)
-		if got := slugFromRequest(req); got != appmode.SingleSlug {
-			t.Errorf("single harus selalu memberi slug tunggal, got %q", got)
-		}
-	})
-
-	withMode(t, appmode.Multi, func() {
-		var got string
-		r := chi.NewRouter()
-		r.Get("/w/{workspace}/members", func(w http.ResponseWriter, req *http.Request) {
-			got = slugFromRequest(req)
+// TestSlugFromRequest_SelaluDariPath: sejak 0007 tak ada lagi cabang mode di
+// sini. Sebelumnya fungsi ini harus MENGARANG slug di mode single (route /app tak
+// punya segmen untuk dibaca) — satu tempat yang harus tahu sedang di mode apa,
+// dan satu asumsi yang meleset begitu mode bisa berubah saat jalan.
+func TestSlugFromRequest_SelaluDariPath(t *testing.T) {
+	for _, m := range []appmode.Mode{appmode.Single, appmode.Multi} {
+		withMode(t, m, func() {
+			var got string
+			r := chi.NewRouter()
+			r.Get("/w/{workspace}/members", func(w http.ResponseWriter, req *http.Request) {
+				got = slugFromRequest(req)
+			})
+			r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/w/app/members", nil))
+			if got != appmode.PrimarySlug {
+				t.Errorf("%s: harus membaca slug dari path, got %q", m, got)
+			}
 		})
-		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/w/acme/members", nil))
-		if got != "acme" {
-			t.Errorf("multi harus membaca slug dari path, got %q", got)
-		}
-	})
+	}
 }
 
 // TestAssignableRoles_SingleTanpaOwner: mode single tak mengenal `owner`
@@ -140,109 +127,145 @@ func TestCanEditWorkspace_AdminHanyaDiSingle(t *testing.T) {
 	})
 }
 
-// TestBootstrapSingleApp_MembuatTenantTunggal: aplikasi tak pernah berada di
+// TestBootstrapPrimary_MembuatWorkspacePrimer: aplikasi tak pernah berada di
 // keadaan "belum ada workspace" — keadaan paling jarang diuji adalah yang paling
 // sering rusak.
-func TestBootstrapSingleApp_MembuatTenantTunggal(t *testing.T) {
+func TestBootstrapPrimary_MembuatWorkspacePrimer(t *testing.T) {
 	env, _ := setupTest(t)
 	ctx := t.Context()
-	// setupTest menyeed satu tenant ber-slug "test"; buang agar DB benar-benar kosong.
+	// setupTest menyeed satu tenant biasa; buang agar DB benar-benar kosong —
+	// meniru deployment baru.
 	if _, err := env.h.Pool.Exec(ctx, "TRUNCATE tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("kosongkan tenants: %v", err)
 	}
 
-	withMode(t, appmode.Single, func() {
-		if err := BootstrapSingleApp(ctx, env.h.Pool, "Aplikasi Saya"); err != nil {
-			t.Fatalf("bootstrap: %v", err)
-		}
-		tn, err := env.q.GetTenantBySlug(ctx, appmode.SingleSlug)
-		if err != nil {
-			t.Fatalf("tenant tunggal harus ada setelah bootstrap: %v", err)
-		}
-		if tn.Name != "Aplikasi Saya" {
-			t.Errorf("nama dari APP_NAME, got %q", tn.Name)
-		}
-		// Idempoten: boot kedua tak boleh membuat duplikat.
-		if err := BootstrapSingleApp(ctx, env.h.Pool, "Aplikasi Saya"); err != nil {
-			t.Fatalf("bootstrap kedua: %v", err)
-		}
-		n, _ := env.q.CountTenants(ctx)
-		if n != 1 {
-			t.Errorf("boot berulang harus tetap 1 tenant, got %d", n)
-		}
-	})
+	mode, err := BootstrapPrimary(ctx, env.h.Pool, "Aplikasi Saya")
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	// DB kosong = SINGLE, tanpa siapa pun perlu mengisi env apa pun.
+	if mode != appmode.Single {
+		t.Errorf("deployment baru harus lahir sebagai single, got %s", mode)
+	}
+	tn, err := env.q.GetPrimaryTenant(ctx)
+	if err != nil {
+		t.Fatalf("workspace primer harus ada setelah bootstrap: %v", err)
+	}
+	if tn.Name != "Aplikasi Saya" {
+		t.Errorf("nama dari APP_NAME, got %q", tn.Name)
+	}
+	if tn.Slug != appmode.PrimarySlug {
+		t.Errorf("slug primer harus %q, got %q", appmode.PrimarySlug, tn.Slug)
+	}
+
+	// Idempoten: boot kedua tak boleh membuat duplikat. Kalau ia mencoba, unique
+	// partial index di tenants yang akan menolaknya — dan error itu muncul di
+	// sini, bukan sebagai dua "rumah aplikasi" yang diam-diam hidup bersama.
+	if _, err := BootstrapPrimary(ctx, env.h.Pool, "Aplikasi Saya"); err != nil {
+		t.Fatalf("bootstrap kedua: %v", err)
+	}
+	var n int64
+	if err := env.h.Pool.QueryRow(ctx, "SELECT count(*) FROM tenants WHERE is_primary").Scan(&n); err != nil {
+		t.Fatalf("hitung primer: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("boot berulang harus tetap 1 workspace primer, got %d", n)
+	}
 }
 
-// TestBootstrapSingleApp_AdopsiTenantKosong: REGRESI (ditemukan saat menjalankan
-// app sungguhan di DB baru). Migrasi 00007 membuat tenant "default" sebagai wadah
-// backfill, jadi SETIAP database baru punya tepat satu tenant ber-slug yang salah
-// — dan mode single langsung menolak start sebelum sempat dipakai.
-//
-// Workspace KOSONG boleh diadopsi. Yang sudah berisi anggota tidak: mengubah
-// slug-nya mematikan setiap tautan yang sudah tersebar (alasan slug immutable
-// sejak 0004), jadi di situ operator yang memutuskan.
-func TestBootstrapSingleApp_AdopsiTenantKosong(t *testing.T) {
+// TestBootstrapPrimary_MembacaModeDariDB: mode datang dari DATABASE, bukan env
+// (0007). Env bisa dibalik; baris DB dijaga trigger yang menolak penurunan.
+func TestBootstrapPrimary_MembacaModeDariDB(t *testing.T) {
 	env, _ := setupTest(t)
 	ctx := t.Context()
-	// setupTest menyeed tenant "test" + SATU anggota. Buang anggotanya agar
-	// workspace jadi kosong — meniru tenant "default" bawaan migrasi.
-	if _, err := env.h.Pool.Exec(ctx, "TRUNCATE memberships"); err != nil {
-		t.Fatalf("kosongkan memberships: %v", err)
+
+	// Belum ada baris → single.
+	mode, err := BootstrapPrimary(ctx, env.h.Pool, "App")
+	if err != nil {
+		t.Fatalf("bootstrap: %v", err)
+	}
+	if mode != appmode.Single {
+		t.Errorf("tanpa baris tenancy_mode harus single, got %s", mode)
 	}
 
-	withMode(t, appmode.Single, func() {
-		if err := BootstrapSingleApp(ctx, env.h.Pool, "Aplikasi Saya"); err != nil {
-			t.Fatalf("workspace kosong harus bisa diadopsi: %v", err)
-		}
-		tn, err := env.q.GetTenantBySlug(ctx, appmode.SingleSlug)
-		if err != nil {
-			t.Fatalf("slug harus jadi %q: %v", appmode.SingleSlug, err)
-		}
-		if tn.Name != "Aplikasi Saya" {
-			t.Errorf("nama ikut disesuaikan APP_NAME, got %q", tn.Name)
-		}
-		n, _ := env.q.CountTenants(ctx)
-		if n != 1 {
-			t.Errorf("adopsi TAK BOLEH membuat tenant baru, got %d", n)
-		}
-	})
+	// Dinaikkan → multi terbaca di boot berikutnya.
+	if _, err := env.h.Pool.Exec(ctx,
+		"INSERT INTO platform_settings(key,value) VALUES ($1,$2)",
+		appmode.SettingKey, appmode.NameMulti); err != nil {
+		t.Fatalf("seed mode: %v", err)
+	}
+	mode, err = BootstrapPrimary(ctx, env.h.Pool, "App")
+	if err != nil {
+		t.Fatalf("bootstrap kedua: %v", err)
+	}
+	if mode != appmode.Multi {
+		t.Errorf("harus membaca multi dari DB, got %s", mode)
+	}
 }
 
-// TestBootstrapSingleApp_TolakAdopsiTenantBerisi: batasnya. Workspace yang sudah
-// dipakai orang tak boleh diubah slug-nya diam-diam — tautan tersimpan mati.
-func TestBootstrapSingleApp_TolakAdopsiTenantBerisi(t *testing.T) {
-	env, _ := setupTest(t) // tenant "test" DENGAN satu anggota
-
-	withMode(t, appmode.Single, func() {
-		if err := BootstrapSingleApp(t.Context(), env.h.Pool, "App"); err == nil {
-			t.Fatal("workspace berisi anggota TAK BOLEH diadopsi diam-diam")
-		}
-	})
-}
-
-// TestBootstrapSingleApp_TolakBanyakTenant: INTI PENGAMAN 0006 §10. Memilih
-// diam-diam salah satu berarti workspace lain lenyap dari pandangan tanpa jejak
-// — kehilangan data yang terlihat seperti bug UI.
-func TestBootstrapSingleApp_TolakBanyakTenant(t *testing.T) {
-	env, _ := setupTest(t) // sudah punya 1 tenant ("test")
+// TestBootstrapPrimary_TolakNilaiTakDikenal: nilai TERISI tapi ngawur = data
+// rusak, bukan keadaan awal. Diam-diam jatuh ke single berarti menyembunyikan
+// setiap workspace selain yang primer — kehilangan data yang tampak seperti bug UI.
+func TestBootstrapPrimary_TolakNilaiTakDikenal(t *testing.T) {
+	env, _ := setupTest(t)
 	ctx := t.Context()
-	if _, err := env.q.CreateTenant(ctx, db.CreateTenantParams{Name: "Kedua", Slug: "kedua"}); err != nil {
-		t.Fatalf("seed tenant kedua: %v", err)
+	if _, err := env.h.Pool.Exec(ctx,
+		"INSERT INTO platform_settings(key,value) VALUES ($1,$2)",
+		appmode.SettingKey, "sesuatu-yang-lain"); err != nil {
+		t.Fatalf("seed mode: %v", err)
+	}
+	if _, err := BootstrapPrimary(ctx, env.h.Pool, "App"); err == nil {
+		t.Fatal("nilai tenancy_mode tak dikenal HARUS menggagalkan boot")
+	}
+}
+
+// TestRatchetMode_MultiTakBisaTurun: INTI 0007, dan dijaga DATABASE — bukan kode
+// yang ingat memeriksa. Keempat jalur diuji karena tiga di antaranya pernah
+// terlewat saat dirancang: UPDATE langsung, UPSERT (jalur yang dipakai aplikasi),
+// dan DELETE (baris yang absen dibaca sebagai single, jadi menghapusnya adalah
+// penurunan yang menyamar).
+func TestRatchetMode_MultiTakBisaTurun(t *testing.T) {
+	env, _ := setupTest(t)
+	ctx := t.Context()
+
+	naik := func() {
+		t.Helper()
+		if _, err := env.h.Pool.Exec(ctx,
+			`INSERT INTO platform_settings(key,value) VALUES ($1,$2)
+			 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+			appmode.SettingKey, appmode.NameMulti); err != nil {
+			t.Fatalf("naik ke multi harus BOLEH: %v", err)
+		}
+	}
+	naik()
+
+	turun := []struct {
+		nama string
+		sql  string
+	}{
+		{"UPDATE langsung", `UPDATE platform_settings SET value='single' WHERE key='` + appmode.SettingKey + `'`},
+		{"UPSERT", `INSERT INTO platform_settings(key,value) VALUES ('` + appmode.SettingKey + `','single')
+		            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`},
+		{"DELETE (ketiadaan = single)", `DELETE FROM platform_settings WHERE key='` + appmode.SettingKey + `'`},
+	}
+	for _, c := range turun {
+		if _, err := env.h.Pool.Exec(ctx, c.sql); err == nil {
+			t.Errorf("%s: penurunan mode HARUS ditolak database", c.nama)
+		}
 	}
 
-	withMode(t, appmode.Single, func() {
-		err := BootstrapSingleApp(ctx, env.h.Pool, "App")
-		if err == nil {
-			t.Fatal("APP_MODE=single dgn >1 workspace HARUS menolak start")
-		}
-	})
+	// Naik lagi (idempoten) tetap boleh — ratchet menahan arah, bukan gerakan.
+	naik()
 
-	// Mode multi tak peduli berapa banyak — itu memang bentuknya.
-	withMode(t, appmode.Multi, func() {
-		if err := BootstrapSingleApp(ctx, env.h.Pool, "App"); err != nil {
-			t.Errorf("mode multi tak boleh terpengaruh: %v", err)
-		}
-	})
+	// Key LAIN tak boleh ikut terkunci: triggernya khusus tenancy_mode.
+	if _, err := env.h.Pool.Exec(ctx,
+		"INSERT INTO platform_settings(key,value) VALUES ('workspace_quota_default','5')"); err != nil {
+		t.Fatalf("seed key lain: %v", err)
+	}
+	if _, err := env.h.Pool.Exec(ctx,
+		"DELETE FROM platform_settings WHERE key='workspace_quota_default'"); err != nil {
+		t.Errorf("key lain harus tetap bebas diubah/dihapus: %v", err)
+	}
 }
 
 // TestPlaceNewUser_SingleGabungSebagaiMember: celah yang paling mudah terlewat
@@ -250,13 +273,13 @@ func TestBootstrapSingleApp_TolakBanyakTenant(t *testing.T) {
 func TestPlaceNewUser_SingleGabungSebagaiMember(t *testing.T) {
 	env, _ := setupTest(t)
 	ctx := t.Context()
-	// Siapkan tenant tunggal ber-slug "app".
-	if _, err := env.q.CreateTenant(ctx, db.CreateTenantParams{
-		Name: "App", Slug: appmode.SingleSlug,
+	// Siapkan workspace primer.
+	if _, err := env.q.CreatePrimaryTenant(ctx, db.CreatePrimaryTenantParams{
+		Name: "App", Slug: appmode.PrimarySlug,
 	}); err != nil {
-		t.Fatalf("seed tenant app: %v", err)
+		t.Fatalf("seed workspace primer: %v", err)
 	}
-	sebelum, _ := env.q.CountTenants(ctx)
+	sebelum := env.countTenants(t)
 
 	u := env.seedUserOnly(t, "pendaftar@local")
 
@@ -265,11 +288,11 @@ func TestPlaceNewUser_SingleGabungSebagaiMember(t *testing.T) {
 		if err != nil {
 			t.Fatalf("placeNewUser: %v", err)
 		}
-		if tn.Slug != appmode.SingleSlug {
+		if tn.Slug != appmode.PrimarySlug {
 			t.Errorf("harus gabung ke aplikasi tunggal, got %q", tn.Slug)
 		}
 		// TIDAK membuat workspace baru.
-		sesudah, _ := env.q.CountTenants(ctx)
+		sesudah := env.countTenants(t)
 		if sesudah != sebelum {
 			t.Errorf("mode single TAK BOLEH membuat workspace baru: %d → %d", sebelum, sesudah)
 		}
@@ -321,5 +344,55 @@ func TestWorkspaceOptions_SingleTanpaSwitcher(t *testing.T) {
 				t.Errorf("single: switcher harus kosong & tak bisa buat baru, got %d/%v", len(ws), canCreate)
 			}
 		})
+	})
+}
+
+// TestUpgradeToMulti_BerlakuSeketikaDanSekaliJalan: jalur kenaikan yang dipakai
+// operator. Tiga hal sekaligus, karena ketiganya harus benar BERSAMA agar
+// kenaikan tanpa restart itu sah:
+//
+//  1. baris DB tertulis (sumber kebenaran, dibaca boot berikutnya);
+//  2. cache settings & state proses ikut berubah (kalau tidak, instance yang
+//     melayani tetap berperilaku single sampai restart — persis yang dihindari);
+//  3. tak ada jalan kembali (tak ada DowngradeToMulti, dan DB menolaknya).
+func TestUpgradeToMulti_BerlakuSeketikaDanSekaliJalan(t *testing.T) {
+	env, _ := setupTest(t)
+	ctx := t.Context()
+	u := env.seedUserOnly(t, "operator@local")
+
+	// Mulai dari single supaya perubahannya benar-benar teruji.
+	withMode(t, appmode.Single, func() {
+		if err := UpgradeToMulti(ctx, env.q, u.ID); err != nil {
+			t.Fatalf("UpgradeToMulti: %v", err)
+		}
+		// (2) state proses — inilah yang membuat "tanpa restart" berarti.
+		if !appmode.IsMulti() {
+			t.Error("mode proses harus SEKETIKA jadi multi (tanpa restart)")
+		}
+		// (1) baris DB.
+		s, err := env.q.GetSetting(ctx, appmode.SettingKey)
+		if err != nil {
+			t.Fatalf("baca setting: %v", err)
+		}
+		if s.Value != appmode.NameMulti {
+			t.Errorf("nilai DB harus %q, got %q", appmode.NameMulti, s.Value)
+		}
+		// Idempoten: operator menekan dua kali tak boleh jadi error.
+		if err := UpgradeToMulti(ctx, env.q, u.ID); err != nil {
+			t.Errorf("kenaikan berulang harus aman: %v", err)
+		}
+		// (3) tak ada jalan kembali — dijaga DB, bukan oleh ketiadaan fungsi.
+		if _, err := env.h.Pool.Exec(ctx,
+			"UPDATE platform_settings SET value='single' WHERE key=$1", appmode.SettingKey); err == nil {
+			t.Error("penurunan HARUS ditolak database")
+		}
+		// Boot berikutnya membaca multi.
+		mode, err := BootstrapPrimary(ctx, env.h.Pool, "App")
+		if err != nil {
+			t.Fatalf("bootstrap setelah upgrade: %v", err)
+		}
+		if mode != appmode.Multi {
+			t.Errorf("boot setelah upgrade harus multi, got %s", mode)
+		}
 	})
 }

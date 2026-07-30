@@ -53,8 +53,11 @@ tiap project turunan.
    (CHECK hanya `owner/admin/member`). God-mode tak bisa dibuat lewat app =
    properti keamanan terkuat. `PromoteSuperAdmins` (reconcile boot lama) dihapus.
 
-7. **Dual-DSN**: `DATABASE_URL` (owner: migrate+boot, bypass) + `APP_DATABASE_URL`
-   (app_rw: runtime, RLS mengikat). Fallback ke `DATABASE_URL` bila kosong (dev).
+7. ~~**Dual-DSN**: `DATABASE_URL` (owner) + `APP_DATABASE_URL` (app_rw).~~
+   **Di-supersede [0007](0007-satu-dsn-dan-ratchet-tenancy.md)**: satu DSN saja.
+   Hak diturunkan ke `app_rw` per-TRANSAKSI (`SET LOCAL ROLE`), bukan per-koneksi
+   — RLS tetap mengikat tanpa env kedua yang bisa lupa diisi (atau, lebih buruk,
+   diisi sama dengan yang pertama sehingga lolos sambil tetap membocorkan data).
 
 ## Alternatif ditolak
 

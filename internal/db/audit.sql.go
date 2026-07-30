@@ -12,7 +12,7 @@ import (
 const createAuditLog = `-- name: CreateAuditLog :one
 INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, metadata, tenant_id)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, actor_user_id, action, target_type, target_id, metadata, created_at, tenant_id
+RETURNING id, actor_user_id, tenant_id, action, target_type, target_id, metadata, created_at
 `
 
 type CreateAuditLogParams struct {
@@ -38,18 +38,18 @@ func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.ActorUserID,
+		&i.TenantID,
 		&i.Action,
 		&i.TargetType,
 		&i.TargetID,
 		&i.Metadata,
 		&i.CreatedAt,
-		&i.TenantID,
 	)
 	return i, err
 }
 
 const listAuditLogs = `-- name: ListAuditLogs :many
-SELECT id, actor_user_id, action, target_type, target_id, metadata, created_at, tenant_id FROM audit_logs
+SELECT id, actor_user_id, tenant_id, action, target_type, target_id, metadata, created_at FROM audit_logs
 ORDER BY created_at DESC, id DESC
 LIMIT $1
 `
@@ -66,12 +66,12 @@ func (q *Queries) ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog
 		if err := rows.Scan(
 			&i.ID,
 			&i.ActorUserID,
+			&i.TenantID,
 			&i.Action,
 			&i.TargetType,
 			&i.TargetID,
 			&i.Metadata,
 			&i.CreatedAt,
-			&i.TenantID,
 		); err != nil {
 			return nil, err
 		}

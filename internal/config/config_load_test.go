@@ -105,9 +105,9 @@ func TestMustLoad_ProductionRequiresSecrets(t *testing.T) {
 		MustLoad()
 	}()
 
-	// Production dgn semua secret → tak panic. Kini termasuk APP_DATABASE_URL &
-	// SESSION_KEY yang cukup panjang: keduanya jadi syarat boot (lihat
-	// TestMustLoad_ProdWajibAppDatabaseURL & TestMustLoad_ProdTolakSessionKeyLemah).
+	// Production dgn semua secret → tak panic. Termasuk SESSION_KEY yang cukup
+	// panjang: panjangnya jadi syarat boot (lihat
+	// TestMustLoad_ProdTolakSessionKeyLemah).
 	setProdEnv(t)
 	c := MustLoad()
 	if !c.IsProduction() || !c.GoogleEnabled() {
@@ -171,7 +171,6 @@ func setProdEnv(t *testing.T) {
 	t.Helper()
 	setMinimalEnv(t)
 	t.Setenv("ENV", "production")
-	t.Setenv("APP_DATABASE_URL", "postgres://app_rw@x")
 	t.Setenv("SESSION_KEY", strings.Repeat("k", MinSessionKeyLen))
 	t.Setenv("GOOGLE_CLIENT_ID", "id")
 	t.Setenv("GOOGLE_CLIENT_SECRET", "secret")
@@ -191,34 +190,29 @@ func mustPanic(t *testing.T, nama string, fn func()) {
 	fn()
 }
 
-// TestMustLoad_AppDatabaseURLTakDivalidasiDiSini: config SENGAJA tidak lagi
-// mewajibkan APP_DATABASE_URL terisi.
+// TestMustLoad_TakAdaEnvIsolasiTenant: isolasi tenant TIDAK lagi punya env sama
+// sekali. Sebelumnya ada APP_DATABASE_URL — satu env yang bisa lupa diisi, dan
+// yang lebih buruk: bisa diisi dengan DSN yang SAMA seperti DATABASE_URL ("biar
+// aman, samakan saja") sehingga lolos setiap pemeriksaan sambil tetap
+// menjalankan pool sebagai owner. Terukur di database nyata: 82 baris dari 15
+// tenant tetap terbaca oleh query yang lupa WHERE tenant_id.
 //
-// Alasannya bukan kelonggaran, melainkan bahwa pemeriksaan itu TAK MEMBUKTIKAN
-// apa pun: mengisinya dengan DSN yang sama seperti DATABASE_URL ("biar aman,
-// samakan saja") melewatinya sambil tetap menjalankan pool sebagai owner —
-// terukur di database nyata: 82 baris dari 15 tenant tetap terbaca oleh query
-// yang lupa WHERE tenant_id. Pembuktian pindah ke db.CheckRLS, yang bertanya
-// pada KONEKSI, bukan pada string.
-//
-// Test ini menjaga agar validasi berbasis-janji itu tak dihidupkan kembali.
-func TestMustLoad_AppDatabaseURLTakDivalidasiDiSini(t *testing.T) {
+// Sekarang hak diturunkan per-transaksi (db.dropPrivileges) dan DIBUKTIKAN pada
+// koneksi yang sudah terbuka (db.CheckRLSTx). Test ini menjaga agar env berbasis
+// janji itu tak dihidupkan kembali — termasuk dengan nama lain.
+func TestMustLoad_TakAdaEnvIsolasiTenant(t *testing.T) {
 	setProdEnv(t)
-	t.Setenv("APP_DATABASE_URL", "")
-	c := MustLoad() // tak boleh panic
-	if c.AppDatabaseURL != c.DatabaseURL {
-		t.Errorf("kosong harus fallback ke DATABASE_URL, got %q", c.AppDatabaseURL)
-	}
-}
+	t.Setenv("APP_DATABASE_URL", "postgres://sesat@nowhere/db")
+	c := MustLoad() // tak boleh panic, dan tak boleh membacanya
 
-// TestMustLoad_DevFallbackAppDatabaseURL: dev sengaja longgar — menjalankan
-// Postgres dengan role terpisah hanya untuk `make dev` tak sepadan, dan isolasi
-// di sana tetap benar via GUC+WHERE.
-func TestMustLoad_DevFallbackAppDatabaseURL(t *testing.T) {
-	setMinimalEnv(t)
-	c := MustLoad()
-	if c.AppDatabaseURL != c.DatabaseURL {
-		t.Errorf("dev harus fallback ke DATABASE_URL, got %q", c.AppDatabaseURL)
+	if c.DatabaseURL == "" {
+		t.Fatal("DATABASE_URL harus tetap terbaca")
+	}
+	// Satu-satunya DSN. Kalau kelak ada field kedua yang menampung env di atas,
+	// baris ini tak akan menangkapnya — yang menangkap adalah ketiadaan field itu
+	// di struct, dan test ini menandai niatnya.
+	if c.DatabaseURL == "postgres://sesat@nowhere/db" {
+		t.Error("APP_DATABASE_URL tak boleh lagi memengaruhi konfigurasi apa pun")
 	}
 }
 
@@ -243,9 +237,6 @@ func TestMustLoad_ProdLengkapLolos(t *testing.T) {
 	c := MustLoad()
 	if !c.IsProduction() {
 		t.Fatal("harus terbaca sebagai production")
-	}
-	if c.AppDatabaseURL == c.DatabaseURL {
-		t.Error("production harus memakai pool runtime terpisah")
 	}
 }
 

@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"go_starter/internal/appmode"
 )
 
 // MinSessionKeyLen = panjang minimum SESSION_KEY di production. 32 karakter
@@ -22,13 +20,15 @@ const MinSessionKeyLen = 32
 
 // Config menampung seluruh konfigurasi runtime aplikasi.
 type Config struct {
-	Port           string // PORT, default "8080"
-	DatabaseURL    string // DATABASE_URL (wajib) — role OWNER: migrate + boot (BYPASS RLS)
-	AppDatabaseURL string // APP_DATABASE_URL — role app_rw NOBYPASSRLS: pool runtime (RLS mengikat). Default = DatabaseURL bila kosong (dev).
-	RedisAddr      string // REDIS_ADDR (wajib)
-	Env            string // ENV: "dev" | "production"
-	AutoMigrate    bool   // AUTO_MIGRATE, default true
-	SessionKey     string // SESSION_KEY (wajib di production)
+	Port string // PORT, default "8080"
+	// DatabaseURL = SATU-SATUNYA DSN. Role owner (migrasi butuh ALTER/CREATE
+	// POLICY); hak diturunkan ke app_rw per-transaksi lewat SET LOCAL ROLE, jadi
+	// RLS tetap mengikat runtime tanpa koneksi kedua. Lihat db.dropPrivileges.
+	DatabaseURL string // DATABASE_URL (wajib)
+	RedisAddr   string // REDIS_ADDR (wajib)
+	Env         string // ENV: "dev" | "production"
+	AutoMigrate bool   // AUTO_MIGRATE, default true
+	SessionKey  string // SESSION_KEY (wajib di production)
 
 	// Google OAuth. Opsional di dev (tombol Google nonaktif bila kosong),
 	// WAJIB di production (Google = jalur login utama).
@@ -62,14 +62,13 @@ type Config struct {
 	// monetisasi: free/pro/enterprise). MAX_WORKSPACES_PER_USER, default 3.
 	MaxWorkspacesPerUser int
 
-	// AppMode = bentuk aplikasi: "multi" (multi-tenant, /w/{slug}) atau "single"
-	// (satu app, /app). Default multi — turunan yang tak mengisi env berperilaku
-	// persis seperti template. Lihat keputusan 0006. APP_MODE.
-	AppMode appmode.Mode
-
-	// AppName = nama aplikasi di mode single; dipakai membuat tenant tunggal saat
-	// boot pertama. Slug-nya KONSTAN "app" (bukan dari nama ini) agar path selalu
-	// /app di semua deployment. APP_NAME, default "App".
+	// AppName = nama aplikasi; dipakai membuat workspace PRIMER saat boot pertama.
+	// Slug-nya KONSTAN "app" (bukan dari nama ini) agar alamatnya sama di semua
+	// deployment, dan mengganti nama aplikasi tak mematikan tautan. APP_NAME,
+	// default "App".
+	//
+	// TIDAK ADA APP_MODE di sini — mode tenancy hidup di DATABASE (0007). Env bisa
+	// dibalik; baris DB-nya dijaga trigger yang menolak penurunan.
 	AppName string
 }
 
@@ -125,7 +124,6 @@ func MustLoad() *Config {
 	c := &Config{
 		Port:                 getEnv("PORT", "8080"),
 		DatabaseURL:          mustEnv("DATABASE_URL"),
-		AppDatabaseURL:       getEnv("APP_DATABASE_URL", ""),
 		RedisAddr:            mustEnv("REDIS_ADDR"),
 		Env:                  getEnv("ENV", "dev"),
 		AutoMigrate:          getEnv("AUTO_MIGRATE", "true") == "true",
@@ -137,28 +135,17 @@ func MustLoad() *Config {
 		MaxWorkspacesPerUser: getEnvInt("MAX_WORKSPACES_PER_USER", 3),
 		AppName:              getEnv("APP_NAME", "App"),
 	}
-	// Mode fail-fast: nilai diisi TAPI tak dikenal → panic saat startup. Diam-diam
-	// jatuh ke multi berarti aplikasi berjalan dalam bentuk yang tak diminta
-	// siapa pun — dan bentuk itu menentukan seluruh URL-nya.
-	mode, ok := appmode.Parse(getEnv("APP_MODE", ""))
-	if !ok {
-		panic(fmt.Sprintf("config: APP_MODE %q tidak dikenal (pakai %q atau %q)",
-			os.Getenv("APP_MODE"), appmode.NameMulti, appmode.NameSingle))
-	}
-	c.AppMode = mode
 	// Validasi TZ fail-fast: nama IANA salah → panic saat startup, bukan error
 	// senyap saat render panel logs. (tzdata di-embed via import di main.)
 	if _, err := time.LoadLocation(c.AppTimezone); err != nil {
 		panic(fmt.Sprintf("config: APP_TIMEZONE %q tidak valid: %v", c.AppTimezone, err))
 	}
-	// Dual-DSN: pool runtime pakai APP_DATABASE_URL (role app_rw NOBYPASSRLS) agar
-	// RLS mengikat. Kosong → fallback DATABASE_URL.
-	//
-	// TIDAK ADA pemeriksaan "env wajib terisi" di sini — SENGAJA. Env yang terisi
-	// tak membuktikan apa pun: mengisinya dengan DSN yang sama seperti
-	// DATABASE_URL ("biar aman, samakan saja") lolos pemeriksaan itu sambil tetap
-	// membocorkan data. Pembuktiannya dilakukan pada KONEKSI yang sudah terbuka,
-	// bukan pada string konfigurasi — lihat db.CheckRLS yang dipanggil main.
+	// Isolasi tenant TIDAK diurus di sini, dan tak butuh env sama sekali: hak
+	// diturunkan ke app_rw di dalam setiap transaksi (db.dropPrivileges), lalu
+	// DIBUKTIKAN pada koneksi yang sudah terbuka (db.CheckRLS, dipanggil main).
+	// Dulu ini menuntut APP_DATABASE_URL — satu env yang bisa lupa diisi, dan
+	// yang lebih buruk: bisa diisi dengan DSN yang sama seperti DATABASE_URL,
+	// lolos setiap pemeriksaan sambil tetap membocorkan data.
 	if c.IsProduction() {
 		c.SessionKey = mustEnv("SESSION_KEY")
 		// Kunci lemah = kunci yang tak ada. Divalidasi PANJANGNYA, bukan cuma
@@ -179,12 +166,6 @@ func MustLoad() *Config {
 			panic(fmt.Sprintf("config: APP_BASE_URL harus https:// di production (got %q) — "+
 				"cookie sesi Secure tak akan terkirim lewat http", c.AppBaseURL))
 		}
-	}
-	// Dev: kosong → fallback ke DATABASE_URL (owner; RLS tak mengikat, tapi
-	// isolasi tetap benar via GUC+WHERE). Sengaja TIDAK berlaku di production —
-	// lihat panic di atas.
-	if c.AppDatabaseURL == "" {
-		c.AppDatabaseURL = c.DatabaseURL
 	}
 	return c
 }

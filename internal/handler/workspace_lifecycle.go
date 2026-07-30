@@ -23,6 +23,14 @@ func (h *Handler) WorkspaceArchive(w http.ResponseWriter, r *http.Request) {
 		wsRedirect(w, r, "/settings", "forbidden")
 		return
 	}
+	// Rumah aplikasi tak bisa diarsipkan (0007): di mode single itu berarti
+	// SELURUH aplikasi jadi read-only lewat tombol yang tampak rutin, dan tak ada
+	// halaman tersisa untuk membatalkannya dari dalam. Dijaga di sini DAN di SQL —
+	// yang di SQL menahan jalur yang tak lewat handler.
+	if IsPrimaryWorkspace(ctx) {
+		wsRedirect(w, r, "/settings", "primary")
+		return
+	}
 	tenantID := session.TenantID(ctx)
 	if err := h.q(ctx).ArchiveTenant(ctx, tenantID); err != nil {
 		h.Log.Error("workspace: archive", "tenant_id", tenantID, "err", err)
@@ -84,6 +92,13 @@ func (h *Handler) WorkspaceDelete(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if !canEditWorkspace(ctx) {
 		wsRedirect(w, r, "/settings", "forbidden")
+		return
+	}
+	// Lihat WorkspaceArchive: rumah aplikasi tak bisa dihapus dari dalam dirinya
+	// sendiri. Menutup aplikasi sementara = suspend lewat /dev, yang memang
+	// wewenang platform dan punya jalan kembali.
+	if IsPrimaryWorkspace(ctx) {
+		wsRedirect(w, r, "/settings", "primary")
 		return
 	}
 	tenantID := session.TenantID(ctx)

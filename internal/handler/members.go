@@ -53,7 +53,7 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	h.renderWorkspaceShell(w, r, "Anggota", "/members",
 		panel.Members(wsPath(slugFromRequest(r), ""), authz.AssignableRoles(appmode.IsSingle()),
 			members, invites, canManage,
-			session.UserID(ctx), workspaceErrMsg(r.URL.Query().Get("err"))))
+			session.UserID(ctx), wsErrMsg(r.URL.Query().Get("err"))))
 }
 
 // MemberSetRole — POST /w/{workspace}/members/{id}/role. Ubah role anggota di workspace

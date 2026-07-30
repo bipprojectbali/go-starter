@@ -62,7 +62,12 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `SUPER_ADMIN_EMAILS` | — | email super-admin "root", dipisah koma |
 | `APP_TIMEZONE` | — | zona waktu (IANA) agregasi panel aktivitas, default `Asia/Jakarta` |
 | `MAX_WORKSPACES_PER_USER` | — | kuota workspace per user (default `3`); diundang tak memakan kuota |
-| `APP_DATABASE_URL` | — | DSN role `app_rw` (RLS mengikat); fallback `DATABASE_URL` |
+| `APP_NAME` | — | nama aplikasi; dipakai membuat workspace primer saat boot pertama |
+
+> Isolasi tenant & bentuk aplikasi **tidak punya env**. Hak DB diturunkan
+> per-transaksi lalu dibuktikan saat boot; mode tenancy hidup di
+> `platform_settings` dengan ratchet yang menolak penurunan
+> (`docs/decisions/0007`).
 
 ## Autentikasi & role
 
@@ -89,7 +94,9 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 - Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
   owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
 - Data tiap workspace terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
-  `docs/decisions/0002`. Runtime app konek role `app_rw` (`APP_DATABASE_URL`).
+  `docs/decisions/0002`. Satu DSN: koneksi dibuka sebagai owner (migrasi), lalu
+  tiap transaksi aplikasi menurunkan haknya ke `app_rw` sehingga RLS mengikat —
+  termasuk di dev (`docs/decisions/0007`).
 - **Workspace** = nama tampilan tenant (kode tetap `tenant`). Nama boleh duplikat,
   slug unik & immutable (`acme`, `acme-2`). Owner ganti nama di `/admin/workspace`.
 

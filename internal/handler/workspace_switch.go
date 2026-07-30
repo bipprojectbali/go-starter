@@ -50,7 +50,7 @@ func (h *Handler) WorkspaceSwitch(w http.ResponseWriter, r *http.Request) {
 // tujuan Scope saat user tak punya workspace sama sekali.
 func (h *Handler) WorkspaceNewPage(w http.ResponseWriter, r *http.Request) {
 	h.renderPage(w, r, "Workspace Baru",
-		panel.WorkspaceNew(workspaceErrMsg(r.URL.Query().Get("err"))))
+		panel.WorkspaceNew(wsErrMsg(r.URL.Query().Get("err"))))
 }
 
 // WorkspaceCreate — POST /workspace/new. Buat workspace + membership owner
@@ -116,18 +116,4 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 	session.SetActiveTenant(ctx, newID, name, newSlug)
 	h.audit(ctx, uid, "workspace.create", newID, nil)
 	http.Redirect(w, r, wsPath(newSlug, ""), http.StatusSeeOther)
-}
-
-// workspaceErrMsg memetakan kode ?err= ke pesan (pola PRG, sama seperti authErrMsg).
-func workspaceErrMsg(code string) string {
-	switch code {
-	case "name":
-		return "Nama workspace wajib diisi (maks 60 karakter)"
-	case "quota":
-		return "Kuota workspace Anda sudah penuh"
-	case "failed":
-		return "Gagal membuat workspace"
-	default:
-		return ""
-	}
 }

@@ -13,10 +13,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// rls_test.go — bukti isolasi RLS SESUNGGUHNYA. Test lain konek superuser (bypass
-// RLS diam-diam, cuma uji logika). Di sini pool tiap koneksi `SET ROLE app_rw`
-// (NOBYPASSRLS) via AfterConnect → policy tenant_isolation BENAR-BENAR mengikat,
-// persis seperti runtime produksi (APP_DATABASE_URL = role app_rw).
+// rls_test.go — bukti isolasi RLS SESUNGGUHNYA pada jalur QUERY. Di sini pool tiap
+// koneksi `SET ROLE app_rw` (NOBYPASSRLS) via AfterConnect → policy
+// tenant_isolation BENAR-BENAR mengikat.
+//
+// Sejak 0007 runtime mencapai keadaan yang sama lewat `SET LOCAL ROLE` di dalam
+// tiap transaksi (bukan lagi koneksi kedua ber-DSN sendiri); yang membuktikan
+// MEKANISMENYA ada di internal/db/privileges_test.go. Yang dibuktikan di FILE INI
+// adalah akibatnya: dengan hak yang sudah turun, query lintas-tenant memang tak
+// mengembalikan baris.
 //
 // CATATAN model membership: tabel `users` kini GLOBAL (identitas lintas-workspace)
 // → KELUAR dari RLS. Probe isolasi memakai `audit_logs` yang masih ber-tenant_id

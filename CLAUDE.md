@@ -14,6 +14,10 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
   ke pemanggilan telanjang.
 - Ubah schema → tulis migrasi goose → jalankan lokal → `sqlc generate` → perbaiki
   ripple. Jangan edit `internal/db/*` (generated).
+- **Skema hidup di SATU migrasi** (`00001_schema.sql`) — 11 migrasi bertahap
+  disatukan saat belum ada deployment (0007). Perubahan berikutnya **inkremental
+  seperti biasa** (`00002_...`); jangan menyunting `00001` setelah orang lain
+  meng-clone repo ini, dan jangan menyatukan ulang setelah ada produksi.
 - Fitur baru wajib disertai test dalam pekerjaan yang sama. Test butuh DB pakai
   `TEST_DATABASE_URL` (Postgres, jangan tukar engine), di-`skip` bila kosong.
 
@@ -201,40 +205,60 @@ salah membaca cakupan data.
     `<script>` inline tetap diblokir — jadi menambah `unsafe-inline` BUKAN solusi
     (melemahkan CSP; lihat § Batasan).
 
-## Mode aplikasi: single vs multi (`APP_MODE`) — keputusan 0006
+## Mode tenancy: single → multi (ratchet) — keputusan 0006 & 0007
 
-Template ini melayani DUA bentuk: multi-tenant (`/w/{slug}`) dan satu aplikasi
-(`/app`). Default **multi** — turunan yang tak mengisi env berperilaku seperti
-biasa.
+Template melayani DUA bentuk, tapi **bukan dua jalur kode**. Setiap aplikasi
+lahir sebagai **single** dan boleh **dinaikkan** ke multi; turun **tak pernah**.
 
-- **Single = multi-tenant dengan N=1, BUKAN jalur kode kedua.** Di dalam tetap
-  ada TEPAT SATU tenant; RLS/memberships/audit jalan apa adanya. Yang hilang cuma
-  chrome-nya. Jangan tergoda membuang `tenant_id` "karena toh cuma satu" — itu
-  melahirkan aplikasi kedua dalam satu repo, dan jalur yang jarang dipakai pasti
-  membusuk.
-- **Bentuk URL diputuskan di SATU tempat** (`wsPath` di `wspath.go`). Handler &
-  view tak pernah tahu mode. `slugFromRequest` mengembalikan slug tunggal di mode
-  single — itulah yang membuat `Scope`, `resolveTenantBySlug`, `wsRedirect`, dan
-  gerbang siklus hidup bekerja tanpa satu pun cabang mode.
-- **Route dua mode TAK PERNAH hidup bersamaan.** `/workspace/new`, `/switch`,
-  zona bahaya tak DIDAFTARKAN di single (bukan cuma menunya disembunyikan) —
-  menu tersembunyi + route hidup = pintu belakang.
-- **Pendaftar di mode single = `member`, BUKAN owner** (`placeNewUser`). Sebelum
-  ini register/OAuth selalu `CreateTenant`+owner; di mode single itu berarti
-  setiap orang yang mendaftar jadi pemilik aplikasi. Pengelola = `SUPER_ADMIN_EMAILS`.
+- **Single = multi-tenant dengan N=1.** Di dalam tetap ada TEPAT SATU tenant;
+  RLS/memberships/audit jalan apa adanya. Yang hilang cuma chrome-nya. Jangan
+  tergoda membuang `tenant_id` "karena toh cuma satu" — itu melahirkan aplikasi
+  kedua dalam satu repo, dan jalur yang jarang dipakai pasti membusuk.
+- **SATU bentuk URL untuk kedua mode** (`/w/{slug}`); aplikasi tunggal ada di
+  **`/w/app`**. `SingleAppPrefix` sudah DIHAPUS. Dulu mode single memakai
+  `/app/...`, sehingga menaikkan mode mengubah SETIAP alamat yang sudah tersebar.
+  Sekarang `wsPath` & `slugFromRequest` tak punya cabang mode sama sekali.
+- **Mode hidup di DATABASE** (`platform_settings.tenancy_mode`), bukan env.
+  Nol baris = single. `APP_MODE` **sudah dihapus** — jangan hidupkan kembali.
+  Penurunan ditolak DUA trigger: `BEFORE UPDATE` (multi→lain) dan `BEFORE DELETE`
+  (baris absen dibaca sebagai single, jadi menghapusnya adalah penurunan yang
+  menyamar — ini pernah lolos saat dirancang dengan satu trigger).
+- **Route SELALU didaftarkan**, tak lagi bersyarat mode (mengubah 0006 §9). Yang
+  menahan zona bahaya adalah `tenants.is_primary` — dijaga di handler DAN di SQL
+  (`AND NOT is_primary`). Route bersyarat telanjur salah begitu mode bisa naik
+  saat aplikasi berjalan.
+- **Workspace PRIMER = rumah aplikasi.** Kolom `is_primary` + unique partial index
+  (tepat satu). **Tak bisa diarsipkan/dihapus** (mengarsipkannya = seluruh aplikasi
+  read-only lewat tombol yang tampak rutin) dan **tak memakan kuota** (kuota
+  membatasi yang DIBUAT; rumah aplikasi tak dibuat siapa pun). Pengecualian kuota
+  WAJIB sama di sidebar & penegakan — beda sedikit = tombol yang lalu ditolak.
+- **super_admin = OWNER workspace primer**, dipasang saat LOGIN
+  (`ensurePrimaryOwner`, idempotent & promote-only) — bukan saat boot, sebab di
+  sana belum ada satu pun baris `users`. Tanpa ini rumah aplikasi tak punya owner,
+  dan setelah naik ke multi ia jadi satu-satunya workspace yang mustahil dikelola
+  seperti yang lain. **Jangan pernah menentukan jalur RLS dari keanggotaan** —
+  keputusan bypass tetap dari ROLE, tak pernah dari data.
+  Konsekuensi disengaja: mencabut email dari `SUPER_ADMIN_EMAILS` menurunkannya
+  jadi **owner biasa**, bukan user biasa.
+- **Pendaftar di mode single = `member`, BUKAN owner** (`placeNewUser`). Tanpa
+  ini setiap orang yang mendaftar jadi pemilik aplikasi.
 - **Wewenang single**: super_admin (env) → fundamental; admin → operasional
-  (termasuk nama app: `canEditWorkspace` melonggar HANYA di mode single, sebab di
-  sana tak ada owner); member → pakai. `owner` tetap ada di kode tapi tak pernah
-  ditawarkan (`authz.AssignableRoles`).
+  (termasuk nama app); member → pakai. `canEditWorkspace` melonggar untuk admin
+  di mode single — tapi **alasannya bukan lagi "tak ada owner"** (sejak 0007 ada):
+  admin adalah pembantu operasional, dan mengganti nama aplikasi tak boleh
+  menuntut orang menyunting `.env` lalu restart.
 - **`GuardSetRole` memakai `>=`**, bukan `>`: tanpa itu admin bisa mengangkat
-  sesama admin — memperbanyak dirinya sendiri. Kritis di mode single (admin =
-  jabatan tertinggi yang bisa diangkat).
-- **Boot mode single**: tenant tunggal dibuat bila belum ada; tenant `default`
-  bawaan migrasi 00007 DIADOPSI bila masih kosong; >1 tenant → **app menolak
-  start** (memilih diam-diam = workspace lain lenyap tanpa jejak).
-- **Test WAJIB di kedua mode** untuk jalur pembentuk path (`withMode` +
+  sesama admin — memperbanyak dirinya sendiri.
+- **Boot** (`BootstrapPrimary`): workspace primer dibuat bila belum ada, mode
+  dibaca dari DB. Pemeriksaan lama ">1 workspace tapi single → tolak start"
+  **dihapus, bukan dipindah** — keadaan itu tak bisa terjadi lagi.
+- **Test WAJIB di kedua mode** untuk jalur yang bergantung mode (`withMode` +
   `t.Cleanup` di `appmode_test.go`) — mode adalah state paket, dan yang lupa
   dipulihkan meracuni test lain dengan gejala di tempat tak berhubungan.
+  `setupTest` menyetel MULTI secara eksplisit (seed-nya workspace biasa, bukan
+  primer); default paket adalah Single.
+- **Menaikkan mode belum punya UI.** `UpgradeToMulti` tersedia & diuji, pemicunya
+  masih manual. Task terbuka, bukan lupa.
 
 ## Multi-tenancy (RLS + membership + role 2-bidang) — keputusan 0002, 0003 & 0004
 
@@ -288,7 +312,7 @@ tenggang 30 hari). Ditegakkan di `gateLifecycle` yang dipanggil `Scope`.
   **wajib lewat `tenantBySlug` untuk platform**, bukan `resolveTenantBySlug` yang
   mensyaratkan keanggotaan (platform bukan anggota → 404 padahal `isOwnerOf`
   mengizinkan; dua cek saling bertentangan, pernah terjadi).
-- **`audit_logs.tenant_id` NULLABLE + `ON DELETE SET NULL`** (migrasi 00010).
+- **`audit_logs.tenant_id` NULLABLE + `ON DELETE SET NULL`**.
   Sebelumnya NOT NULL tanpa CASCADE → `DELETE FROM tenants` GAGAL di tengah jalan
   setelah memberships/invites/notifications terlanjur CASCADE terhapus. Bukti tak
   boleh lenyap bersama yang dibuktikan.
@@ -304,13 +328,22 @@ tenggang 30 hari). Ditegakkan di `gateLifecycle` yang dipanggil `Scope`.
   bukan query tak ter-scope. Jalur pre-identity (auth/oauth/boot — tenant belum
   diketahui) pakai `db.WithSuper` eksplisit, BUKAN `h.q`.
 - **`WithTenant`/`WithSuper` = SATU tx dgn GUC `set_config(...,true)` TRANSACTION-
-  LOCAL** (`internal/db/tenant.go`). `,true` wajib — plain `SET` bocor ke peminjam
-  pool berikutnya (kebocoran tenant #1 paling umum). Keputusan bypass diambil dari
-  **ROLE** (`isPlatformRole`), TAK PERNAH dari data DB (anti privilege-escalation).
-- **`FORCE` RLS wajib** — tanpanya owner tabel bypass policy diam-diam. **App konek
-  role non-owner** (`app_rw` `NOBYPASSRLS`, via `APP_DATABASE_URL`) — kalau konek
-  owner/superuser, RLS TAK berlaku (bocor senyap). Dual-DSN: `DATABASE_URL` (owner:
-  migrate+boot) vs `APP_DATABASE_URL` (runtime).
+  LOCAL + `SET LOCAL ROLE app_rw`** (`internal/db/tenant.go`). `,true` wajib —
+  plain `SET` bocor ke peminjam pool berikutnya (kebocoran tenant #1 paling umum).
+  Keputusan bypass diambil dari **ROLE** (`isPlatformRole`), TAK PERNAH dari data
+  DB (anti privilege-escalation).
+- **SATU DSN, hak diturunkan PER-TRANSAKSI (0007).** `FORCE` RLS wajib — tanpanya
+  owner tabel bypass policy diam-diam — dan owner/superuser bypass apa pun yang
+  terjadi. Dulu itu menuntut koneksi kedua (`APP_DATABASE_URL`, sudah DIHAPUS);
+  sekarang `dropPrivileges` menjalankan `SET LOCAL ROLE app_rw` di dalam tx.
+  Terverifikasi: superuser ikut tercabut di dalam tx, hak pulih di COMMIT MAUPUN
+  ROLLBACK, `app.is_super` tetap bypass (jalur `/dev` utuh), DDL ditolak, ~5 µs.
+  **Migrasi WAJIB `GRANT app_rw TO CURRENT_USER`** — owner non-superuser tak
+  otomatis anggota app_rw, dan `SET LOCAL ROLE`-nya gagal di tiap transaksi.
+  Yang dibayar: injection yang berhasil bisa `RESET ROLE`. Diterima karena semua
+  query digenerate sqlc; **timbang ulang bila kelak ada SQL mentah dari user.**
+  Konsekuensi bagus: RLS mengikat di DEV juga — query yang lupa `WHERE tenant_id`
+  gagal di laptop, bukan di produksi.
 - **super_admin = ENV-ONLY, nol baris DB.** Role efektif di-overlay `RefreshIdentity`
   per-request (env-check → `platform_staff` lookup → `memberships.role` di workspace
   AKTIF). `platform_staff` TANPA RLS (platform-scope) → terbaca di WithTenant maupun
@@ -395,27 +428,25 @@ Prinsipnya: **yang berbahaya bila salah harus menggagalkan boot; yang bisa
 diturunkan otomatis jangan diminta ke manusia.** Warning di log adalah hal yang
 paling sering diabaikan — ia bukan pengaman.
 
-- **Isolasi tenant DIBUKTIKAN, bukan dijanjikan** (`db.CheckRLS`, dipanggil
-  `verifyTenantIsolation` di `main.go`). Memeriksa "env terisi" TIDAK cukup:
-  mengisi `APP_DATABASE_URL` dengan DSN yang SAMA seperti `DATABASE_URL` lolos
-  pemeriksaan itu sambil tetap membocorkan data — terukur di DB nyata, query yang
-  lupa `WHERE tenant_id` membaca 82 baris dari 15 tenant sebagai owner, vs 13
-  baris dari 1 tenant sebagai `app_rw`. Yang ditanyakan ke Postgres jawabannya
-  pasti: `rolsuper`/`rolbypassrls`/pemilik-tabel + `FORCE RLS`.
-  Ketatnya MENYESUAIKAN DIRI: production multi-tenant → menolak start; dev atau
-  single-app → peringatan saja (satu tenant, tak ada yang bisa bocor ke siapa).
-  Menyiapkan `app_rw` di produksi HANYA butuh `ALTER ROLE app_rw LOGIN PASSWORD
-  '<pw>'` — migrasi 00007 sudah memberi seluruh GRANT + `ALTER DEFAULT
-  PRIVILEGES` (tabel dari migrasi berikutnya terjangkau otomatis), dan kolom
-  `GENERATED ALWAYS AS IDENTITY` tak menuntut GRANT sequence terpisah
-  (terverifikasi: semua INSERT/UPDATE/DELETE aplikasi lolos sebagai `app_rw`).
-  Tak ada env baru untuk ini — aturan yang menyesuaikan diri mengalahkan aturan
-  yang harus diingat.
-- **`APP_DATABASE_URL` = satu database, DUA ROLE** — bukan dua database. Owner
-  butuh `ALTER`/`CREATE POLICY` untuk migrasi; runtime harus role terbatas agar
-  RLS mengikat. Satu role tak bisa keduanya: owner & superuser SELALU bypass RLS,
-  bahkan dengan `FORCE`. `WithSuper` tetap bekerja sebagai `app_rw` (bypass lewat
-  GUC `app.is_super`, bukan privilege) — terverifikasi, panel `/dev` aman.
+- **Isolasi tenant DIBUKTIKAN, bukan dijanjikan** (`db.CheckRLSTx`, dipanggil
+  `verifyTenantIsolation` di `main.go`). Diperiksa DI DALAM `WithSuper` — yaitu
+  pada transaksi yang sudah menurunkan haknya, persis keadaan setiap query
+  aplikasi. Memeriksa pool telanjang menjawab pertanyaan yang SALAH: di sana
+  koneksi memang masih owner, dan memang seharusnya (migrasi butuh itu).
+  Yang ditanyakan ke Postgres jawabannya pasti: `rolsuper`/`rolbypassrls`/
+  pemilik-tabel + `FORCE RLS`.
+  **Berlaku sama di dev & production** — tak ada lagi kelonggaran per-mode, sebab
+  gesekannya kini nol (dulu mengikat RLS menuntut role & DSN kedua).
+  Sejarah yang tak boleh berulang: dulu ini sekadar "env `APP_DATABASE_URL`
+  terisi", dan mengisinya dengan DSN yang SAMA seperti `DATABASE_URL` lolos
+  sambil tetap membocorkan data — terukur di DB nyata: 82 baris dari 15 tenant.
+- **Produksi tak butuh persiapan role manual.** Migrasi membuat `app_rw` lengkap
+  dengan GRANT + `ALTER DEFAULT PRIVILEGES` (tabel dari migrasi berikutnya
+  terjangkau otomatis) + `GRANT app_rw TO CURRENT_USER`. Rolenya tetap `NOLOGIN`
+  — tak ada password, jadi tak ada `ALTER ROLE ... LOGIN` maupun entri
+  `userlist.txt` PgBouncer. Kolom `GENERATED ALWAYS AS IDENTITY` juga tak
+  menuntut GRANT sequence terpisah (terverifikasi: semua INSERT/UPDATE/DELETE
+  aplikasi lolos sebagai `app_rw`).
 - **`SESSION_KEY` divalidasi PANJANGNYA** (min 32, `config.MinSessionKeyLen`),
   bukan cuma keberadaannya. `mustEnv` meloloskan `SESSION_KEY=rahasia` — kunci
   lemah lebih berbahaya daripada kosong, sebab kosong menggagalkan boot sedangkan

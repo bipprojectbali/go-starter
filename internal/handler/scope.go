@@ -64,9 +64,18 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 			// session.TenantID, jadi tanpa ini platform yang membuka /w/acme/members
 			// akan melihat anggota workspace LAIN (yang kebetulan aktif di session)
 			// di bawah URL yang menjanjikan acme — salah data secara senyap.
-			if slug != "" && !h.adoptTenantBySlug(ctx, slug) {
-				http.NotFound(w, r)
-				return
+			if slug != "" {
+				var ok bool
+				if ctx, ok = h.adoptTenantBySlug(ctx, slug); !ok {
+					http.NotFound(w, r)
+					return
+				}
+				// run dirakit sebelum cabang ini dengan ctx yang lama — pasang ulang
+				// agar sifat workspace ikut sampai ke handler.
+				run = func(q *db.Queries) error {
+					next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
+					return nil
+				}
 			}
 			// SENGAJA TANPA gateLifecycle (0005): platform tetap boleh masuk
 			// workspace yang ditangguhkan/diarsipkan/terhapus. Merekalah yang
@@ -101,6 +110,7 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 				return
 			}
 			ctx = withTenantStatus(ctx, t.Status)
+			ctx = withTenantPrimary(ctx, t.IsPrimary)
 			run = func(q *db.Queries) error {
 				next.ServeHTTP(w, r.WithContext(withQueries(ctx, q)))
 				return nil
@@ -133,15 +143,19 @@ func (h *Handler) Scope(next http.Handler) http.Handler {
 // Terpisah dari resolveTenantBySlug justru agar bedanya kelihatan: yang ini
 // SENGAJA tanpa cek membership, dan keputusan itu diambil dari ROLE — tak pernah
 // dari data DB (anti privilege-escalation, sama seperti WithSuper).
-func (h *Handler) adoptTenantBySlug(ctx context.Context, slug string) bool {
+func (h *Handler) adoptTenantBySlug(ctx context.Context, slug string) (context.Context, bool) {
 	t, ok := h.tenantBySlug(ctx, slug)
 	if !ok {
-		return false
+		return ctx, false
 	}
 	if t.ID != session.TenantID(ctx) {
 		session.SetActiveTenant(ctx, t.ID, t.Name, t.Slug)
 	}
-	return true
+	// Sifat workspace diteruskan seperti pada cabang tenant. Tanpa ini, platform
+	// yang membuka workspace primer melihat zona bahaya lengkap dengan tombolnya —
+	// aksinya memang akan ditolak (handler + SQL), tapi menawarkan tombol yang
+	// pasti gagal adalah cacat tersendiri.
+	return withTenantPrimary(ctx, t.IsPrimary), true
 }
 
 // tenantBySlug membaca tenant dari slug TANPA memeriksa keanggotaan. Hanya untuk

@@ -14,28 +14,19 @@ import (
 const archiveTenant = `-- name: ArchiveTenant :exec
 UPDATE tenants
 SET status = 'archived', archived_at = now()
-WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+WHERE id = $1 AND status = 'active' AND deleted_at IS NULL AND NOT is_primary
 `
 
 // OWNER. Workspace jadi READ-ONLY tapi datanya utuh. Guard `status = 'active'`
 // mencegah archive menimpa SUSPENSI platform — kalau tidak, owner bisa keluar
 // dari suspensi lewat pintu samping (archive lalu unarchive).
+//
+// `NOT is_primary`: mengarsipkan rumah aplikasi menjadikan SELURUH aplikasi
+// read-only lewat tombol yang tampak rutin. Guard-nya di SQL, bukan cuma di
+// handler — jalur yang tak lewat handler pun harus tertahan.
 func (q *Queries) ArchiveTenant(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, archiveTenant, id)
 	return err
-}
-
-const countTenants = `-- name: CountTenants :one
-SELECT count(*)::bigint FROM tenants WHERE deleted_at IS NULL
-`
-
-// Jumlah workspace yang masih hidup. Dipakai bootstrap mode single (0006):
-// 0 → buat tenant tunggal, 1 → lanjut, >1 → app menolak start.
-func (q *Queries) CountTenants(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countTenants)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
 }
 
 const countTenantsForPlatform = `-- name: CountTenantsForPlatform :one
@@ -49,10 +40,43 @@ func (q *Queries) CountTenantsForPlatform(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const createPrimaryTenant = `-- name: CreatePrimaryTenant :one
+INSERT INTO tenants (name, slug, is_primary)
+VALUES ($1, $2, true)
+RETURNING id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at
+`
+
+type CreatePrimaryTenantParams struct {
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+}
+
+// Dipanggil SEKALI saat boot pertama. Unique partial index di tenants menjamin
+// hanya ada satu primer — dua instance yang boot bersamaan, satu akan gagal, dan
+// itu jauh lebih baik daripada dua "rumah aplikasi".
+func (q *Queries) CreatePrimaryTenant(ctx context.Context, arg CreatePrimaryTenantParams) (Tenant, error) {
+	row := q.db.QueryRow(ctx, createPrimaryTenant, arg.Name, arg.Slug)
+	var i Tenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.Status,
+		&i.IsPrimary,
+		&i.DeletedAt,
+		&i.SuspendedAt,
+		&i.SuspendedBy,
+		&i.SuspendReason,
+		&i.ArchivedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createTenant = `-- name: CreateTenant :one
 INSERT INTO tenants (name, slug)
 VALUES ($1, $2)
-RETURNING id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at
+RETURNING id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at
 `
 
 type CreateTenantParams struct {
@@ -69,18 +93,45 @@ func (q *Queries) CreateTenant(ctx context.Context, arg CreateTenantParams) (Ten
 		&i.Name,
 		&i.Slug,
 		&i.Status,
-		&i.CreatedAt,
+		&i.IsPrimary,
 		&i.DeletedAt,
 		&i.SuspendedAt,
 		&i.SuspendedBy,
 		&i.SuspendReason,
 		&i.ArchivedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPrimaryTenant = `-- name: GetPrimaryTenant :one
+SELECT id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at FROM tenants WHERE is_primary
+`
+
+// Workspace PRIMER = rumah aplikasi. Dicari lewat kolom is_primary, BUKAN lewat
+// perbandingan slug: yang bergantung padanya adalah penolakan arsip/hapus, dan
+// aturan sepenting itu tak boleh bergantung pada string yang kebetulan cocok.
+func (q *Queries) GetPrimaryTenant(ctx context.Context) (Tenant, error) {
+	row := q.db.QueryRow(ctx, getPrimaryTenant)
+	var i Tenant
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.Status,
+		&i.IsPrimary,
+		&i.DeletedAt,
+		&i.SuspendedAt,
+		&i.SuspendedBy,
+		&i.SuspendReason,
+		&i.ArchivedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getTenant = `-- name: GetTenant :one
-SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants WHERE id = $1
+SELECT id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at FROM tenants WHERE id = $1
 `
 
 func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
@@ -91,18 +142,19 @@ func (q *Queries) GetTenant(ctx context.Context, id int64) (Tenant, error) {
 		&i.Name,
 		&i.Slug,
 		&i.Status,
-		&i.CreatedAt,
+		&i.IsPrimary,
 		&i.DeletedAt,
 		&i.SuspendedAt,
 		&i.SuspendedBy,
 		&i.SuspendReason,
 		&i.ArchivedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getTenantBySlug = `-- name: GetTenantBySlug :one
-SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants WHERE slug = $1
+SELECT id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at FROM tenants WHERE slug = $1
 `
 
 // SENGAJA tanpa filter deleted_at: middleware Scope perlu MEMBEDAKAN "workspace
@@ -116,18 +168,19 @@ func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (Tenant, err
 		&i.Name,
 		&i.Slug,
 		&i.Status,
-		&i.CreatedAt,
+		&i.IsPrimary,
 		&i.DeletedAt,
 		&i.SuspendedAt,
 		&i.SuspendedBy,
 		&i.SuspendReason,
 		&i.ArchivedAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const listExpiredTenants = `-- name: ListExpiredTenants :many
-SELECT id, name, slug, status, created_at, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at FROM tenants
+SELECT id, name, slug, status, is_primary, deleted_at, suspended_at, suspended_by, suspend_reason, archived_at, created_at FROM tenants
 WHERE deleted_at IS NOT NULL AND deleted_at < $1
 ORDER BY deleted_at
 `
@@ -148,12 +201,13 @@ func (q *Queries) ListExpiredTenants(ctx context.Context, deletedAt pgtype.Times
 			&i.Name,
 			&i.Slug,
 			&i.Status,
-			&i.CreatedAt,
+			&i.IsPrimary,
 			&i.DeletedAt,
 			&i.SuspendedAt,
 			&i.SuspendedBy,
 			&i.SuspendReason,
 			&i.ArchivedAt,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -166,7 +220,7 @@ func (q *Queries) ListExpiredTenants(ctx context.Context, deletedAt pgtype.Times
 }
 
 const listTenantsForPlatform = `-- name: ListTenantsForPlatform :many
-SELECT t.id, t.name, t.slug, t.status, t.created_at, t.deleted_at, t.suspended_at, t.suspended_by, t.suspend_reason, t.archived_at, count(m.user_id)::bigint AS member_count
+SELECT t.id, t.name, t.slug, t.status, t.is_primary, t.deleted_at, t.suspended_at, t.suspended_by, t.suspend_reason, t.archived_at, t.created_at, count(m.user_id)::bigint AS member_count
 FROM tenants t
 LEFT JOIN memberships m ON m.tenant_id = t.id
 GROUP BY t.id
@@ -184,12 +238,13 @@ type ListTenantsForPlatformRow struct {
 	Name          string             `json:"name"`
 	Slug          string             `json:"slug"`
 	Status        string             `json:"status"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	IsPrimary     bool               `json:"is_primary"`
 	DeletedAt     pgtype.Timestamptz `json:"deleted_at"`
 	SuspendedAt   pgtype.Timestamptz `json:"suspended_at"`
 	SuspendedBy   *int64             `json:"suspended_by"`
 	SuspendReason *string            `json:"suspend_reason"`
 	ArchivedAt    pgtype.Timestamptz `json:"archived_at"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	MemberCount   int64              `json:"member_count"`
 }
 
@@ -210,12 +265,13 @@ func (q *Queries) ListTenantsForPlatform(ctx context.Context, arg ListTenantsFor
 			&i.Name,
 			&i.Slug,
 			&i.Status,
-			&i.CreatedAt,
+			&i.IsPrimary,
 			&i.DeletedAt,
 			&i.SuspendedAt,
 			&i.SuspendedBy,
 			&i.SuspendReason,
 			&i.ArchivedAt,
+			&i.CreatedAt,
 			&i.MemberCount,
 		); err != nil {
 			return nil, err
@@ -254,31 +310,16 @@ func (q *Queries) RestoreTenant(ctx context.Context, id int64) error {
 	return err
 }
 
-const setTenantSlug = `-- name: SetTenantSlug :exec
-UPDATE tenants SET slug = $2, name = $3 WHERE id = $1
-`
-
-type SetTenantSlugParams struct {
-	ID   int64  `json:"id"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
-}
-
-// Ubah slug + nama sekaligus. HANYA dipakai bootstrap mode single untuk
-// mengadopsi workspace KOSONG bawaan migrasi (slug "default") jadi aplikasi
-// tunggal. Bukan operasi umum: slug immutable sejak 0004 karena mengubahnya
-// mematikan setiap tautan tersimpan — pemanggil wajib sudah memastikan
-// workspace itu belum berisi anggota.
-func (q *Queries) SetTenantSlug(ctx context.Context, arg SetTenantSlugParams) error {
-	_, err := q.db.Exec(ctx, setTenantSlug, arg.ID, arg.Slug, arg.Name)
-	return err
-}
-
 const softDeleteTenant = `-- name: SoftDeleteTenant :exec
-UPDATE tenants SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL
+UPDATE tenants SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL AND NOT is_primary
 `
 
 // Owner ATAU platform. Masa tenggang: baris tetap ada, slug TIDAK dilepas.
+//
+// `NOT is_primary`: rumah aplikasi tak bisa dihapus dari dalam aplikasi itu
+// sendiri. Di mode single ia satu-satunya workspace — menghapusnya berarti
+// menghapus aplikasinya, lewat tombol yang di workspace lain berarti "hapus
+// salah satu dari beberapa".
 func (q *Queries) SoftDeleteTenant(ctx context.Context, id int64) error {
 	_, err := q.db.Exec(ctx, softDeleteTenant, id)
 	return err

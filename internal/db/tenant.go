@@ -13,11 +13,47 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// GUC transaction-local yang dibaca policy RLS tenant_isolation (migrasi 00007).
+// GUC transaction-local yang dibaca policy RLS tenant_isolation.
 const (
 	gucTenantID = "app.tenant_id" // scope: hanya baris tenant ini yang terlihat
 	gucIsSuper  = "app.is_super"  // "on" = bypass RLS (jalur platform)
 )
+
+// runtimeRole = role least-privilege yang dimasuki setiap transaksi aplikasi.
+// NOLOGIN: tak pernah dipakai untuk connect, hanya dimasuki lewat SET LOCAL ROLE.
+const runtimeRole = "app_rw"
+
+// dropPrivileges menurunkan hak transaksi ini ke app_rw (NOBYPASSRLS).
+//
+// INILAH yang membuat satu DSN cukup. Dulu butuh dua: DATABASE_URL (owner, untuk
+// migrasi yang perlu ALTER/CREATE POLICY) dan APP_DATABASE_URL (app_rw, agar RLS
+// mengikat) — sebab owner & superuser SELALU bypass RLS, bahkan dengan FORCE.
+// Konsekuensinya satu env lagi yang bisa lupa diisi, satu password lagi yang bisa
+// bocor, satu entri lagi di userlist.txt PgBouncer.
+//
+// SET LOCAL ROLE mencapai hasil yang sama tanpa koneksi kedua. Terverifikasi di
+// Postgres 17:
+//
+//   - di dalam tx, current_user = app_rw dan rolsuper ikut turun jadi false;
+//   - hak pulih otomatis saat COMMIT *maupun* ROLLBACK — transaksi berikutnya di
+//     koneksi yang sama kembali sebagai owner, jadi tak ada yang bocor ke
+//     peminjam pool berikutnya (kebocoran #1 pada pooling transaksi);
+//   - app.is_super='on' tetap bypass policy, jadi jalur platform (/dev) utuh;
+//   - CREATE TABLE ditolak — DDL tetap milik jalur migrasi;
+//   - biayanya ~5 µs per transaksi.
+//
+// Efek samping yang justru diinginkan: RLS kini mengikat di DEV juga. Query yang
+// lupa `WHERE tenant_id` gagal di laptop, bukan di produksi.
+//
+// Yang HILANG dibanding koneksi app_rw sungguhan: SQL injection yang berhasil
+// bisa memanggil RESET ROLE dan kembali jadi owner. Diterima secara sadar —
+// seluruh query digenerate sqlc (berparameter), dan tak ada jalur SQL mentah
+// dari input user. Kalau kelak ada, timbang ulang keputusan ini.
+func dropPrivileges(ctx context.Context, tx pgx.Tx) error {
+	// Identifier tak bisa diparameterkan; runtimeRole konstanta, bukan input.
+	_, err := tx.Exec(ctx, "SET LOCAL ROLE "+runtimeRole)
+	return err
+}
 
 // WithTenant menjalankan fn dalam SATU transaksi yang di-scope ke tenantID via RLS.
 // set_config(...,true) = TRANSACTION-LOCAL → GUC tak bocor ke peminjam pool
@@ -26,6 +62,9 @@ const (
 func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID int64, fn func(*Queries) error) error {
 	return withTx(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "SELECT set_config($1, $2, true)", gucTenantID, strconv.FormatInt(tenantID, 10)); err != nil {
+			return err
+		}
+		if err := dropPrivileges(ctx, tx); err != nil {
 			return err
 		}
 		return fn(New(tx))
@@ -39,6 +78,13 @@ func WithTenant(ctx context.Context, pool *pgxpool.Pool, tenantID int64, fn func
 func WithSuper(ctx context.Context, pool *pgxpool.Pool, fn func(*Queries) error) error {
 	return withTx(ctx, pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, "SELECT set_config($1, 'on', true)", gucIsSuper); err != nil {
+			return err
+		}
+		// Hak tetap DITURUNKAN meski ini jalur platform: bypass-nya datang dari GUC
+		// app.is_super (keputusan yang diambil di Go), bukan dari privilege role.
+		// Dengan begitu jalur platform tetap tak bisa DDL, dan bila policy kelak
+		// diubah, ia ikut terikat aturan barunya.
+		if err := dropPrivileges(ctx, tx); err != nil {
 			return err
 		}
 		return fn(New(tx))

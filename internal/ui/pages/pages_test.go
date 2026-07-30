@@ -48,8 +48,29 @@ func TestLogin_RendersError(t *testing.T) {
 }
 
 func TestRegister(t *testing.T) {
-	out := render(t, Register(""))
+	out := render(t, Register("", true))
 	for _, want := range []string{`method="post"`, `action="/register"`, `type="password"`, `name="workspace"`, "/login"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("register kurang %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestRegister_TanpaFieldWorkspace: REGRESI (ditemukan lewat browser, bukan test).
+// Field "Nama Workspace" dulu selalu tampil, sementara handler menolak nama
+// kosong — jadi di mode single pendaftaran MUSTAHIL diselesaikan: formnya
+// menanyakan sesuatu yang tak relevan, lalu server menolak karena tak diisi.
+//
+// Gejalanya menyesatkan: redirect ke /register?err=workspace pada form yang
+// tampak lengkap. Ini juga alasan verifikasi UI harus mencakup SUBMIT, bukan
+// cuma render.
+func TestRegister_TanpaFieldWorkspace(t *testing.T) {
+	out := render(t, Register("", false))
+	if strings.Contains(out, `name="workspace"`) {
+		t.Errorf("mode single tak boleh menanyakan nama workspace:\n%s", out)
+	}
+	// Sisanya harus tetap utuh — yang hilang hanya satu field.
+	for _, want := range []string{`action="/register"`, `type="password"`, `type="email"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("register kurang %q:\n%s", want, out)
 		}

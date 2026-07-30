@@ -19,10 +19,18 @@ func Login(showPassword bool, errMsg string) g.Node {
 }
 
 // Register merender halaman pendaftaran (dev-only; route-nya tak ada di prod).
-// showWorkspace: register mengumpulkan Nama Workspace (buat workspace baru).
-func Register(errMsg string) g.Node {
+//
+// askWorkspace: apakah pendaftar diminta menamai workspace-nya. HANYA di mode
+// multi — di mode single ia bergabung ke aplikasi yang SUDAH ada dan sudah
+// bernama, jadi menanyakannya berarti meminta nama yang lalu dibuang. Handler
+// pun menolak nama kosong, sehingga field ini bukan cuma mubazir di sana:
+// ia membuat pendaftaran MUSTAHIL diselesaikan.
+//
+// View tetap murni-data (tak memanggil appmode sendiri) — handler yang
+// menurunkannya, sesuai konvensi.
+func Register(errMsg string, askWorkspace bool) g.Node {
 	return authPage(authOpts{
-		title: "Daftar", action: "/register", showPassword: true, showWorkspace: true, errMsg: errMsg,
+		title: "Daftar", action: "/register", showPassword: true, showWorkspace: askWorkspace, errMsg: errMsg,
 		switchText: "Sudah punya akun?", switchHref: "/login", switchLabel: "Masuk",
 	})
 }

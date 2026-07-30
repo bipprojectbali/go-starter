@@ -27,13 +27,13 @@ type workspaceName struct {
 //	multi  → owner (pemilik) atau platform. Admin/member hanya lihat.
 //	single → admin JUGA boleh (0006 §7).
 //
-// Kenapa berbeda: di mode single tak ada `owner` — kalau syaratnya tetap owner,
-// admin tak bisa mengubah apa pun dan gelarnya kosong, sehingga hal sepele
-// seperti mengganti nama harus lewat super_admin (yang cuma bisa ditambah lewat
-// .env + restart). Admin di sana adalah PEMBANTU super_admin: mengurus
-// operasional harian, tanpa menyentuh yang fundamental — dan yang fundamental
-// dijaga di tempat lain, bukan di sini (zona bahaya tak didaftarkan §9, kuota
-// & mode di-gate platform:settings).
+// Kenapa berbeda — dan alasannya BUKAN lagi "di mode single tak ada owner".
+// Sejak 0007 rumah aplikasi punya owner: super_admin. Yang tersisa adalah alasan
+// yang sebenarnya sejak awal: admin di mode single adalah PEMBANTU super_admin,
+// dan hal sepele seperti mengganti nama aplikasi tak boleh menuntut seseorang
+// menyunting .env lalu me-restart. Yang fundamental tetap dijaga di tempat lain
+// (zona bahaya ditolak untuk workspace primer, kuota & mode di-gate
+// platform:settings) — bukan di sini.
 func canEditWorkspace(ctx context.Context) bool {
 	if session.IsRoot(ctx) {
 		return true
@@ -73,10 +73,15 @@ func (h *Handler) WorkspaceSettings(w http.ResponseWriter, r *http.Request) {
 		// tampil — di sanalah tombol "Aktifkan kembali" berada. Menyembunyikannya
 		// akan mengunci owner di luar workspace-nya sendiri.
 		CanEdit: canEdit && t.Status == TenantActive,
-		// Zona bahaya (arsip/hapus) TIDAK ADA di mode single (0006 §9) — route-nya
-		// pun tak didaftarkan, jadi menampilkannya hanya menjanjikan pintu buntu.
-		CanOwn:   canEdit && appmode.IsMulti(),
+		// Zona bahaya (arsip/hapus) tak berlaku bagi RUMAH APLIKASI (0007):
+		// mengarsipkannya membuat seluruh aplikasi read-only, menghapusnya
+		// menghapus aplikasinya. Yang menahan bukan lagi mode — route selalu
+		// terdaftar sekarang — melainkan sifat workspace-nya, dijaga di handler
+		// dan di SQL. Di sini hanya disembunyikan agar tak ada tombol yang
+		// menjanjikan pintu buntu.
+		CanOwn:   canEdit && !IsPrimaryWorkspace(ctx),
 		Archived: t.Status == TenantArchived,
+		ErrMsg:   wsErrMsg(r.URL.Query().Get("err")),
 	}))
 }
 

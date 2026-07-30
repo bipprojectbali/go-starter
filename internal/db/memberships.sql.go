@@ -15,7 +15,7 @@ const countOwnedWorkspaces = `-- name: CountOwnedWorkspaces :one
 SELECT count(*)::bigint
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
-WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL
+WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL AND NOT t.is_primary
 `
 
 // Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
@@ -25,6 +25,12 @@ WHERE m.user_id = $1 AND m.role = 'owner' AND t.deleted_at IS NULL
 // workspace yang sudah dihapus terasa seperti bug, dan mendorong user memurge
 // lebih cepat — kebalikan dari tujuan masa tenggang. Yang TERARSIP TETAP
 // dihitung: datanya masih disimpan & bisa diaktifkan kapan saja.
+//
+// Workspace PRIMER juga tak dihitung (0007): kuota membatasi berapa banyak yang
+// boleh DIBUAT, dan rumah aplikasi tak dibuat siapa pun — ia sudah ada sebelum
+// user pertama mendaftar. Tanpa pengecualian ini, super_admin yang jadi ownernya
+// memakai jatahnya sendiri, dan dengan default 1 orang yang MENETAPKAN aturan
+// kuota justru tak bisa membuat workspace apa pun.
 func (q *Queries) CountOwnedWorkspaces(ctx context.Context, userID int64) (int64, error) {
 	row := q.db.QueryRow(ctx, countOwnedWorkspaces, userID)
 	var column_1 int64
@@ -161,7 +167,7 @@ func (q *Queries) ListMembersByTenant(ctx context.Context, tenantID int64) ([]Li
 }
 
 const listMembershipsByUser = `-- name: ListMembershipsByUser :many
-SELECT m.tenant_id, m.role, t.name, t.slug, t.status
+SELECT m.tenant_id, m.role, t.name, t.slug, t.status, t.is_primary
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
 WHERE m.user_id = $1 AND t.deleted_at IS NULL
@@ -169,11 +175,12 @@ ORDER BY m.created_at, m.id
 `
 
 type ListMembershipsByUserRow struct {
-	TenantID int64  `json:"tenant_id"`
-	Role     string `json:"role"`
-	Name     string `json:"name"`
-	Slug     string `json:"slug"`
-	Status   string `json:"status"`
+	TenantID  int64  `json:"tenant_id"`
+	Role      string `json:"role"`
+	Name      string `json:"name"`
+	Slug      string `json:"slug"`
+	Status    string `json:"status"`
+	IsPrimary bool   `json:"is_primary"`
 }
 
 // Daftar workspace milik user (untuk switcher sidebar). Urut terlama dulu agar
@@ -183,6 +190,9 @@ type ListMembershipsByUserRow struct {
 // middleware Scope, jadi tanpa filter ini user bisa dilempar ke workspace yang
 // sudah dihapus. status ikut dikembalikan agar switcher bisa menandai yang
 // suspended/archived alih-alih membiarkan user menabrak 403 setelah mengklik.
+// is_primary ikut dikembalikan karena sidebar menghitung sisa kuota dari daftar
+// ini; tanpanya hitungannya akan BERBEDA dari CountOwnedWorkspaces, dan user
+// melihat tombol "Buat workspace" yang lalu ditolak (atau sebaliknya).
 func (q *Queries) ListMembershipsByUser(ctx context.Context, userID int64) ([]ListMembershipsByUserRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsByUser, userID)
 	if err != nil {
@@ -198,6 +208,7 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID int64) ([]Li
 			&i.Name,
 			&i.Slug,
 			&i.Status,
+			&i.IsPrimary,
 		); err != nil {
 			return nil, err
 		}

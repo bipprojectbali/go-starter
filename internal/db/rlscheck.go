@@ -60,11 +60,40 @@ func (s RLSStatus) Reason() string {
 	}
 }
 
-// CheckRLS memeriksa apakah pool ini benar-benar terikat RLS. Satu query, sekali
-// saat boot — bukan per-request.
+// rlsProbeSQL menanyakan keadaan yang menentukan apakah RLS mengikat. Semuanya
+// dari katalog Postgres — tak ada yang bisa dibohongi konfigurasi.
+const rlsProbeSQL = `
+	SELECT current_user,
+	       r.rolsuper,
+	       r.rolbypassrls,
+	       c.relowner = r.oid AS owns_table,
+	       c.relforcerowsecurity
+	FROM pg_roles r, pg_class c
+	WHERE r.rolname = current_user AND c.relname = $1
+`
+
+// CheckRLSTx memeriksa pengikatan RLS DI DALAM transaksi yang sudah berjalan —
+// yaitu setelah SET LOCAL ROLE menurunkan haknya ke app_rw.
 //
-// probeTable = tabel ber-tenant mana pun yang dipakai sebagai sampel; semua
-// tabel ber-tenant dikonfigurasi seragam di migrasi 00007.
+// Inilah yang benar untuk ditanyakan sejak jadi satu DSN: pool telanjang memang
+// masih owner (migrasi membutuhkannya), jadi memeriksa di sana akan selalu
+// menjawab "tidak mengikat" padahal setiap query aplikasi terikat. Yang diukur
+// harus keadaan yang sama dengan yang dijalani query sungguhan.
+//
+// probeTable = tabel ber-tenant mana pun; semuanya dikonfigurasi seragam.
+func CheckRLSTx(ctx context.Context, q *Queries, probeTable string) (RLSStatus, error) {
+	var s RLSStatus
+	err := q.db.QueryRow(ctx, rlsProbeSQL, probeTable).
+		Scan(&s.User, &s.Superuser, &s.BypassRLS, &s.OwnsTables, &s.Forced)
+	if err != nil {
+		return s, fmt.Errorf("periksa pengikatan RLS: %w", err)
+	}
+	return s, nil
+}
+
+// CheckRLS memeriksa pool secara langsung, TANPA penurunan hak. Dipakai test
+// untuk membuktikan pemeriksaannya jujur: koneksi owner harus dilaporkan TIDAK
+// mengikat, sebab kalau tidak, seluruh mekanisme ini hanya stempel.
 func CheckRLS(ctx context.Context, pool *pgxpool.Pool, probeTable string) (RLSStatus, error) {
 	var s RLSStatus
 	err := pool.QueryRow(ctx, `

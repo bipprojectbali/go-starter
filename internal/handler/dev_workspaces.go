@@ -56,7 +56,7 @@ func (h *Handler) DevWorkspaces(w http.ResponseWriter, r *http.Request) {
 	}
 	h.renderShell(w, r, "Workspaces", "go_starter /dev", "/dev/workspaces", devNav(r.Context()),
 		dev.Workspaces(items, page, total, devWorkspacePageSize,
-			workspaceErrMsg(r.URL.Query().Get("err"))))
+			wsErrMsg(r.URL.Query().Get("err"))))
 }
 
 // DevWorkspaceSuspend — POST /dev/workspaces/{id}/suspend. Alasan WAJIB: tanpa

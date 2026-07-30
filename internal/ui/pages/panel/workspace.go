@@ -19,6 +19,11 @@ type WorkspaceView struct {
 	CanEdit  bool   // owner/platform: ganti nama
 	CanOwn   bool   // owner/platform: arsip & hapus (zona bahaya)
 	Archived bool
+	// ErrMsg = pesan dari redirect PRG (?err=CODE). Aksi siklus hidup memakai
+	// native POST + 303, jadi tanpa slot ini penolakannya HILANG SENYAP: user
+	// menekan tombol, halaman termuat ulang tampak normal, dan tak ada apa pun
+	// yang menjelaskan kenapa tak terjadi apa-apa.
+	ErrMsg string
 }
 
 // Workspace merender halaman pengaturan workspace: form ganti NAMA tampilan +
@@ -69,8 +74,11 @@ func Workspace(v WorkspaceView) g.Node {
 		data.Signals(map[string]any{"name": v.Name}),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Pengaturan Workspace")),
 		h.P(h.Class("text-base-content/70 mb-4"), g.Text("Kelola nama workspace Anda.")),
-		ui.Card(fields...),
 	}
+	if v.ErrMsg != "" {
+		body = append(body, ui.Alert(ui.VariantDestructive, "workspace-err", g.Text(v.ErrMsg)))
+	}
+	body = append(body, ui.Card(fields...))
 	if v.CanOwn {
 		body = append(body, dangerZone(v))
 	}
