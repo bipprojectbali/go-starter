@@ -27,23 +27,35 @@ func firstPageCursor() (pgtype.Timestamptz, int64) {
 // DevUsersList — GET /dev/users. Daftar user (keyset) untuk panel developer.
 func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	cursorAt, cursorID := firstPageCursor()
+	cursorAt, cursorID := pageCursor(r)
+	// Ambil SATU lebih banyak dari yang ditampilkan: kelebihan itulah yang
+	// menjawab "masih ada lagi?" tanpa COUNT terpisah — dan tanpanya tombol
+	// "Berikutnya" akan tetap muncul di halaman terakhir lalu berujung kosong.
 	users, err := h.q(ctx).ListUsers(ctx, db.ListUsersParams{
 		CursorCreatedAt: cursorAt,
 		CursorID:        cursorID,
-		PageSize:        pageSize,
+		PageSize:        pageSize + 1,
 	})
 	if err != nil {
 		h.Log.Error("dev users: list", "err", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
+	users, next := splitPage(users, func(u db.User) (pgtype.Timestamptz, int64) {
+		return u.CreatedAt, u.ID
+	})
 	// Aktor untuk menentukan kontrol mana yang boleh dirender (precompute).
 	actorRole := authz.ParseRole(session.Role(ctx))
 	canManageSuper := session.IsRoot(ctx) || actorRole >= authz.RoleSuperAdmin
 	byUser := h.membershipsByUser(ctx, users) // satu query batch (anti N+1)
 	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(ctx),
-		dev.UsersPage(toUserRows(users, byUser), authz.AssignableRoles(appmode.IsSingle()), canManageSuper))
+		dev.UsersPage(dev.UsersView{
+			Rows:           toUserRows(users, byUser),
+			Roles:          authz.AssignableRoles(appmode.IsSingle()),
+			CanManageSuper: canManageSuper,
+			NextCursor:     next,
+			HasPrev:        r.URL.Query().Get("after") != "",
+		}))
 }
 
 // DevUserSetRole — POST /dev/users/{id}/role. Ubah role (di-guard + audit).
@@ -88,6 +100,12 @@ func (h *Handler) DevUserSetRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r.Context(), actor.ID, "member.role.update", targetID, map[string]string{"to": newRole})
+	// Kabar untuk yang bersangkutan — SAMA seperti jalur workspace (MemberSetRole).
+	// Efeknya identik: wewenangnya berubah. Yang tak boleh terjadi adalah orang
+	// mengetahui perubahan itu atau tidak, tergantung pintu mana yang kebetulan
+	// dipakai pengelolanya. tenantID = workspace TARGET (bukan workspace aktor,
+	// yang di panel lintas-workspace ini sering bukan workspace yang sama).
+	h.notify(r.Context(), targetID, tenantID, "member.role.changed", notifPayload{Role: newRole})
 	h.devRowUpdated(w, r, targetID, "Role diubah ke "+newRole)
 }
 
@@ -119,6 +137,11 @@ func (h *Handler) DevUserSetStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.status.update", targetID, map[string]string{"to": newStatus})
+	// SENGAJA tanpa notifikasi. Status menutup pintu LOGIN (gate di startIdentity),
+	// jadi notifikasi in-app tak akan pernah terbaca oleh yang di-disable/block —
+	// ia hanya menumpuk untuk dibaca kalau statusnya kelak dipulihkan, yaitu saat
+	// kabarnya sudah basi. Yang mengaktifkan kembali pun tak perlu diberi tahu:
+	// ia melihatnya sendiri saat berhasil masuk.
 	h.devRowUpdated(w, r, targetID, "Status diubah ke "+newStatus)
 }
 
@@ -143,5 +166,7 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.delete", targetID, nil)
+	// SENGAJA tanpa notifikasi, alasan yang sama dengan status: akun terhapus tak
+	// bisa login, jadi tak ada yang akan membacanya.
 	h.devRowRemoved(w, r, targetID, "User dihapus")
 }
