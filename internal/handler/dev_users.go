@@ -1,24 +1,22 @@
 package handler
 
 import (
-	"context"
-	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"go_starter/internal/appmode"
 	"go_starter/internal/authz"
 	"go_starter/internal/db"
 	"go_starter/internal/session"
-	"go_starter/internal/settings"
 	"go_starter/internal/ui/pages/dev"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/starfederation/datastar-go/datastar"
 )
+
+// dev_users.go — panel platform /dev/users: siapa boleh mengubah apa atas USER
+// (identitas global, lintas-workspace). Tampilannya di dev_users_view.go,
+// balasan SSE-nya di dev_users_flash.go.
 
 // firstPageCursor mengembalikan cursor keyset untuk halaman pertama:
 // (created_at, id) = maksimum, sehingga semua baris lolos syarat < cursor.
@@ -28,8 +26,9 @@ func firstPageCursor() (pgtype.Timestamptz, int64) {
 
 // DevUsersList — GET /dev/users. Daftar user (keyset) untuk panel developer.
 func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	cursorAt, cursorID := firstPageCursor()
-	users, err := h.q(r.Context()).ListUsers(r.Context(), db.ListUsersParams{
+	users, err := h.q(ctx).ListUsers(ctx, db.ListUsersParams{
 		CursorCreatedAt: cursorAt,
 		CursorID:        cursorID,
 		PageSize:        pageSize,
@@ -40,10 +39,10 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Aktor untuk menentukan kontrol mana yang boleh dirender (precompute).
-	actorRole := authz.ParseRole(session.Role(r.Context()))
-	canManageSuper := session.IsRoot(r.Context()) || actorRole >= authz.RoleSuperAdmin
-	byUser := h.membershipsByUser(r.Context(), users) // satu query batch (anti N+1)
-	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(r.Context()),
+	actorRole := authz.ParseRole(session.Role(ctx))
+	canManageSuper := session.IsRoot(ctx) || actorRole >= authz.RoleSuperAdmin
+	byUser := h.membershipsByUser(ctx, users) // satu query batch (anti N+1)
+	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(ctx),
 		dev.UsersPage(toUserRows(users, byUser), authz.AssignableRoles(appmode.IsSingle()), canManageSuper))
 }
 
@@ -144,214 +143,5 @@ func (h *Handler) DevUserDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit(r.Context(), actor.ID, "user.delete", targetID, nil)
-	// Hapus baris dari tabel + flash sukses.
-	sse := datastar.NewSSE(w, r)
-	_ = sse.RemoveElement("#user-" + strconv.FormatInt(targetID, 10))
-	patchFlash(sse, true, "User dihapus")
-}
-
-// --- helper flash / SSE ---
-
-// devRowUpdated me-render ulang baris user (kontrol menampilkan nilai baru) +
-// flash sukses. Ini yang menggantikan reload penuh: perubahan langsung terlihat.
-func (h *Handler) devRowUpdated(w http.ResponseWriter, r *http.Request, targetID int64, msg string) {
-	u, err := h.q(r.Context()).GetUser(r.Context(), targetID)
-	if err != nil {
-		h.Log.Error("dev users: reload row", "err", err)
-		h.devFlash(w, r, false, "Tersimpan, tapi gagal memuat ulang baris")
-		return
-	}
-	canManageSuper := session.IsRoot(r.Context()) ||
-		authz.ParseRole(session.Role(r.Context())) >= authz.RoleSuperAdmin
-	one := []db.User{u}
-	row := toUserRows(one, h.membershipsByUser(r.Context(), one))[0]
-
-	sse := datastar.NewSSE(w, r)
-	var sb strings.Builder
-	if err := dev.UserRowNode(row, authz.AssignableRoles(appmode.IsSingle()), canManageSuper).Render(&sb); err != nil {
-		h.Log.Error("dev users: render row", "err", err)
-		return
-	}
-	// Ganti baris berdasarkan id (mode default outer, morph by id).
-	_ = sse.PatchElements(sb.String())
-	patchFlash(sse, true, msg)
-}
-
-// devFlash mengirim hanya toast (tanpa mengubah baris).
-func (h *Handler) devFlash(w http.ResponseWriter, r *http.Request, ok bool, msg string) {
-	sse := datastar.NewSSE(w, r)
-	patchFlash(sse, ok, msg)
-}
-
-// devFlashErr memetakan error guard ke pesan toast yang ramah.
-func (h *Handler) devFlashErr(w http.ResponseWriter, r *http.Request, err error) {
-	msg := "Aksi ditolak"
-	switch err {
-	case authz.ErrProtectedRoot:
-		msg = "User ini root (env) — tak bisa diubah"
-	case authz.ErrSelfLockout:
-		msg = "Tidak bisa melakukan aksi ini pada akun sendiri"
-	case authz.ErrForbidden:
-		msg = "Anda tidak berwenang untuk aksi ini"
-	default:
-		h.Log.Error("dev users: guard/load", "err", err)
-		msg = "Terjadi kesalahan"
-	}
-	h.devFlash(w, r, false, msg)
-}
-
-// patchFlash mem-patch toast notifikasi (id "flash") via SSE. Toast auto-hilang
-// lewat skrip kecil di komponen. ok=true → hijau, false → merah.
-func patchFlash(sse *datastar.ServerSentEventGenerator, ok bool, msg string) {
-	var sb strings.Builder
-	if err := dev.Flash(ok, msg).Render(&sb); err == nil {
-		_ = sse.PatchElements(sb.String())
-	}
-}
-
-// --- helper umum ---
-
-func (h *Handler) parseTargetID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		http.Error(w, "id tidak valid", http.StatusBadRequest)
-		return 0, false
-	}
-	return id, true
-}
-
-// loadActorTarget membangun Actor (dari session) & Target (dari DB) untuk guard.
-// tenantID = workspace tempat role target dinilai (role kini per-workspace).
-func (h *Handler) loadActorTarget(ctx context.Context, targetID, tenantID int64) (authz.Actor, authz.Target, error) {
-	actor := authz.Actor{
-		ID:     session.UserID(ctx),
-		Role:   authz.ParseRole(session.Role(ctx)),
-		IsRoot: session.IsRoot(ctx),
-	}
-	tu, err := h.q(ctx).GetUser(ctx, targetID)
-	if err != nil {
-		return actor, authz.Target{}, err
-	}
-	// Role target = role di WORKSPACE tsb (kini per-workspace, bukan properti user).
-	// Tak punya membership di sana → otoritas terendah (member), bukan naik.
-	role := authz.RoleMember
-	if m, e := h.q(ctx).GetMembership(ctx, db.GetMembershipParams{UserID: targetID, TenantID: tenantID}); e == nil {
-		role = authz.ParseRole(m.Role)
-	}
-	target := authz.Target{
-		ID:          tu.ID,
-		Role:        role,
-		IsEnvSuperA: isSuperAdminEmail(tu.Email),
-	}
-	return actor, target, nil
-}
-
-// audit menulis jejak aksi admin atas USER lain (metadata TANPA PII — id saja).
-func (h *Handler) audit(ctx context.Context, actorID int64, action string, targetID int64, meta map[string]string) {
-	h.auditLog(ctx, actorID, action, "user", targetID, meta)
-}
-
-// auditLog menulis satu baris audit dengan target_type eksplisit. Dasar untuk
-// audit() (target_type="user") & event auth (target_type="session"). Error
-// di-log, TAK menggagalkan aksi utama. metadata TANPA PII (id/method saja).
-func (h *Handler) auditLog(ctx context.Context, actorID int64, action, targetType string, targetID int64, meta map[string]string) {
-	raw := []byte("{}")
-	if meta != nil {
-		if b, err := json.Marshal(meta); err == nil {
-			raw = b
-		}
-	}
-	// Audit di tx WithSuper TERPISAH (bukan Scope tx) — fail-soft struktural:
-	// kegagalan tulis jejak TAK mengabort aksi utama (tx berbeda). tenant_id =
-	// tenant aktor (selalu >0; semua user punya tenant), jadi jejak ter-atribusi
-	// ke home-tenant aktor walau aksinya lintas-tenant (platform). Bypass RLS
-	// perlu karena aktor platform menulis audit untuk target di tenant lain.
-	// tenant_id kini NULLABLE (migrasi 00010): FK-nya ON DELETE SET NULL agar
-	// jejak audit selamat saat workspace dipurge — bukti tak boleh lenyap bersama
-	// yang dibuktikan. 0 → NULL, sebab "tenant nol" bukan tenant.
-	tenantID := session.TenantID(ctx)
-	tenantRef := &tenantID
-	if tenantID == 0 {
-		tenantRef = nil
-	}
-	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
-		_, e := q.CreateAuditLog(ctx, db.CreateAuditLogParams{
-			ActorUserID: &actorID,
-			Action:      action,
-			TargetType:  targetType,
-			TargetID:    &targetID,
-			Metadata:    raw,
-			TenantID:    tenantRef,
-		})
-		return e
-	})
-	if err != nil {
-		h.Log.Error("audit log", "action", action, "err", err) // jangan gagalkan aksi utama
-	}
-}
-
-// auditAuth mencatat event autentikasi (login/logout) — actor = user sendiri,
-// target_type = "session". Fail-soft (via auditLog).
-func (h *Handler) auditAuth(ctx context.Context, userID int64, action, method string) {
-	var meta map[string]string
-	if method != "" {
-		meta = map[string]string{"method": method}
-	}
-	h.auditLog(ctx, userID, action, "session", userID, meta)
-}
-
-// toUserRows memetakan db.User → dev.UserRow (view), menandai root env.
-// toUserRows memetakan db.User + membership-nya → dev.UserRow (view). Role kini
-// PER-WORKSPACE: tiap user membawa daftar workspace tempat ia jadi anggota, jadi
-// panel platform bisa mengubah role di workspace mana pun. byUser = hasil
-// ListMembershipsForUsers (satu query batch — hindari N+1, Rule 13).
-func toUserRows(users []db.User, byUser map[int64][]dev.WorkspaceRole) []dev.UserRow {
-	rows := make([]dev.UserRow, 0, len(users))
-	for _, u := range users {
-		avatar := ""
-		if u.AvatarUrl != nil {
-			avatar = *u.AvatarUrl
-		}
-		isRoot := isSuperAdminEmail(u.Email)
-		rows = append(rows, dev.UserRow{
-			ID:         u.ID,
-			Email:      u.Email,
-			Status:     u.Status,
-			AvatarURL:  avatar,
-			IsRoot:     isRoot,
-			Workspaces: byUser[u.ID],
-			// Kuota EFEKTIF + apakah itu hak khusus. Keduanya dioper terpisah agar
-			// panel bisa menampilkan "3 (global)" vs "5 (khusus)": tanpa penanda,
-			// operator tak bisa tahu mana yang akan ikut berubah saat default
-			// global diubah — justru pertanyaan yang membuat halaman ini berguna.
-			Quota:         settings.EffectiveWorkspaceQuota(u.WorkspaceQuota),
-			QuotaOverride: u.WorkspaceQuota != nil,
-		})
-	}
-	return rows
-}
-
-// membershipsByUser menjalankan SATU query batch untuk semua user lalu
-// mengelompokkannya per user_id (hindari N+1). Error → map kosong (fail-soft:
-// tabel tetap tampil, kolom workspace saja yang kosong).
-func (h *Handler) membershipsByUser(ctx context.Context, users []db.User) map[int64][]dev.WorkspaceRole {
-	ids := make([]int64, 0, len(users))
-	for _, u := range users {
-		ids = append(ids, u.ID)
-	}
-	out := make(map[int64][]dev.WorkspaceRole, len(users))
-	if len(ids) == 0 {
-		return out
-	}
-	rows, err := h.q(ctx).ListMembershipsForUsers(ctx, ids)
-	if err != nil {
-		h.Log.Error("dev users: list memberships", "err", err)
-		return out
-	}
-	for _, m := range rows {
-		out[m.UserID] = append(out[m.UserID], dev.WorkspaceRole{
-			TenantID: m.TenantID, Name: m.Name, Role: m.Role,
-		})
-	}
-	return out
+	h.devRowRemoved(w, r, targetID, "User dihapus")
 }
