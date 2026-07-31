@@ -8,6 +8,12 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
 
 - **`make check` adalah gerbang** — jalankan setiap selesai perubahan; harus hijau
   (sqlc · vet · gofmt · build · test) sebelum lapor selesai.
+- **Test jalan `-p 1` (satu paket pada satu waktu) — JANGAN dibuang.** Seluruh
+  test berbagi SATU database, dan `setupTest` di paket handler men-`TRUNCATE`
+  tabel global; paralel = satu paket menghapus data paket lain di tengah jalan.
+  Gejalanya menyesatkan (yang gagal bukan yang menyebabkan, dan hanya
+  kadang-kadang). Kalau kelak terlalu lambat, jawabannya memberi tiap paket DB
+  atau schema sendiri — bukan mengembalikan paralel.
 - Tooling (`sqlc`/`goose`/`air`) di `$(go env GOPATH)/bin`. Makefile memanggilnya
   via **path absolut** (`$(GOBIN)/sqlc`) — GNU Make 3.81 di macOS meng-exec recipe
   tanpa metachar lewat `execvp`, jadi `export PATH` tak terbaca. Jangan ubah balik
@@ -174,8 +180,17 @@ salah membaca cakupan data.
     melakukan apa" (bukti, per-peristiwa). Keduanya tampil sebagai dua tabel
     terpisah di `/dev/logs`. Godaan "biar detail" yang berakhir mencatat tiap
     request melanggar Rule 13 — dan itu justru alasan bucket 15-menit ini ada.
-    **`audit_logs` tumbuh selamanya** — belum ada purge/scheduler (sama seperti
-    `PurgeTenant`). Task terbuka, bukan lupa.
+    **Retensi audit ada di `internal/maintenance`**, bukan lagi task terbuka.
+    `audit_logs` dibersihkan harian sesuai `settings.KeyAuditRetentionDays`
+    (default 365 hari, minimal 30 — sama dengan tenggang workspace terhapus,
+    agar jejak penghapusan tak hilang sebelum workspace-nya sendiri dibuang).
+    Batasnya di DB supaya operator bisa MENAIKKANNYA sebelum sesuatu telanjur
+    hilang; menurunkannya ter-audit, sebab mempersingkat retensi adalah cara
+    paling rapi menghapus jejak. Dua perlakuan berbeda yang SENGAJA: angka di
+    luar batas → tolak & jangan hapus apa pun (niat yang keliru, tak bisa
+    dibatalkan); nilai tak terparse → jatuh ke default & tetap jalan (ketiadaan
+    nilai; menghentikan pemeliharaan karena satu baris rusak membuat tabel
+    tumbuh diam-diam berbulan-bulan).
     **`target_type` menentukan tabel yang di-JOIN saat jejak dibaca**
     (`user`/`session`→users, `workspace`→tenants, `platform`→tak di-JOIN), jadi
     salah menyebutnya bukan label keliru melainkan NAMA ORANG yang keliru: id
@@ -397,8 +412,17 @@ tenggang 30 hari). Ditegakkan di `gateLifecycle` yang dipanggil `Scope`.
   terarsip TETAP dihitung (datanya masih disimpan — arsip bukan celah kuota).
 - **Slug tak dilepas saat terhapus** — kalau dilepas, orang lain bisa mengambilnya
   dan restore jadi mustahil.
-- **Purge belum terjadwal** (tak ada scheduler di single-binary) — `PurgeTenant` +
-  `ListExpiredTenants` tersedia, pemicunya masih manual. Task terbuka, bukan lupa.
+- **Purge kini TERJADWAL** (`internal/maintenance`, dipanggil dari `main.go`).
+  Dulu `PurgeTenant` + `ListExpiredTenants` ada tapi satu-satunya pemanggilnya
+  test, jadi workspace terhapus menumpuk selamanya dan slug-nya tak pernah
+  bebas. Runner-nya IN-PROCESS, bukan cron host: menuntut cron berarti
+  pemeliharaan yang "seharusnya sudah dipasang", yaitu yang tak pernah dipasang.
+  Dikunci `pg_try_advisory_lock` (id 4243, BEDA dari lock migrasi 4242) —
+  `try`, bukan blocking: instance yang kalah lomba harus LEWAT, bukan antre lalu
+  mengulang pekerjaan yang baru selesai. Purge dijalankan SATU PER SATU, bukan
+  DELETE massal: satu baris bermasalah tak boleh menggagalkan pembersihan
+  sisanya. Ditunda 5 menit setelah boot (saat tersibuk) dan berhenti sendiri
+  saat SIGTERM (ctx yang sama dengan shutdown).
 
 - **`h.q(ctx)`, JANGAN `h.DB`** (dihapus). `h.q` ambil `*db.Queries` ber-tenant dari
   middleware `Scope`. Lupa Scope = **panic keras** (bug wiring ketahuan seketika),

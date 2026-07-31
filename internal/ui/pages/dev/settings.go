@@ -22,6 +22,11 @@ type SettingsView struct {
 	Msg          string // pesan sukses
 	Err          string // pesan galat
 
+	// Retensi jejak audit, dalam hari.
+	RetentionDays int
+	RetentionMin  int
+	RetentionMax  int
+
 	// SingleMode = aplikasi masih berjalan sebagai satu aplikasi. Setelah naik ke
 	// multi ini permanen false — form kenaikan diganti keterangan keadaan, sebab
 	// tombol yang tak punya efek lebih buruk daripada tombol yang tak ada.
@@ -44,8 +49,50 @@ func Settings(v SettingsView) g.Node {
 	if v.Msg != "" {
 		body = append(body, ui.Alert(ui.VariantDefault, "settings-msg", g.Text(v.Msg)))
 	}
-	body = append(body, tenancyCard(v), quotaCard(v))
+	body = append(body, tenancyCard(v), quotaCard(v), retentionCard(v))
 	return h.Div(h.Class("grid gap-4 min-w-0"), g.Group(body))
+}
+
+// retentionCard = berapa lama jejak audit disimpan sebelum dibuang otomatis.
+//
+// Disajikan dengan menyebut APA yang hilang, bukan cuma "masa simpan": angka di
+// sini menentukan pertanyaan mana yang masih bisa dijawab tahun depan, dan
+// menurunkannya adalah penghapusan permanen yang tak diberi tahu siapa pun saat
+// benar-benar terjadi (pembersihannya berjalan diam-diam di latar).
+func retentionCard(v SettingsView) g.Node {
+	return h.Div(
+		h.Class("card bg-base-100 border border-base-300 min-w-0"),
+		h.Div(
+			h.Class("card-body min-w-0"),
+			h.H2(h.Class("font-semibold mb-1"), g.Text("Masa Simpan Jejak Aktivitas")),
+			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+				g.Text("Jejak yang lebih tua dari batas ini dihapus permanen oleh "+
+					"pemeliharaan harian. Menaikkannya menyimpan lebih banyak; "+
+					"menurunkannya membuang yang sudah lewat batas baru — dan itu "+
+					"tak bisa dibatalkan.")),
+			h.FormEl(
+				h.Method("post"), h.Action("/dev/settings/retention"),
+				h.Class("flex flex-wrap items-end gap-3 min-w-0"),
+				h.Div(
+					h.Class("grid gap-2"),
+					ui.Label("Hari", h.For("retention-days")),
+					ui.Input(
+						h.ID("retention-days"), h.Name("days"), h.Type("number"),
+						h.Value(strconv.Itoa(v.RetentionDays)),
+						g.Attr("min", strconv.Itoa(v.RetentionMin)),
+						g.Attr("max", strconv.Itoa(v.RetentionMax)),
+						h.Required(),
+						h.Class("input w-32"),
+					),
+				),
+				h.Button(h.Type("submit"), h.Class("btn btn-primary min-h-11"), g.Text("Simpan")),
+			),
+			h.P(h.Class("text-xs text-base-content/60 mt-2"),
+				g.Text("Minimal "+strconv.Itoa(v.RetentionMin)+" hari — sama dengan masa "+
+					"tenggang workspace terhapus, agar jejak penghapusan tak hilang "+
+					"sebelum workspace-nya sendiri benar-benar dibuang.")),
+		),
+	)
 }
 
 // quotaCard = kuota workspace default. Form POST native → 303 (gotcha #16).

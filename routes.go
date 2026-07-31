@@ -120,6 +120,10 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 			r.Use(mw.RequireEnforce("platform:settings", "write"))
 			r.Get("/settings", h.DevSettings)
 			r.Post("/settings/quota", h.DevSettingsQuota)
+			// Masa simpan jejak audit. Gate yang SAMA dengan kuota & mode: ini
+			// keputusan tentang penghapusan permanen yang berlaku bagi seluruh
+			// jejak platform, jadi tak boleh lebih longgar.
+			r.Post("/settings/retention", h.DevSettingsRetention)
 			// Kenaikan mode tenancy: single → multi, SEKALI JALAN (0007). Di-gate
 			// platform:settings yang sama — ini keputusan paling fundamental di
 			// halaman ini, jadi tak boleh lebih longgar dari kuota.

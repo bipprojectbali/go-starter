@@ -219,6 +219,19 @@ type Querier interface {
 	// timestamptz UTC; handler memformatnya ke jam lokal (appTZ) — lebih bersih dari
 	// AT TIME ZONE di SQL (yang bikin sqlc emit interface{}).
 	PresenceUserSpans(ctx context.Context, arg PresenceUserSpansParams) ([]PresenceUserSpansRow, error)
+	// Retensi: buang jejak yang lebih tua dari batas. Dipanggil pemeliharaan
+	// terjadwal, TAK PERNAH di jalur request.
+	//
+	// Tabel ini append-only dan dulu tumbuh selamanya. Selama tak pernah dibaca itu
+	// cuma soal disk; begitu ia jadi halaman yang aktif dibuka, biayanya ikut ke
+	// setiap query. Yang dibayar: peristiwa lebih lama dari batas TAK BISA
+	// diselidiki lagi — karena itu batasnya hidup di platform_settings (bisa
+	// dinaikkan operator sebelum sesuatu telanjur hilang), bukan dipaku di kode.
+	//
+	// Mengembalikan JUMLAH baris terhapus supaya pemeliharaan bisa mencatat apa yang
+	// sebenarnya terjadi: pekerjaan pembersihan yang diam tak bisa dibedakan dari
+	// pekerjaan yang tak pernah jalan.
+	PurgeAuditLogsBefore(ctx context.Context, before pgtype.Timestamptz) (int64, error)
 	// Hapus PERMANEN. memberships/invites/notifications ikut CASCADE (data
 	// operasional); audit_logs TIDAK — FK-nya ON DELETE SET NULL sejak migrasi 00010,
 	// sebab bukti tak boleh lenyap bersama yang dibuktikan (0005 §6).

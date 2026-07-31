@@ -9,6 +9,21 @@ SELECT * FROM audit_logs
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(page_size);
 
+-- name: PurgeAuditLogsBefore :execrows
+-- Retensi: buang jejak yang lebih tua dari batas. Dipanggil pemeliharaan
+-- terjadwal, TAK PERNAH di jalur request.
+--
+-- Tabel ini append-only dan dulu tumbuh selamanya. Selama tak pernah dibaca itu
+-- cuma soal disk; begitu ia jadi halaman yang aktif dibuka, biayanya ikut ke
+-- setiap query. Yang dibayar: peristiwa lebih lama dari batas TAK BISA
+-- diselidiki lagi — karena itu batasnya hidup di platform_settings (bisa
+-- dinaikkan operator sebelum sesuatu telanjur hilang), bukan dipaku di kode.
+--
+-- Mengembalikan JUMLAH baris terhapus supaya pemeliharaan bisa mencatat apa yang
+-- sebenarnya terjadi: pekerjaan pembersihan yang diam tak bisa dibedakan dari
+-- pekerjaan yang tak pernah jalan.
+DELETE FROM audit_logs WHERE created_at < sqlc.arg(before)::timestamptz;
+
 -- name: ListActivityTrail :many
 -- Jejak aktivitas untuk panel /dev/logs: SEMUA aksi, bukan hanya login/logout.
 --

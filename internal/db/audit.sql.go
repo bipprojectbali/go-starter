@@ -306,3 +306,27 @@ func (q *Queries) ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog
 	}
 	return items, nil
 }
+
+const purgeAuditLogsBefore = `-- name: PurgeAuditLogsBefore :execrows
+DELETE FROM audit_logs WHERE created_at < $1::timestamptz
+`
+
+// Retensi: buang jejak yang lebih tua dari batas. Dipanggil pemeliharaan
+// terjadwal, TAK PERNAH di jalur request.
+//
+// Tabel ini append-only dan dulu tumbuh selamanya. Selama tak pernah dibaca itu
+// cuma soal disk; begitu ia jadi halaman yang aktif dibuka, biayanya ikut ke
+// setiap query. Yang dibayar: peristiwa lebih lama dari batas TAK BISA
+// diselidiki lagi — karena itu batasnya hidup di platform_settings (bisa
+// dinaikkan operator sebelum sesuatu telanjur hilang), bukan dipaku di kode.
+//
+// Mengembalikan JUMLAH baris terhapus supaya pemeliharaan bisa mencatat apa yang
+// sebenarnya terjadi: pekerjaan pembersihan yang diam tak bisa dibedakan dari
+// pekerjaan yang tak pernah jalan.
+func (q *Queries) PurgeAuditLogsBefore(ctx context.Context, before pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeAuditLogsBefore, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

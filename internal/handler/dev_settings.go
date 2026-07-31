@@ -36,14 +36,17 @@ func (h *Handler) DevSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	h.renderShell(w, r, "Pengaturan", "go_starter /dev", "/dev/settings", devNav(r.Context()),
 		dev.Settings(dev.SettingsView{
-			SingleMode:   appmode.IsSingle(),
-			PrimaryName:  primaryName,
-			QuotaDefault: settings.WorkspaceQuotaDefault(),
-			QuotaMin:     settings.MinWorkspaceQuota,
-			QuotaMax:     settings.MaxWorkspaceQuota,
-			OverrideN:    int(overrides),
-			Msg:          settingsMsg(r.URL.Query().Get("ok")),
-			Err:          settingsErr(r.URL.Query().Get("err")),
+			SingleMode:    appmode.IsSingle(),
+			PrimaryName:   primaryName,
+			QuotaDefault:  settings.WorkspaceQuotaDefault(),
+			QuotaMin:      settings.MinWorkspaceQuota,
+			QuotaMax:      settings.MaxWorkspaceQuota,
+			OverrideN:     int(overrides),
+			RetentionDays: settings.AuditRetentionDays(),
+			RetentionMin:  settings.MinAuditRetentionDays,
+			RetentionMax:  settings.MaxAuditRetentionDays,
+			Msg:           settingsMsg(r.URL.Query().Get("ok")),
+			Err:           settingsErr(r.URL.Query().Get("err")),
 		}))
 }
 
@@ -123,6 +126,9 @@ func settingsErr(code string) string {
 	case "quota":
 		return "Kuota harus antara " + strconv.Itoa(settings.MinWorkspaceQuota) +
 			" dan " + strconv.Itoa(settings.MaxWorkspaceQuota)
+	case "retention":
+		return "Masa simpan jejak harus antara " + strconv.Itoa(settings.MinAuditRetentionDays) +
+			" dan " + strconv.Itoa(settings.MaxAuditRetentionDays) + " hari"
 	case "confirm":
 		return "Konfirmasi tidak cocok — ketik nama aplikasi persis seperti yang tertulis"
 	case "failed":

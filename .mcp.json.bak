@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "drawio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@drawio/mcp"
+      ],
+      "env": {
+        "DRAWIO_BASE_URL": "https://drawio.wibudev.com"
+      }
+    },
+    "agent-browser": {
+      "command": "agent-browser",
+      "args": [
+        "mcp",
+        "--tools",
+        "all"
+      ],
+      "env": {
+        "AGENT_BROWSER_HEADED": "1"
+      }
+    }
+  }
+}

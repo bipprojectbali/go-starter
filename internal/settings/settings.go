@@ -19,6 +19,11 @@ import (
 // dilacak (pola yang sama dengan key session di internal/session).
 const (
 	KeyWorkspaceQuotaDefault = "workspace_quota_default"
+	// KeyAuditRetentionDays = berapa hari jejak audit disimpan sebelum dibuang.
+	// Hidup di DB, bukan dipaku di kode, justru karena yang dipertaruhkan adalah
+	// BUKTI: operator harus bisa menaikkannya sebelum sesuatu telanjur hilang,
+	// tanpa menunggu rilis.
+	KeyAuditRetentionDays = "audit_retention_days"
 )
 
 // Batas kuota yang masuk akal. Bukan cuma jaga-jaga input: 0 akan mengunci
@@ -28,6 +33,21 @@ const (
 const (
 	MinWorkspaceQuota = 1
 	MaxWorkspaceQuota = 100
+)
+
+// Batas retensi audit, dalam HARI.
+//
+// Minimum 30 bukan angka sembarang: masa tenggang workspace terhapus juga 30
+// hari (0005), jadi retensi yang lebih pendek akan membuang jejak penghapusan
+// SEBELUM workspace-nya sendiri benar-benar hilang — persis periode ketika
+// seseorang paling mungkin bertanya "siapa yang menghapus ini?".
+//
+// Maksimum 3650 (10 tahun) hanya penjaga input; di atas itu praktis sama dengan
+// "simpan selamanya", dan lebih jujur menyebutnya begitu.
+const (
+	MinAuditRetentionDays     = 30
+	MaxAuditRetentionDays     = 3650
+	DefaultAuditRetentionDays = 365
 )
 
 // store = cache in-process. Pengaturan sangat jarang berubah tapi dibaca di tiap
@@ -130,6 +150,18 @@ func EffectiveWorkspaceQuota(userOverride *int32) int {
 		return int(*userOverride)
 	}
 	return WorkspaceQuotaDefault()
+}
+
+// AuditRetentionDays = berapa hari jejak audit disimpan. Berubah seketika saat
+// operator mengubahnya, sama seperti kuota.
+func AuditRetentionDays() int {
+	return Int(KeyAuditRetentionDays, DefaultAuditRetentionDays)
+}
+
+// ValidAuditRetentionDays melaporkan apakah angka masuk akal sebagai retensi.
+// Divalidasi di backend, bukan hanya di form (nilainya user-controlled).
+func ValidAuditRetentionDays(n int) bool {
+	return n >= MinAuditRetentionDays && n <= MaxAuditRetentionDays
 }
 
 // ValidWorkspaceQuota melaporkan apakah angka masuk akal sebagai kuota.

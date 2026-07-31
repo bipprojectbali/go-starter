@@ -23,6 +23,7 @@ import (
 	"go_starter/internal/database"
 	"go_starter/internal/db"
 	"go_starter/internal/handler"
+	"go_starter/internal/maintenance"
 	"go_starter/internal/oauth"
 	"go_starter/internal/session"
 	"go_starter/internal/settings"
@@ -238,6 +239,26 @@ func run() error {
 		WriteTimeout:      0, // 0 = tanpa batas; SSE butuh koneksi panjang
 		IdleTimeout:       60 * time.Second,
 	}
+
+	// Pemeliharaan berkala: buang jejak audit kedaluwarsa & purge workspace yang
+	// masa tenggangnya habis. Keduanya sudah punya fungsinya sejak lama tapi tak
+	// pernah punya PEMICU — jadi audit_logs tumbuh selamanya dan workspace
+	// terhapus menumpuk beserta slug-nya yang tak pernah bebas.
+	//
+	// In-process, sebab ini single-binary: menuntut cron di host berarti
+	// pemeliharaan yang "seharusnya sudah dipasang", yaitu yang tak pernah
+	// dipasang. Antar-instance dikunci advisory lock, jadi yang menang lomba
+	// mengerjakan dan sisanya lewat.
+	//
+	// ctx yang sama dengan sinyal shutdown → berhenti sendiri saat SIGTERM.
+	go (&maintenance.Runner{
+		Log: log,
+		Tasks: []maintenance.Task{
+			{Name: "purge_audit_logs", Run: maintenance.PurgeAuditLogs(pool)},
+			{Name: "purge_expired_tenants", Run: maintenance.PurgeExpiredTenants(
+				pool, handler.GracePeriodDays*24*time.Hour, log)},
+		},
+	}).Start(ctx)
 
 	// Jalankan server di goroutine; error dikirim ke channel.
 	serverErr := make(chan error, 1)
