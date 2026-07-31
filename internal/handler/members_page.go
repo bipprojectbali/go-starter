@@ -16,21 +16,39 @@ import (
 
 // MembersPage — GET /w/{workspace}/members. Daftar anggota + undangan pending.
 //
-// Terbuka untuk SEMUA anggota, dan itu keputusan: tahu siapa saja yang punya
-// akses adalah bagian dari mempercayai ruang bersama — kalau daftarnya
-// disembunyikan, anggota tak bisa tahu siapa yang dapat membaca pekerjaannya.
-// Yang membedakan role bukan AKSES ke halaman ini, melainkan apa yang boleh
-// dilakukan & dilihat di dalamnya (pola 0004: beda role = beda AKSI, bukan beda
-// ALAMAT).
+// HANYA PENGELOLA (owner/admin/platform), di mode single MAUPUN multi. Ini
+// MEMBALIK 0004, yang membuka halaman ini untuk semua anggota dengan alasan
+// "tahu siapa yang punya akses adalah bagian dari mempercayai ruang bersama".
+// Alasan itu benar untuk ruang kerja kecil yang saling kenal, tapi daftar
+// anggota adalah DIREKTORI ORANG: ia mengumpulkan nama, wajah, dan keanggotaan
+// setiap orang di satu tempat yang bisa disalin sekaligus. Yang membutuhkannya
+// untuk bekerja hanyalah yang mengelola keanggotaan; bagi yang lain ia
+// pengetahuan tanpa kegunaan, dan kumpulan PII selalu punya biaya.
 //
-// EMAIL DISAMARKAN bagi yang tak mengelola. Itu satu-satunya PII di halaman ini,
-// dan anggota biasa tak punya alasan operasional untuk alamat lengkap rekannya —
-// sementara pengelola justru membutuhkannya (mengundang, mencocokkan orang).
-// Penyamaran dilakukan DI SINI, bukan di view: dengan begitu email asli tak
-// pernah sampai ke browser yang tak berhak, tempat ia terbaca di source meski
-// tak tampak di layar.
+// Penyamaran email (maskEmail) TETAP ADA di jalur ini walau kini semua penglihat
+// adalah pengelola: aturan tampilan dan aturan akses adalah dua hal berbeda, dan
+// yang satu tak boleh diam-diam bergantung pada yang lain. Kalau kelak halaman
+// ini dibuka lagi untuk sebagian orang, perlindungannya sudah di tempatnya —
+// bukan sesuatu yang harus diingat untuk dipasang kembali.
+//
+// PENANDA ORANG = NAMA, bukan email. Email adalah PII yang bisa dipakai
+// menghubungi & mencoba masuk sebagai orangnya. Bagi pengelola email tetap
+// tampil sebagai baris pendamping: nama TIDAK unik (dua "Budi" itu lumrah, dan
+// nilainya dikendalikan user di Google), jadi yang hendak mengeluarkan atau
+// menaikkan seseorang butuh sesuatu yang benar-benar membedakan.
+//
+// Penyamaran & pemilihan dilakukan DI SINI, bukan di view: dengan begitu email
+// asli tak pernah sampai ke browser yang tak berhak, tempat ia terbaca di
+// view-source meski tak tampak di layar.
 func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// Gerbang di HANDLER, bukan di route: sejak 0004 satu alamat melayani semua
+	// role, dan yang membedakan adalah apa yang boleh dilakukan di dalamnya.
+	// Menu yang disembunyikan bukan pengaman — URL-nya tetap bisa diketik.
+	if !canManageMembers(ctx) {
+		h.renderMembersForbidden(w, r)
+		return
+	}
 	tenantID := session.TenantID(ctx)
 	rows, err := h.q(ctx).ListMembersByTenant(ctx, tenantID)
 	if err != nil {
@@ -48,14 +66,25 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 		if m.AvatarUrl != nil {
 			avatar = *m.AvatarUrl
 		}
+		name := ""
+		if m.Name != nil {
+			name = *m.Name
+		}
 		// Diri sendiri SELALU utuh: menyamarkan email orang dari dirinya sendiri
 		// hanya membuat ia mengira melihat baris orang lain.
 		email := m.Email
 		if !canManage && m.UserID != session.UserID(ctx) {
-			email = maskEmail(email)
+			// Tanpa nama, samaran email adalah SATU-SATUNYA pembeda baris ini —
+			// dikirim. Dengan nama, email tak dikirim sama sekali: yang tak pernah
+			// sampai ke browser tak bisa bocor dari sana.
+			if name != "" {
+				email = ""
+			} else {
+				email = maskEmail(email)
+			}
 		}
 		members = append(members, panel.MemberRow{
-			UserID: m.UserID, Email: email, Role: m.Role,
+			UserID: m.UserID, Email: email, Name: name, Role: m.Role,
 			AvatarURL: avatar, Status: m.Status,
 		})
 	}
@@ -76,4 +105,21 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 		panel.Members(wsPath(slugFromRequest(r), ""), authz.AssignableRoles(appmode.IsSingle()),
 			members, invites, canManage,
 			session.UserID(ctx), wsErrMsg(r.URL.Query().Get("err"))))
+}
+
+// renderMembersForbidden menjawab anggota biasa yang membuka halaman ini lewat
+// URL langsung: 403 + penjelasan, BUKAN 404.
+//
+// Penerimanya sudah terbukti anggota workspace ini (Scope memvalidasinya lebih
+// dulu), jadi menyangkal keberadaan halaman itu tak melindungi apa pun — ia
+// cuma membuat orang mengira ada yang rusak, lalu melaporkannya. Ini keadaan
+// yang sama dengan workspace tersuspensi (0005 §3): kepada yang sah, katakan
+// alasannya. 404 tetap untuk yang BUKAN anggota, dan itu ditangani Scope.
+//
+// Status ditulis SEBELUM merender: renderWorkspaceShell menulis body, dan
+// WriteHeader setelah body tak berpengaruh — halaman penolakan yang terkirim
+// sebagai 200 akan tampak seperti sukses bagi apa pun yang membaca statusnya.
+func (h *Handler) renderMembersForbidden(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusForbidden)
+	h.renderWorkspaceShell(w, r, "Anggota", "/members", panel.MembersForbidden())
 }

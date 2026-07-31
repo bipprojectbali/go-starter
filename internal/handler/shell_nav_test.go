@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"go_starter/internal/appmode"
 	"go_starter/internal/session"
 	"go_starter/internal/ui"
 )
@@ -56,6 +57,35 @@ func TestNavFor_PengaturanIkutIzin(t *testing.T) {
 	}
 	if !has(navFor(ctxWithRole(t, "owner")), "/settings") {
 		t.Error("owner harus melihat menu Pengaturan")
+	}
+}
+
+// TestNavFor_AnggotaIkutIzin: menu "Anggota" mengikuti izin yang SAMA dengan
+// gerbang halamannya (canManageMembers). Menu yang tampil lalu ditolak 403
+// adalah menu hantu — dan di sini ia lebih buruk daripada sekadar mengganggu:
+// ia menjanjikan direktori orang yang memang sengaja tak dibuka untuk member.
+func TestNavFor_AnggotaIkutIzin(t *testing.T) {
+	has := func(nav []ui.NavItem, sub string) bool {
+		for _, it := range nav {
+			if strings.HasSuffix(it.Href, sub) {
+				return true
+			}
+		}
+		return false
+	}
+	// Berlaku di KEDUA mode: pembatasan ini soal siapa yang mengelola
+	// keanggotaan, bukan soal bentuk aplikasinya.
+	for _, mode := range []appmode.Mode{appmode.Single, appmode.Multi} {
+		withMode(t, mode, func() {
+			if has(navFor(ctxWithRole(t, "member")), "/members") {
+				t.Errorf("mode %v: member tak boleh melihat menu Anggota", mode)
+			}
+			for _, role := range []string{"admin", "owner"} {
+				if !has(navFor(ctxWithRole(t, role)), "/members") {
+					t.Errorf("mode %v: %s harus melihat menu Anggota — ia yang mengelola", mode, role)
+				}
+			}
+		})
 	}
 }
 

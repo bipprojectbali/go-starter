@@ -68,15 +68,25 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 }
 
 // workspaceNav membangun menu sidebar ruang kerja. Semua href bergantung SLUG
-// (0004) → menu tak bisa lagi jadi var paket. canManage memangkas entri yang
-// tak berguna bagi member (Pengaturan = 403 baginya): menampilkan pintu yang
-// pasti tertutup itu menyesatkan, bukan informatif.
-func workspaceNav(slug string, canManage bool) []ui.NavItem {
+// (0004) → menu tak bisa lagi jadi var paket. Entri yang pasti ditolak dipangkas:
+// menampilkan pintu yang tertutup itu menyesatkan, bukan informatif.
+//
+// DUA izin, bukan satu, dan keduanya WAJIB berasal dari fungsi yang sama dengan
+// yang menjaga halamannya (canManageMembers / canEditWorkspace). Keduanya TIDAK
+// identik — di mode single, admin boleh menyunting workspace tapi aturan
+// keanggotaan tetap dinilai terpisah — jadi menyatukannya jadi satu `canManage`
+// akan membuat salah satu menu berbohong begitu aturannya bergeser.
+func workspaceNav(slug string, canMembers, canSettings bool) []ui.NavItem {
 	items := []ui.NavItem{
 		{Label: "Beranda", Href: wsPath(slug, ""), Icon: lucide.House(html.Class("size-4"))},
-		{Label: "Anggota", Href: wsPath(slug, "/members"), Icon: lucide.Users(html.Class("size-4"))},
 	}
-	if canManage {
+	if canMembers {
+		items = append(items, ui.NavItem{
+			Label: "Anggota", Href: wsPath(slug, "/members"),
+			Icon: lucide.Users(html.Class("size-4")),
+		})
+	}
+	if canSettings {
 		items = append(items, ui.NavItem{
 			Label: "Pengaturan", Href: wsPath(slug, "/settings"),
 			Icon: lucide.Building2(html.Class("size-4")),
@@ -143,7 +153,7 @@ func quickLinksFor(ctx context.Context) []ui.NavItem {
 func (h *Handler) renderWorkspaceShell(w http.ResponseWriter, r *http.Request, title, sub string, body g.Node) {
 	ctx := r.Context()
 	slug := slugFromRequest(r)
-	nav := workspaceNav(slug, canEditWorkspace(ctx))
+	nav := workspaceNav(slug, canManageMembers(ctx), canEditWorkspace(ctx))
 	h.renderShell(w, r, title, session.TenantName(ctx), wsPath(slug, sub), nav, body)
 }
 

@@ -10,9 +10,17 @@ import (
 )
 
 // MemberRow = satu anggota workspace (view).
+//
+// Email & Name sudah DIPUTUSKAN handler, bukan dipilih di sini: siapa berhak
+// melihat apa adalah kebijakan privasi, dan view yang ikut memutuskannya berarti
+// alamat asli tetap harus dikirim ke sini — tempat satu pemakaian yang lupa
+// menyamarkan akan mengirimnya ke browser. Keduanya BOLEH kosong:
+// Name kosong = orangnya tak punya nama tersimpan; Email kosong = penglihatnya
+// tak berhak melihatnya sama sekali.
 type MemberRow struct {
 	UserID    int64
 	Email     string
+	Name      string
 	Role      string
 	AvatarURL string
 	Status    string
@@ -57,6 +65,24 @@ func Members(base string, roles []string, members []MemberRow, invites []InviteR
 	return h.Div(h.Class("grid gap-4 min-w-0"), g.Group(body))
 }
 
+// MembersForbidden = halaman penolakan bagi anggota biasa yang membuka daftar
+// anggota lewat URL langsung.
+//
+// Menyebut SIAPA yang bisa membantu, bukan sekadar "akses ditolak": orang yang
+// membaca ini tak bisa berbuat apa-apa dengan penolakan telanjang, dan
+// pertanyaan berikutnya di kepalanya selalu "lalu saya harus bagaimana".
+func MembersForbidden() g.Node {
+	return h.Div(
+		h.Class("grid gap-4 min-w-0 max-w-xl mx-auto py-8"),
+		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Anggota Workspace")),
+		h.P(h.Class("text-base-content/70"),
+			g.Text("Daftar anggota hanya bisa dibuka oleh owner & admin workspace.")),
+		h.P(h.Class("text-sm text-base-content/60"),
+			g.Text("Hubungi mereka bila Anda perlu mengundang seseorang atau "+
+				"mengubah akses.")),
+	)
+}
+
 // memberList = tabel anggota. Tabel dibungkus ui.TableScroll agar scroll-nya
 // terkurung, tak mendorong lebar halaman di mobile (konvensi mobile-first).
 func memberList(base string, roles []string, members []MemberRow, canManage bool, selfID int64) g.Node {
@@ -69,19 +95,22 @@ func memberList(base string, roles []string, members []MemberRow, canManage bool
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-2"), g.Text("Anggota")),
-			// Penyamaran WAJIB dijelaskan. Tanpa keterangan ini, "mal•••@gmail.com"
-			// terbaca seperti data rusak — dan orang akan melaporkannya sebagai bug
-			// alih-alih memahaminya sebagai perlindungan.
+			// Ketiadaan email WAJIB dijelaskan. Tanpa keterangan ini, baris tanpa
+			// alamat (atau "mal•••@gmail.com" bagi yang tak punya nama) terbaca
+			// seperti data rusak — dan orang akan melaporkannya sebagai bug alih-alih
+			// memahaminya sebagai perlindungan.
 			g.If(!canManage, h.P(
 				h.Class("text-xs text-base-content/60 mb-2"),
-				g.Text("Alamat email rekan disamarkan. Hanya owner & admin workspace "+
-					"yang melihatnya utuh."),
+				g.Text("Alamat email rekan disembunyikan. Hanya owner & admin "+
+					"workspace yang melihatnya."),
 			)),
 			ui.TableScroll(h.Table(
 				h.Class("w-full text-sm"),
 				h.THead(h.Tr(
 					h.Class("border-b border-base-300 text-left text-base-content/70"),
-					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Email")),
+					// "Anggota", bukan "Email": kolomnya kini berisi nama orang, dan
+					// bagi anggota biasa email tak muncul di sana sama sekali.
+					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Anggota")),
 					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Role")),
 					h.Th(h.Class("py-2 font-medium"), g.Text("")),
 				)),
@@ -117,11 +146,36 @@ func memberRow(base string, roles []string, m MemberRow, canManage bool, selfID 
 		h.Class("border-b border-base-300/50"),
 		h.Td(h.Class("py-2 pr-4"), h.Div(
 			h.Class("flex items-center gap-2 min-w-0"),
-			ui.Avatar(m.AvatarURL, "", m.Email, 32),
-			h.Span(h.Class("truncate"), g.Text(m.Email)),
+			ui.Avatar(m.AvatarURL, m.Name, m.Email, 32),
+			memberIdent(m),
 		)),
 		h.Td(h.Class("py-2 pr-4"), roleCell),
 		h.Td(h.Class("py-2"), action),
+	)
+}
+
+// memberIdent merender penanda orang: nama sebagai baris utama, email sebagai
+// baris pendamping yang lebih kecil.
+//
+// Keduanya bisa kosong, dan itu bukan kasus tepi yang jarang: akun password dev
+// tak punya nama, sementara anggota biasa tak menerima email rekannya sama
+// sekali. Jadi bentuknya diturunkan dari apa yang ADA, bukan dari satu tata
+// letak yang mengasumsikan keduanya hadir — dua baris hanya bila memang ada dua
+// hal untuk ditampilkan, agar tak ada baris kosong yang menggantung.
+//
+// `truncate` + `min-w-0` di keduanya: nama & email sama-sama bisa panjang, dan
+// tanpa ini ia mendorong lebar tabel di mobile (konvensi mobile-first).
+func memberIdent(m MemberRow) g.Node {
+	switch {
+	case m.Name == "":
+		return h.Span(h.Class("truncate"), g.Text(m.Email))
+	case m.Email == "":
+		return h.Span(h.Class("truncate"), g.Text(m.Name))
+	}
+	return h.Div(
+		h.Class("min-w-0"),
+		h.Div(h.Class("truncate"), g.Text(m.Name)),
+		h.Div(h.Class("truncate text-xs text-base-content/60"), g.Text(m.Email)),
 	)
 }
 
