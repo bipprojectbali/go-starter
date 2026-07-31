@@ -1,4 +1,4 @@
-.PHONY: help setup tools tailwind dev check build run clean migrate-new migrate-up test css rename
+.PHONY: help setup tools tailwind dev check build run clean migrate-new migrate-up test css rename doctor
 
 # `make` polos (tanpa target) → tampilkan daftar perintah, BUKAN jalankan setup
 # (yang men-download Tailwind 76MB). Default goal wajib sebelum target apa pun.
@@ -107,6 +107,15 @@ build: css
 ## run: build lalu jalankan
 run: build
 	./$(BINARY)
+
+## doctor: periksa lingkungan (.env, Postgres, Redis, database, nama project)
+##
+## Melaporkan SEMUA yang kurang sekaligus beserta perintah perbaikannya — bukan
+## berhenti di masalah pertama, sebab yang ingin diketahui adalah "apa saja yang
+## kurang", dan menemukannya satu per satu berarti menjalankan perintah yang sama
+## berkali-kali. Memakai pemeriksaan yang SAMA dengan jalur boot.
+doctor:
+	@go run . doctor
 
 ## rename: ganti nama project setelah clone (make rename name=nama-baru)
 ##

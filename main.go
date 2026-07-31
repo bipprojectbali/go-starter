@@ -25,6 +25,7 @@ import (
 	"go_starter/internal/handler"
 	"go_starter/internal/maintenance"
 	"go_starter/internal/oauth"
+	"go_starter/internal/preflight"
 	"go_starter/internal/session"
 	"go_starter/internal/settings"
 
@@ -51,6 +52,8 @@ func main() {
 				os.Exit(1)
 			}
 			os.Exit(0)
+		case "doctor":
+			os.Exit(runDoctor())
 		default:
 			slog.Error("unknown subcommand", "arg", os.Args[1])
 			os.Exit(2)
@@ -91,9 +94,23 @@ func runMigrate() error {
 	return nil
 }
 
-func run() error {
+func run() (err error) {
 	// Config (dev: muat .env dulu bila ada).
 	_ = config.LoadDotEnv(".env")
+
+	// config.MustLoad PANIC untuk env yang salah/kurang — sengaja (§ "gagal
+	// keras"), dan pesannya sudah menjelaskan sebabnya. Yang tak berguna adalah
+	// BENTUKNYA: stack trace lima baris mengubur satu kalimat yang justru harus
+	// dibaca, dan orang berhenti membacanya setelah kali kedua.
+	//
+	// Ditangkap di sini lalu dijadikan error biasa — nilainya tetap sama (boot
+	// gagal, tak ada yang berjalan setengah), tapi yang tampil di terminal adalah
+	// kalimatnya, bukan jejak goroutine.
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("%v\n\nJalankan `make doctor` untuk memeriksa seluruh lingkungan sekaligus", r)
+		}
+	}()
 	cfg := config.MustLoad()
 
 	log := newLogger(cfg)
@@ -102,6 +119,26 @@ func run() error {
 	// ctx dibatalkan saat SIGINT/SIGTERM → memicu graceful shutdown.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Preflight: periksa lingkungan SEBELUM menyentuh apa pun, dan kalau ada yang
+	// kurang, katakan apa yang harus dilakukan.
+	//
+	// Tanpa ini boot gagal dengan `database "x" does not exist (SQLSTATE 3D000)` —
+	// benar secara harfiah, tapi menyembunyikan yang justru dibutuhkan
+	// penerimanya: database mirip mana yang ADA di server itu (salah ketik nyaris
+	// selalu beda tipis), dan perintah persis untuk membereskannya.
+	//
+	// AutoCreateDB HANYA di dev. Di production, membuat database yang belum ada
+	// mengubah DSN salah ketik jadi database kosong yang tampak sehat — aplikasi
+	// mulai melayani seolah datanya hilang. Itu kegagalan senyap, dan § "gagal
+	// keras" ada justru untuk menolaknya.
+	if rep := preflight.Run(ctx, preflight.Opts{
+		DatabaseURL:  cfg.DatabaseURL,
+		RedisAddr:    cfg.RedisAddr,
+		AutoCreateDB: !cfg.IsProduction(),
+	}); !rep.OK() {
+		return errors.New(rep.String())
+	}
 
 	// Postgres — SATU pool, satu DSN. Koneksi terbuka sebagai owner (migrasi butuh
 	// ALTER/CREATE POLICY), lalu setiap transaksi aplikasi menurunkan haknya ke

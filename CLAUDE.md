@@ -547,6 +547,21 @@ Prinsipnya: **yang berbahaya bila salah harus menggagalkan boot; yang bisa
 diturunkan otomatis jangan diminta ke manusia.** Warning di log adalah hal yang
 paling sering diabaikan — ia bukan pengaman.
 
+- **Kalau harus gagal, gagallah dengan PETUNJUK** (`internal/preflight`, dipanggil
+  di awal `run()` dan oleh `make doctor` — sumber yang SAMA; doctor yang
+  memeriksa hal berbeda dari yang menggagalkan boot berubah jadi jebakan).
+  `database "x" does not exist` benar secara harfiah tapi menyembunyikan yang
+  dibutuhkan: nama yang dicari, database MIRIP yang ada di server itu (salah
+  ketik nyaris selalu beda tipis — `-` vs `_`, `_test` tertinggal, nama sebelum
+  `make rename`), dan perintah persis untuk membereskannya. Tiap `Problem` WAJIB
+  punya `Fix` — "periksa konfigurasi Anda" bukan petunjuk. Semua masalah
+  dikumpulkan sekaligus, tak berhenti di yang pertama.
+- **Database dibuat otomatis HANYA di dev** (`AutoCreateDB: !cfg.IsProduction()`).
+  Di production ini mengubah DSN salah ketik jadi database KOSONG yang tampak
+  sehat — aplikasi melayani seolah datanya hilang. `make doctor` pun tak pernah
+  membuatnya: alat diagnosis yang diam-diam mengubah keadaan tak bisa lagi
+  dipakai menjawab "apa yang sebenarnya terjadi di sini?".
+
 - **Isolasi tenant DIBUKTIKAN, bukan dijanjikan** (`db.CheckRLSTx`, dipanggil
   `verifyTenantIsolation` di `main.go`). Diperiksa DI DALAM `WithSuper` — yaitu
   pada transaksi yang sudah menurunkan haknya, persis keadaan setiap query

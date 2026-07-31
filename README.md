@@ -45,7 +45,10 @@ cp .env.example .env
 # 4. Buat database dev & test
 createdb nama-project-anda && createdb nama-project-anda_test
 
-# 5. Jalankan (live-reload; migrasi auto saat boot)
+# 5. Periksa lingkungan — melaporkan SEMUA yang kurang sekaligus
+make doctor
+
+# 6. Jalankan (live-reload; migrasi auto saat boot)
 make dev
 ```
 
@@ -127,6 +130,7 @@ butuh source/tooling yang tak ada di build single-binary.
 
 | Perintah | Aksi |
 |----------|------|
+| `make doctor` | periksa lingkungan (.env, Postgres, Redis, database, nama project) |
 | `make rename name=X` | ganti nama project setelah clone (module path, import, DB contoh) |
 | `make setup` | install tooling + unduh aset vendored |
 | `make dev` | live-reload (air): regenerate CSS → sqlc → build → run |
