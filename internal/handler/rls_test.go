@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 
 	"go_starter/internal/db"
@@ -32,14 +31,14 @@ import (
 // TEST_DATABASE_URL kosong atau role app_rw tak ada (migrasi belum jalan).
 func rlsPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	if pkgPool == nil {
 		t.Skip("TEST_DATABASE_URL tidak di-set; lewati test RLS")
 	}
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		t.Fatalf("parse dsn: %v", err)
-	}
+	// Config DITURUNKAN dari pool paket, bukan dari DSN mentah: di sanalah
+	// search_path ke schema milik paket ini tersimpan. Membangun ulang dari DSN
+	// akan menunjuk `public`, tempat tabelnya tak ada — dan gagalnya berbunyi
+	// "relation does not exist", yang terbaca seperti migrasi belum jalan.
+	cfg := pkgPool.Config().Copy()
 	// SET ROLE app_rw menonaktifkan bypassrls superuser koneksi → RLS aktif.
 	// Transaction-local GUC (WithTenant/WithSuper) tetap berlaku di atas role ini.
 	cfg.AfterConnect = func(ctx context.Context, c *pgx.Conn) error {
@@ -65,12 +64,9 @@ func rlsPool(t *testing.T) *pgxpool.Pool {
 // seed tak terhalang RLS. Mengembalikan (idA, idB).
 func seedTwoTenants(t *testing.T) (int64, int64) {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	ownerPool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("owner pool: %v", err)
-	}
-	defer ownerPool.Close()
+	// Pool paket (owner, bypass RLS) — schema-nya sudah benar dan tak perlu
+	// dibuka/ditutup lagi di sini.
+	ownerPool := pkgPool
 	ctx := context.Background()
 	if _, err := ownerPool.Exec(ctx,
 		"TRUNCATE activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {

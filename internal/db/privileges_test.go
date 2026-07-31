@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 
@@ -22,18 +21,13 @@ import (
 // Kalau salah satunya rusak, penurunan hak berubah dari pengaman menjadi
 // dekorasi — dan itu tak akan terlihat dari perilaku aplikasi.
 
+// testPool = pool ber-schema milik paket ini (lihat main_test.go).
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	if pkgPool == nil {
 		t.Skip("TEST_DATABASE_URL tidak di-set")
 	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pkgPool
 }
 
 // TestWithTenant_MenurunkanHak: INTI perubahan. Koneksi dibuka sebagai owner

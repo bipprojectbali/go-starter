@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/alexedwards/scs/v2"
 	"github.com/alexedwards/scs/v2/memstore"
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // testEnv menampung Handler + session manager untuk test. q = Queries pool-bound
@@ -37,20 +35,23 @@ type testEnv struct {
 // default (role tertinggi tenant) agar test aksi admin punya otoritas.
 func setupTest(t *testing.T) (*testEnv, int64) {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	if pkgPool == nil {
 		t.Skip("TEST_DATABASE_URL tidak di-set; lewati test yang butuh DB")
 	}
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	t.Cleanup(pool.Close)
+	// Pool milik PAKET ini (schema sendiri, lihat main_test.go) — tak dibuka &
+	// ditutup per test: membuat schema + migrasi butuh ~1 detik, dan
+	// mengulanginya ratusan kali menukar satu masalah kecepatan dengan yang
+	// lebih besar.
+	pool := pkgPool
 
 	q := db.New(pool)
 	// memberships, invites & notifications ikut dibersihkan. RESTART IDENTITY agar
 	// id deterministik.
+	//
+	// TRUNCATE kini AMAN dijalankan paralel dengan paket lain: tabel-tabel ini
+	// hidup di schema milik paket handler saja (search_path pool), jadi tak ada
+	// data paket lain yang bisa tersentuh.
 	if _, err := pool.Exec(ctx, "TRUNCATE notifications, activity_presence, audit_logs, oauth_accounts, invites, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}

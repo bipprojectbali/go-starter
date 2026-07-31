@@ -2,11 +2,8 @@ package db
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // rlscheck_test.go — pemeriksaan berbasis BUKTI menggantikan janji "env sudah
@@ -85,16 +82,8 @@ func TestReason_MenyebutRole(t *testing.T) {
 // jawaban yang diharapkan adalah "TIDAK mengikat" — dan itu justru membuktikan
 // pemeriksaannya jujur.
 func TestCheckRLS_TerhadapDatabaseNyata(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL tidak di-set")
-	}
+	pool := testPool(t)
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
 
 	st, err := CheckRLS(ctx, pool, "audit_logs")
 	if err != nil {
@@ -116,16 +105,8 @@ func TestCheckRLS_TerhadapDatabaseNyata(t *testing.T) {
 // TestCheckRLS_TabelTakAda: salah nama tabel harus jadi error yang terlihat,
 // bukan diam-diam dianggap aman.
 func TestCheckRLS_TabelTakAda(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("TEST_DATABASE_URL tidak di-set")
-	}
+	pool := testPool(t)
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
 
 	if _, err := CheckRLS(ctx, pool, "tabel_yang_tak_pernah_ada"); err == nil {
 		t.Error("tabel probe tak ditemukan harus jadi error, bukan lolos senyap")

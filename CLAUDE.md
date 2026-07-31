@@ -8,12 +8,18 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
 
 - **`make check` adalah gerbang** — jalankan setiap selesai perubahan; harus hijau
   (sqlc · vet · gofmt · build · test) sebelum lapor selesai.
-- **Test jalan `-p 1` (satu paket pada satu waktu) — JANGAN dibuang.** Seluruh
-  test berbagi SATU database, dan `setupTest` di paket handler men-`TRUNCATE`
-  tabel global; paralel = satu paket menghapus data paket lain di tengah jalan.
-  Gejalanya menyesatkan (yang gagal bukan yang menyebabkan, dan hanya
-  kadang-kadang). Kalau kelak terlalu lambat, jawabannya memberi tiap paket DB
-  atau schema sendiri — bukan mengembalikan paralel.
+- **Tiap paket test punya SCHEMA Postgres sendiri** (`internal/testdb`), jadi
+  `go test ./...` boleh paralel. Paket yang butuh DB wajib punya `TestMain` yang
+  memanggil `testdb.Pool(ctx, "<nama>")` + `testdb.Drop`; test mengambil pool
+  dari variabel paket (`pkgPool`), TIDAK membuka `pgxpool.New` sendiri — pool
+  yang dibangun dari DSN mentah menunjuk `public`, tempat tabelnya tak ada.
+  **`search_path` sengaja TANPA `public`**: goose mencari tabel versinya lewat
+  search_path, dan dengan `public` di sana ia menemukan `goose_db_version`
+  database utama, membacanya sebagai "sudah versi terakhir", lalu tak
+  menjalankan apa pun — schema baru tetap KOSONG dan gagalnya menunjuk ke
+  mana-mana kecuali penyebabnya. Migrasi `00004` memberi GRANT `app_rw` ke
+  `current_schema()` (bukan `public` harfiah, seperti `00001`) supaya RLS tetap
+  mengikat di schema mana pun.
 - Tooling (`sqlc`/`goose`/`air`) di `$(go env GOPATH)/bin`. Makefile memanggilnya
   via **path absolut** (`$(GOBIN)/sqlc`) — GNU Make 3.81 di macOS meng-exec recipe
   tanpa metachar lewat `execvp`, jadi `export PATH` tak terbaca. Jangan ubah balik

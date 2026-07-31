@@ -58,15 +58,9 @@ tailwind:
 css:
 	./tailwindcss -i static/input.css -o static/app.css --minify
 
-# `-p 1` = satu paket pada satu waktu. WAJIB: seluruh test berbagi SATU database
-# (TEST_DATABASE_URL), dan setup paket handler men-TRUNCATE tabel global —
-# menjalankannya paralel berarti satu paket menghapus data paket lain di tengah
-# jalan. Gejalanya menyesatkan: test yang gagal bukan yang menyebabkannya, dan
-# hanya gagal kadang-kadang.
-#
-# Kalau kelak test jadi lambat, jawabannya BUKAN membuang -p 1 melainkan memberi
-# tiap paket database sendiri (mis. TEST_DATABASE_URL per-paket, atau schema
-# terpisah per paket).
+# Test berjalan PARALEL lagi: tiap paket punya schema Postgres sendiri
+# (internal/testdb), jadi TRUNCATE & purge di satu paket tak menyentuh yang lain.
+# Sebelumnya semuanya berbagi `public` dan harus dijalankan `-p 1`.
 
 ## check: WAJIB hijau setelah tiap perubahan
 check:
@@ -74,11 +68,11 @@ check:
 	go vet ./...
 	gofmt -l $$(find . -name '*.go' -not -path './internal/db/*')
 	go build -o /tmp/$(BINARY)-check .
-	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test -p 1 ./...
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./...
 
 ## test: hanya test (butuh TEST_DATABASE_URL + test DB termigrate)
 test:
-	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test -p 1 ./...
+	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./...
 
 ## dev: live reload
 dev:

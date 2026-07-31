@@ -1,9 +1,6 @@
 package maintenance
 
 import (
-	"context"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -18,70 +15,43 @@ import (
 // menghasilkan error, tak menghasilkan halaman rusak, dan tak bisa dibatalkan —
 // ia hanya membuat data hilang lebih cepat daripada yang diputuskan siapa pun.
 
-// testPool membuka pool ke DB test.
+// testPool mengembalikan pool ber-schema milik paket ini (lihat main_test.go)
+// dan mengosongkan tabel yang disentuh pemeliharaan.
 //
-// SENGAJA TIDAK men-TRUNCATE. `go test ./...` menjalankan paket secara PARALEL
-// di atas satu database, jadi membersihkan tabel global di sini menghapus data
-// yang sedang dipakai paket lain — kegagalan yang muncul di test tak
-// berhubungan, hanya saat dijalankan bersamaan, dan menuduh kode yang salah.
-//
-// Gantinya, tiap test menandai barisnya sendiri (lihat mark) dan hanya
-// menghitung miliknya. Yang dipurge pun tak mengganggu paket lain: baris mereka
-// selalu dibuat dengan created_at = sekarang, jauh di dalam batas retensi mana
-// pun yang diuji di sini.
+// TRUNCATE di sini AMAN dijalankan paralel dengan paket lain: tabelnya hidup di
+// schema milik paket maintenance saja. Sebelum ada schema terpisah, test-test di
+// file ini harus menandai tiap barisnya sendiri agar tak salah hitung — akal
+// bulus yang tak pernah benar-benar cukup, sebab purge menghapus berdasarkan
+// UMUR dan tak peduli tanda siapa pun.
 func testPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	if pkgPool == nil {
 		t.Skip("TEST_DATABASE_URL tidak di-set; lewati test yang butuh DB")
 	}
-	pool, err := pgxpool.New(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
+	if _, err := pkgPool.Exec(t.Context(),
+		"TRUNCATE audit_logs, memberships, users, tenants RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("truncate: %v", err)
 	}
-	t.Cleanup(pool.Close)
-	return pool
+	return pkgPool
 }
 
-// mark = penanda unik per test, ditanam di metadata agar barisnya bisa dihitung
-// terpisah dari milik test/paket lain yang berjalan bersamaan.
-func mark(t *testing.T) string { return "uji:" + t.Name() }
-
-// seedAudit menyisipkan satu jejak dengan created_at eksplisit, bertanda test
-// pemanggilnya.
+// seedAudit menyisipkan satu jejak dengan created_at eksplisit.
 func seedAudit(t *testing.T, pool *pgxpool.Pool, action string, at time.Time) {
 	t.Helper()
 	if _, err := pool.Exec(t.Context(),
 		`INSERT INTO audit_logs (action, target_type, metadata, created_at)
-		 VALUES ($1, 'platform', jsonb_build_object('mark', $2::text), $3)`,
-		action, mark(t), at); err != nil {
+		 VALUES ($1, 'platform', '{}'::jsonb, $2)`, action, at); err != nil {
 		t.Fatalf("seed audit: %v", err)
 	}
-	// Sisa baris dibersihkan setelah test — yang dipurge memang sudah hilang,
-	// yang selamat tak boleh menumpuk di DB bersama.
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.WithoutCancel(t.Context()),
-			`DELETE FROM audit_logs WHERE metadata->>'mark' = $1`, mark(t))
-	})
 }
 
-// countAudit menghitung HANYA baris milik test ini.
 func countAudit(t *testing.T, pool *pgxpool.Pool) int64 {
 	t.Helper()
 	var n int64
-	if err := pool.QueryRow(t.Context(),
-		`SELECT count(*) FROM audit_logs WHERE metadata->>'mark' = $1`, mark(t)).Scan(&n); err != nil {
+	if err := pool.QueryRow(t.Context(), "SELECT count(*) FROM audit_logs").Scan(&n); err != nil {
 		t.Fatalf("hitung audit: %v", err)
 	}
 	return n
-}
-
-// countPurgedOwn menghitung berapa baris MILIK TEST INI yang hilang — dipakai
-// alih-alih nilai balik purge, yang ikut menghitung baris paket lain bila
-// kebetulan ada yang kedaluwarsa saat test berjalan.
-func countPurgedOwn(t *testing.T, pool *pgxpool.Pool, sebelum int64) int64 {
-	t.Helper()
-	return sebelum - countAudit(t, pool)
 }
 
 // withRetention menyetel batas retensi untuk satu test lalu memulihkannya —
@@ -110,10 +80,8 @@ func TestPurgeAudit_HanyaYangLewatBatas(t *testing.T) {
 	if _, err := PurgeAuditLogs(pool)(t.Context()); err != nil {
 		t.Fatalf("purge: %v", err)
 	}
-	// Dihitung dari baris MILIK test ini, bukan dari nilai balik purge: yang
-	// terakhir ikut menghitung baris paket lain yang kebetulan kedaluwarsa.
-	if hilang := countPurgedOwn(t, pool, 4); hilang != 2 {
-		t.Errorf("harus menghapus 2 baris lewat batas, got %d", hilang)
+	if sisa := countAudit(t, pool); sisa != 2 {
+		t.Errorf("harus menyisakan 2 baris di dalam batas, got %d", sisa)
 	}
 	if sisa := countAudit(t, pool); sisa != 2 {
 		t.Errorf("jejak di dalam batas harus SELAMAT, sisa %d (want 2)", sisa)
@@ -164,12 +132,9 @@ func TestPurgeAudit_NilaiRusakJatuhKeDefault(t *testing.T) {
 	if _, err := PurgeAuditLogs(pool)(t.Context()); err != nil {
 		t.Fatalf("nilai rusak harus jatuh ke default, bukan menghentikan pemeliharaan: %v", err)
 	}
-	if hilang := countPurgedOwn(t, pool, 2); hilang != 1 {
-		t.Errorf("harus memakai default %d hari dan menghapus 1 baris, got %d",
-			settings.DefaultAuditRetentionDays, hilang)
-	}
-	if countAudit(t, pool) != 1 {
-		t.Error("jejak di dalam batas default harus selamat")
+	if sisa := countAudit(t, pool); sisa != 1 {
+		t.Errorf("harus memakai default %d hari dan menyisakan 1 baris, got %d",
+			settings.DefaultAuditRetentionDays, sisa)
 	}
 }
 
@@ -195,19 +160,13 @@ func TestPurgeAudit_TakAdaYangLewatBatas(t *testing.T) {
 // tertentu, dan mengembalikan id-nya.
 func seedDeletedTenant(t *testing.T, pool *pgxpool.Pool, slug string, deletedAt time.Time) int64 {
 	t.Helper()
-	// Slug dibuat unik per test: DB test dipakai bersama paket lain yang jalan
-	// paralel, dan slug punya unique index.
-	uniq := slug + "-" + strings.ToLower(strings.ReplaceAll(t.Name(), "_", "-"))
 	var id int64
 	err := pool.QueryRow(t.Context(),
 		`INSERT INTO tenants (name, slug, status, deleted_at)
-		 VALUES ($1, $2, 'active', $3) RETURNING id`, slug, uniq, deletedAt).Scan(&id)
+		 VALUES ($1, $2, 'active', $3) RETURNING id`, slug, slug, deletedAt).Scan(&id)
 	if err != nil {
 		t.Fatalf("seed tenant: %v", err)
 	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.WithoutCancel(t.Context()), "DELETE FROM tenants WHERE id = $1", id)
-	})
 	return id
 }
 
@@ -233,8 +192,12 @@ func TestPurgeTenant_HanyaYangHabisTenggang(t *testing.T) {
 	habis := seedDeletedTenant(t, pool, "habis", now.AddDate(0, 0, -31))
 	masih := seedDeletedTenant(t, pool, "masih", now.AddDate(0, 0, -29))
 
-	if _, err := PurgeExpiredTenants(pool, grace, quietLog())(t.Context()); err != nil {
+	n, err := PurgeExpiredTenants(pool, grace, quietLog())(t.Context())
+	if err != nil {
 		t.Fatalf("purge tenant: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("harus purge tepat 1 workspace, got %d", n)
 	}
 	if tenantExists(t, pool, habis) {
 		t.Error("workspace yang habis tenggang harus terhapus permanen")
@@ -275,14 +238,9 @@ func TestPurgeTenant_JejakAuditSelamat(t *testing.T) {
 	// membuat test ini gagal karena sebab yang sama sekali berbeda.
 	if _, err := pool.Exec(t.Context(),
 		`INSERT INTO audit_logs (action, target_type, target_id, tenant_id, metadata)
-		 VALUES ('workspace.delete', 'workspace', $1, $1, jsonb_build_object('mark', $2::text))`,
-		id, mark(t)); err != nil {
+		 VALUES ('workspace.delete', 'workspace', $1, $1, '{}'::jsonb)`, id); err != nil {
 		t.Fatalf("seed audit: %v", err)
 	}
-	t.Cleanup(func() {
-		_, _ = pool.Exec(context.WithoutCancel(t.Context()),
-			`DELETE FROM audit_logs WHERE metadata->>'mark' = $1`, mark(t))
-	})
 
 	if _, err := PurgeExpiredTenants(pool, grace, quietLog())(t.Context()); err != nil {
 		t.Fatalf("purge tenant: %v", err)
@@ -296,7 +254,7 @@ func TestPurgeTenant_JejakAuditSelamat(t *testing.T) {
 	// tenant_id-nya jadi NULL, tapi barisnya tetap terbaca.
 	var tenantID *int64
 	if err := pool.QueryRow(t.Context(),
-		`SELECT tenant_id FROM audit_logs WHERE metadata->>'mark' = $1`, mark(t)).Scan(&tenantID); err != nil {
+		"SELECT tenant_id FROM audit_logs LIMIT 1").Scan(&tenantID); err != nil {
 		t.Fatalf("baca audit: %v", err)
 	}
 	if tenantID != nil {
@@ -307,8 +265,9 @@ func TestPurgeTenant_JejakAuditSelamat(t *testing.T) {
 // TestPurgeTenant_TakAdaKandidat: siklus kosong = sukses diam.
 func TestPurgeTenant_TakAdaKandidat(t *testing.T) {
 	pool := testPool(t)
-	if _, err := PurgeExpiredTenants(pool, grace, quietLog())(t.Context()); err != nil {
-		t.Errorf("siklus kosong harus sukses, err=%v", err)
+	n, err := PurgeExpiredTenants(pool, grace, quietLog())(t.Context())
+	if err != nil || n != 0 {
+		t.Errorf("siklus kosong harus sukses tanpa purge, got n=%d err=%v", n, err)
 	}
 }
 
