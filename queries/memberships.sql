@@ -29,9 +29,14 @@ WHERE m.user_id = $1 AND t.deleted_at IS NULL
 ORDER BY m.created_at, m.id;
 
 -- name: ListMembersByTenant :many
--- Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk email
+-- Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk data
 -- tampilan — users kini tabel global (tanpa RLS), jadi filter tenant di sini.
-SELECT m.id, m.user_id, m.role, m.created_at, u.email, u.avatar_url, u.status
+--
+-- `u.name` ikut diambil dan MENDAHULUI email sebagai penanda orang di layar.
+-- Emailnya tetap dibawa karena pengelola membutuhkannya (mengundang,
+-- mencocokkan orang) — yang menahannya dari mata lain adalah handler, yang
+-- menyamarkannya sebelum data menyentuh view.
+SELECT m.id, m.user_id, m.role, m.created_at, u.email, u.name, u.avatar_url, u.status
 FROM memberships m
 JOIN users u ON u.id = m.user_id
 WHERE m.tenant_id = $1 AND u.deleted_at IS NULL

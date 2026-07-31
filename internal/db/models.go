@@ -17,14 +17,15 @@ type ActivityPresence struct {
 }
 
 type AuditLog struct {
-	ID          int64              `json:"id"`
-	ActorUserID *int64             `json:"actor_user_id"`
-	TenantID    *int64             `json:"tenant_id"`
-	Action      string             `json:"action"`
-	TargetType  string             `json:"target_type"`
-	TargetID    *int64             `json:"target_id"`
-	Metadata    []byte             `json:"metadata"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	ID          int64  `json:"id"`
+	ActorUserID *int64 `json:"actor_user_id"`
+	TenantID    *int64 `json:"tenant_id"`
+	Action      string `json:"action"`
+	// Jenis sasaran: user | workspace | platform | session. Menentukan tabel mana yang boleh di-JOIN untuk mencari nama saat jejak ditampilkan — salah menyebutnya menghasilkan nama yang keliru, bukan sekadar label yang keliru.
+	TargetType string             `json:"target_type"`
+	TargetID   *int64             `json:"target_id"`
+	Metadata   []byte             `json:"metadata"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
 type Invite struct {
@@ -103,4 +104,6 @@ type User struct {
 	DeletedAt      pgtype.Timestamptz `json:"deleted_at"`
 	WorkspaceQuota *int32             `json:"workspace_quota"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	// Nama tampilan (claim `name` Google). NULL = tak diketahui → tampilan jatuh ke email tersamarkan. User-controlled: jangan dipakai sebagai penanda unik maupun untuk keputusan otorisasi.
+	Name *string `json:"name"`
 }

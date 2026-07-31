@@ -152,3 +152,44 @@ func NormalizeAvatarURL(raw string) *string {
 	base := avatarSizeRe.ReplaceAllString(raw, "")
 	return &base
 }
+
+// maxDisplayName membatasi panjang nama tampilan yang kita simpan. Google tak
+// menjanjikan batas apa pun untuk claim `name`, dan nilainya diketik user —
+// tanpa batas, satu orang bisa mengirim nama sepanjang megabyte yang lalu kita
+// simpan dan render di daftar anggota setiap orang lain. Ambang ini longgar
+// untuk nama sungguhan (termasuk nama panjang non-Latin) sekaligus menutup
+// penyalahgunaan.
+const maxDisplayName = 100
+
+// nameCtlRe mencocokkan karakter kontrol & pemisah baris. Nama satu baris yang
+// menyelipkan newline merusak tata letak tabel dan, lebih buruk, bisa dipakai
+// menyamarkan teks tambahan seolah baris terpisah.
+var nameCtlRe = regexp.MustCompile(`[\x00-\x1f\x7f\p{Cf}]+`)
+
+// NormalizeDisplayName membersihkan claim `name` dari Google dan mengembalikan
+// pointer (nil bila tak tersisa apa pun) agar cocok kolom nullable sqlc.
+//
+// Nilai ini USER-CONTROLLED: siapa pun bebas menyetel namanya di akun Google
+// menjadi apa saja. Tiga konsekuensi yang ditutup di sini:
+//
+//   - karakter kontrol/format tak-terlihat dibuang — ia tak menambah makna dan
+//     bisa dipakai memalsukan tampilan (mis. override arah teks);
+//   - runtun spasi diciutkan jadi satu, agar nama tak bisa "menggeser" kolom;
+//   - panjang dipotong pada batas rune, bukan byte — memotong di tengah rune
+//     UTF-8 menghasilkan byte rusak yang berakhir sebagai "?" di layar.
+//
+// Yang TIDAK dilakukan di sini: menolak nama yang menyerupai alamat email atau
+// nama orang lain. Itu mustahil dinilai, dan pertahanannya ada di tempat lain —
+// nama tak pernah dipakai untuk identitas maupun otorisasi (id-lah yang dipakai),
+// dan seluruh keluarannya di-escape oleh view.
+func NormalizeDisplayName(raw string) *string {
+	clean := strings.TrimSpace(nameCtlRe.ReplaceAllString(raw, " "))
+	clean = strings.Join(strings.Fields(clean), " ")
+	if clean == "" {
+		return nil
+	}
+	if r := []rune(clean); len(r) > maxDisplayName {
+		clean = strings.TrimSpace(string(r[:maxDisplayName]))
+	}
+	return &clean
+}

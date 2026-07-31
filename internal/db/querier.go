@@ -64,7 +64,8 @@ type Querier interface {
 	// payload = snapshot detail siap-render; lihat migrasi 00009.
 	CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error)
 	CreateOAuthAccount(ctx context.Context, arg CreateOAuthAccountParams) (OauthAccount, error)
-	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
+	// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar
+	// & nama tampilan. Keduanya nullable — provider boleh tak mengirimkannya.
 	CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error)
 	// Dipanggil SEKALI saat boot pertama. Unique partial index di tenants menjamin
 	// hanya ada satu primer — dua instance yang boot bersamaan, satu akan gagal, dan
@@ -118,8 +119,13 @@ type Querier interface {
 	ListExpiredTenants(ctx context.Context, deletedAt pgtype.Timestamptz) ([]Tenant, error)
 	// Undangan PENDING satu workspace (panel anggota) — yang sudah diterima disaring.
 	ListInvitesByTenant(ctx context.Context, tenantID int64) ([]Invite, error)
-	// Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk email
+	// Daftar anggota SATU workspace (panel /admin/members). JOIN users untuk data
 	// tampilan — users kini tabel global (tanpa RLS), jadi filter tenant di sini.
+	//
+	// `u.name` ikut diambil dan MENDAHULUI email sebagai penanda orang di layar.
+	// Emailnya tetap dibawa karena pengelola membutuhkannya (mengundang,
+	// mencocokkan orang) — yang menahannya dari mata lain adalah handler, yang
+	// menyamarkannya sebelum data menyentuh view.
 	ListMembersByTenant(ctx context.Context, tenantID int64) ([]ListMembersByTenantRow, error)
 	// Daftar workspace milik user (untuk switcher sidebar). Urut terlama dulu agar
 	// workspace pertama (dari register) jadi default stabil.
@@ -216,8 +222,24 @@ type Querier interface {
 	// Ganti NAMA tampilan workspace (owner-only, di-guard di handler). Slug SENGAJA
 	// tak diubah — immutable setelah dibuat (stabilitas URL; ganti display != ganti URL).
 	UpdateTenant(ctx context.Context, arg UpdateTenantParams) error
-	// URL avatar Google berubah saat user ganti foto → update tiap login.
-	UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error
+	// Profil dari provider (avatar + nama tampilan) di-refresh TIAP LOGIN: keduanya
+	// berubah di sisi Google tanpa memberi tahu kita, dan login adalah satu-satunya
+	// saat kita mendengar kabar terbaru.
+	//
+	// COALESCE, bukan penimpaan lugas: argumen NULL berarti "provider tak
+	// mengirimkan apa pun kali ini", BUKAN "hapus yang tersimpan". Tanpa ini, satu
+	// respons Google tanpa `picture` (boleh terjadi walau scope diminta) akan
+	// menghapus avatar yang sudah benar. Nilai lama lebih baik daripada tak ada.
+	//
+	// Konsekuensi yang disengaja: user yang MENGHAPUS fotonya di Google tetap
+	// memakai foto lamanya di sini. Ditukar sadar dengan menghindari penghapusan
+	// palsu, yang jauh lebih sering terjadi.
+	//
+	// CATATAN untuk kelak: begitu ada fitur "edit profil" di aplikasi ini, refresh
+	// otomatis ini akan MENIMPA nama yang disunting user tiap kali ia login. Saat
+	// itu tiba, nama pilihan sendiri harus jadi kolom terpisah yang diutamakan —
+	// jangan sekadar mematikan refresh, sebab avatar tetap perlu ikut berubah.
+	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error
 	// Kuota workspace per user. NULL = IKUT DEFAULT GLOBAL (platform_settings), angka
 	// = hak khusus milik user itu yang kebal perubahan global. Membedakan keduanya
 	// adalah alasan kolom ini nullable — dgn NOT NULL, "kebetulan 3" tak bisa

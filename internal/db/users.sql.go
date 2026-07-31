@@ -28,19 +28,21 @@ func (q *Queries) CountQuotaOverrides(ctx context.Context) (int64, error) {
 }
 
 const createOAuthUser = `-- name: CreateOAuthUser :one
-INSERT INTO users (email, email_verified, avatar_url)
-VALUES ($1, true, $2)
-RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at
+INSERT INTO users (email, email_verified, avatar_url, name)
+VALUES ($1, true, $2, $3)
+RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at, name
 `
 
 type CreateOAuthUserParams struct {
 	Email     string  `json:"email"`
 	AvatarUrl *string `json:"avatar_url"`
+	Name      *string `json:"name"`
 }
 
-// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar.
+// User baru dari OAuth: tanpa password, email terverifikasi provider, + avatar
+// & nama tampilan. Keduanya nullable — provider boleh tak mengirimkannya.
 func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createOAuthUser, arg.Email, arg.AvatarUrl)
+	row := q.db.QueryRow(ctx, createOAuthUser, arg.Email, arg.AvatarUrl, arg.Name)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -52,6 +54,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
 		&i.CreatedAt,
+		&i.Name,
 	)
 	return i, err
 }
@@ -59,7 +62,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, pass_hash)
 VALUES ($1, $2)
-RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at
+RETURNING id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at, name
 `
 
 type CreateUserParams struct {
@@ -82,12 +85,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
 		&i.CreatedAt,
+		&i.Name,
 	)
 	return i, err
 }
 
 const getUser = `-- name: GetUser :one
-SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users WHERE id = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at, name FROM users WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
@@ -103,12 +107,13 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
 		&i.CreatedAt,
+		&i.Name,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users WHERE email = $1 AND deleted_at IS NULL
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at, name FROM users WHERE email = $1 AND deleted_at IS NULL
 `
 
 // Soft-delete gotcha: user terhapus tak boleh login.
@@ -125,12 +130,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.DeletedAt,
 		&i.WorkspaceQuota,
 		&i.CreatedAt,
+		&i.Name,
 	)
 	return i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at FROM users
+SELECT id, email, pass_hash, email_verified, status, avatar_url, deleted_at, workspace_quota, created_at, name FROM users
 WHERE deleted_at IS NULL
   AND (created_at, id) < ($1::timestamptz, $2::bigint)
 ORDER BY created_at DESC, id DESC
@@ -163,6 +169,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.DeletedAt,
 			&i.WorkspaceQuota,
 			&i.CreatedAt,
+			&i.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -183,18 +190,38 @@ func (q *Queries) SoftDeleteUser(ctx context.Context, id int64) error {
 	return err
 }
 
-const updateUserAvatar = `-- name: UpdateUserAvatar :exec
-UPDATE users SET avatar_url = $2 WHERE id = $1
+const updateUserProfile = `-- name: UpdateUserProfile :exec
+UPDATE users
+SET avatar_url = COALESCE($1::text, avatar_url),
+    name       = COALESCE($2::text, name)
+WHERE id = $3
 `
 
-type UpdateUserAvatarParams struct {
-	ID        int64   `json:"id"`
+type UpdateUserProfileParams struct {
 	AvatarUrl *string `json:"avatar_url"`
+	Name      *string `json:"name"`
+	ID        int64   `json:"id"`
 }
 
-// URL avatar Google berubah saat user ganti foto → update tiap login.
-func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error {
-	_, err := q.db.Exec(ctx, updateUserAvatar, arg.ID, arg.AvatarUrl)
+// Profil dari provider (avatar + nama tampilan) di-refresh TIAP LOGIN: keduanya
+// berubah di sisi Google tanpa memberi tahu kita, dan login adalah satu-satunya
+// saat kita mendengar kabar terbaru.
+//
+// COALESCE, bukan penimpaan lugas: argumen NULL berarti "provider tak
+// mengirimkan apa pun kali ini", BUKAN "hapus yang tersimpan". Tanpa ini, satu
+// respons Google tanpa `picture` (boleh terjadi walau scope diminta) akan
+// menghapus avatar yang sudah benar. Nilai lama lebih baik daripada tak ada.
+//
+// Konsekuensi yang disengaja: user yang MENGHAPUS fotonya di Google tetap
+// memakai foto lamanya di sini. Ditukar sadar dengan menghindari penghapusan
+// palsu, yang jauh lebih sering terjadi.
+//
+// CATATAN untuk kelak: begitu ada fitur "edit profil" di aplikasi ini, refresh
+// otomatis ini akan MENIMPA nama yang disunting user tiap kali ia login. Saat
+// itu tiba, nama pilihan sendiri harus jadi kolom terpisah yang diutamakan —
+// jangan sekadar mematikan refresh, sebab avatar tetap perlu ikut berubah.
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error {
+	_, err := q.db.Exec(ctx, updateUserProfile, arg.AvatarUrl, arg.Name, arg.ID)
 	return err
 }
 

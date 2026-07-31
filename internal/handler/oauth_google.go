@@ -158,16 +158,19 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 	// = SATU tx bypass RLS (email/sub global-unique). Semua cabang commit/rollback
 	// bersama; new-user membuat tenant+owner atomik dalam tx yang sama.
 	var userID int64
+	// Profil dari provider dibersihkan SEKALI di sini, bukan di tiap cabang:
+	// keduanya user-controlled (lihat NormalizeDisplayName), dan pembersihan yang
+	// diulang per-cabang adalah tempat satu cabang tertinggal saat aturannya berubah.
 	avatar := oauth.NormalizeAvatarURL(claims.Picture)
+	name := oauth.NormalizeDisplayName(claims.Name)
 	err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
-		// 1. Identitas Google sudah tertaut? Refresh avatar (URL berubah saat ganti foto).
+		// 1. Identitas Google sudah tertaut? Refresh profil (avatar & nama berubah
+		//    di sisi Google tanpa memberi tahu kita; login = satu-satunya kabar).
 		acc, err := q.GetOAuthAccount(ctx, db.GetOAuthAccountParams{Provider: provider, ProviderUid: claims.Sub})
 		switch {
 		case err == nil:
-			if avatar != nil {
-				if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: acc.UserID, AvatarUrl: avatar}); err != nil {
-					return err
-				}
+			if err := refreshProfile(ctx, q, acc.UserID, avatar, name); err != nil {
+				return err
 			}
 			userID = acc.UserID
 			return nil
@@ -175,7 +178,7 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 			return err
 		}
 
-		// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + avatar.
+		// 2. User dgn email itu sudah ada (mis. akun password dev) → auto-link + profil.
 		//    oauth_account ber-tenant_id (RLS) → pakai workspace PERTAMA user. User
 		//    kini bisa anggota banyak workspace; tautan OAuth cukup di satu workspace
 		//    (identitas login global, bukan per-workspace).
@@ -194,10 +197,8 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 			}); err != nil {
 				return err
 			}
-			if avatar != nil {
-				if err := q.UpdateUserAvatar(ctx, db.UpdateUserAvatarParams{ID: user.ID, AvatarUrl: avatar}); err != nil {
-					return err
-				}
+			if err := refreshProfile(ctx, q, user.ID, avatar, name); err != nil {
+				return err
 			}
 			userID = user.ID
 			return nil
@@ -208,16 +209,22 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		// 3. User baru sepenuhnya dari Google → buat USER + WORKSPACE pertama +
 		//    MEMBERSHIP owner (sama seperti register password). Nama workspace =
 		//    bagian email sebelum '@' (dirapikan user via /admin/workspace).
-		name := emailLocal(claims.Email)
+		//
+		//    `wsName`, bukan `name`: nama WORKSPACE dan nama ORANG adalah dua hal
+		//    berbeda yang kebetulan berdampingan di sini. Menamai keduanya sama
+		//    membuat yang satu membayangi yang lain tanpa peringatan compiler —
+		//    orangnya lalu tersimpan dengan nama workspace, dan tak ada yang
+		//    memberi tahu.
+		wsName := emailLocal(claims.Email)
 		newUser, err := q.CreateOAuthUser(ctx, db.CreateOAuthUserParams{
-			Email: claims.Email, AvatarUrl: avatar,
+			Email: claims.Email, AvatarUrl: avatar, Name: name,
 		})
 		if err != nil {
 			return err
 		}
 		// Sama seperti register password: multi = workspace baru + owner, single =
 		// gabung ke aplikasi tunggal sebagai member (0006 §6).
-		t, err := placeNewUser(ctx, q, newUser.ID, name)
+		t, err := placeNewUser(ctx, q, newUser.ID, wsName)
 		if err != nil {
 			return err
 		}
@@ -230,4 +237,21 @@ func (h *Handler) findOrLinkGoogleUser(ctx context.Context, claims *oauth.Claims
 		return nil
 	})
 	return userID, err
+}
+
+// refreshProfile menyegarkan avatar & nama tampilan dari provider untuk user
+// yang SUDAH ada. Dipanggil di kedua cabang login-berulang (tertaut & auto-link)
+// — satu tempat, supaya keduanya tak bisa berbeda perlakuan.
+//
+// Kedua argumen boleh nil ("provider tak mengirimkannya kali ini"); SQL-nya
+// ber-COALESCE, jadi nil MEMPERTAHANKAN nilai lama alih-alih menghapusnya.
+// Query dilewati sama sekali bila keduanya nil — bukan demi kecepatan, tapi agar
+// login tak menulis ke tabel users tanpa ada satu pun yang berubah.
+func refreshProfile(ctx context.Context, q *db.Queries, userID int64, avatar, name *string) error {
+	if avatar == nil && name == nil {
+		return nil
+	}
+	return q.UpdateUserProfile(ctx, db.UpdateUserProfileParams{
+		ID: userID, AvatarUrl: avatar, Name: name,
+	})
 }

@@ -14,10 +14,17 @@ import "strings"
 // tak bisa dipakai menghubungi orangnya: "malikkurosaki@gmail.com" →
 // "mal•••@gmail.com".
 //
-// Kenapa disamarkan, bukan dihapus: tabel `users` tak punya kolom nama, jadi
-// membuang email sama dengan membuang satu-satunya penanda yang membedakan satu
-// baris dari yang lain — daftar anggota jadi kumpulan avatar anonim, dan
-// gunanya (tahu SIAPA yang punya akses ke ruang ini) hilang bersamanya.
+// Kenapa disamarkan, bukan dihapus: ia CADANGAN penanda orang. Sejak `users`
+// punya kolom `name` (migrasi 00002), penanda utama di layar adalah nama — dan
+// email tak lagi perlu tampil sama sekali bagi yang tak mengelola. Tapi nama
+// boleh kosong (akun password dev, provider yang tak mengirimkannya), dan tanpa
+// cadangan ini baris tanpa nama jadi avatar anonim yang tak bisa dibedakan dari
+// baris tanpa nama lainnya — daftar anggota kehilangan gunanya justru untuk
+// orang yang paling sulit dikenali.
+//
+// Catatan sejarah yang menjelaskan bentuknya: fungsi ini dulu KOMPENSASI atas
+// ketiadaan kolom nama, jadi ia dirancang agar bentuk samarannya masih bisa
+// dikenali manusia. Sekarang perannya menyusut, tapi syarat itu tetap berlaku.
 //
 // Domain DIPERTAHANKAN dengan sengaja: itulah yang membedakan rekan satu
 // organisasi dari orang luar, dan justru pertanyaan itu yang membuat daftar
