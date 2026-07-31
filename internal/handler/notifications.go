@@ -9,6 +9,7 @@ import (
 	"go_starter/internal/ui/pages/panel"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // notifications.go — halaman notifikasi user (umpan peristiwa + undangan masuk).
@@ -32,39 +33,53 @@ func (h *Handler) NotificationsPage(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	uid := session.UserID(ctx)
 	email := normalizeEmail(session.Email(ctx))
+	cursorAt, cursorID := pageCursor(r)
 
-	var (
-		events  []panel.NotifRow
-		invites []panel.NotifInviteRow
-	)
+	vm := panel.NotifView{
+		ErrMsg:  notifErrMsg(r.URL.Query().Get("err")),
+		HasPrev: r.URL.Query().Get("after") != "",
+	}
 	// Fail-soft: gagal baca salah satu sumber tak boleh mengosongkan halaman
 	// diam-diam tanpa jejak — error dicatat, bagian yang berhasil tetap tampil.
 	if err := db.WithSuper(ctx, h.Pool, func(q *db.Queries) error {
-		cursorAt, cursorID := firstPageCursor()
+		// +1 = penanda "masih ada" (lihat splitPage). Tanpa jalan ke peristiwa
+		// lebih lama, notifikasi ke-21 dst mustahil dilihat — dan justru yang lama
+		// itulah yang dicari saat seseorang bertanya "kapan role saya diubah?".
 		rows, err := q.ListNotifications(ctx, db.ListNotificationsParams{
 			UserID: uid, CursorCreatedAt: cursorAt, CursorID: cursorID,
-			PageSize: notifPageSize,
+			PageSize: notifPageSize + 1,
 		})
 		if err != nil {
 			return err
 		}
-		events = buildNotifRows(rows)
+		page, next := splitPage(rows, func(n db.ListNotificationsRow) (pgtype.Timestamptz, int64) {
+			return n.CreatedAt, n.ID
+		})
+		vm.Events, vm.NextCursor = buildNotifRows(page), next
 
-		inv, err := q.ListPendingInvitesByEmail(ctx, email)
-		if err != nil {
-			return err
+		// Undangan hanya di halaman PERTAMA: ia TUGAS, bukan riwayat. Mengulanginya
+		// di tiap halaman membuat orang mengira undangannya bertambah tiap kali
+		// menekan "lebih lama".
+		if !vm.HasPrev {
+			inv, e := q.ListPendingInvitesByEmail(ctx, email)
+			if e != nil {
+				return e
+			}
+			vm.Invites = buildNotifInvites(inv)
 		}
-		invites = buildNotifInvites(inv)
 
 		// Auto-read SETELAH daftar terbaca, agar tanda "baru" pada render ini
-		// masih terlihat user.
+		// masih terlihat user. Menandai SEMUA (bukan hanya baris di halaman ini):
+		// membuka umpan berarti melihat yang terbaru, dan yang lebih lama sudah
+		// pasti pernah lewat. Per-halaman akan membuat badge tetap menyala setelah
+		// orang jelas-jelas membaca notifikasinya.
 		return q.MarkNotificationsRead(ctx, uid)
 	}); err != nil {
 		h.Log.Error("notifications: load", "err", err)
 	}
 
 	h.renderShell(w, r, "Notifikasi", brandFor(ctx), "/notifications", navFor(ctx),
-		panel.Notifications(invites, events, notifErrMsg(r.URL.Query().Get("err"))))
+		panel.Notifications(vm))
 }
 
 // NotificationAccept — POST /notifications/invite/{token}/accept. Memakai ulang

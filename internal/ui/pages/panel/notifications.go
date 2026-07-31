@@ -23,28 +23,73 @@ type NotifRow struct {
 	Unread    bool
 }
 
+// NotifView = umpan notifikasi siap-render.
+//
+// Undangan TIDAK ikut dipaginasi: jumlahnya dibatasi oleh berapa orang yang
+// mengundang Anda dan hilang begitu ditindak, jadi ia tak bisa menumpuk seperti
+// riwayat peristiwa. Memaginasinya justru berbahaya — undangan adalah TUGAS,
+// dan tugas yang terdorong ke halaman dua sama saja dengan tak terlihat.
+type NotifView struct {
+	Invites []NotifInviteRow
+	Events  []NotifRow
+	ErrMsg  string
+	// NextCursor = penanda peristiwa lebih lama; "" berarti ini yang terakhir.
+	NextCursor string
+	HasPrev    bool
+}
+
 // Notifications merender umpan notifikasi user. Undangan DI ATAS karena butuh
 // tindakan; peristiwa di bawah karena hanya perlu dibaca. Keduanya kosong →
 // pesan kosong yang jujur, bukan halaman hampa.
-func Notifications(invites []NotifInviteRow, events []NotifRow, errMsg string) g.Node {
+func Notifications(v NotifView) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Notifikasi")),
 		h.P(h.Class("text-base-content/70 mb-4"),
 			g.Text("Undangan workspace dan kabar keanggotaan Anda.")),
 	}
-	if errMsg != "" {
-		body = append(body, ui.Alert(ui.VariantDestructive, "notif-err", g.Text(errMsg)))
+	if v.ErrMsg != "" {
+		body = append(body, ui.Alert(ui.VariantDestructive, "notif-err", g.Text(v.ErrMsg)))
 	}
-	if len(invites) > 0 {
-		body = append(body, inviteInbox(invites))
+	if len(v.Invites) > 0 {
+		body = append(body, inviteInbox(v.Invites))
 	}
-	if len(events) > 0 {
-		body = append(body, eventList(events))
+	if len(v.Events) > 0 {
+		body = append(body, eventList(v.Events))
+		body = append(body, notifPager(v))
 	}
-	if len(invites) == 0 && len(events) == 0 {
+	// Halaman kedua yang kosong TETAP menampilkan jalan kembali, bukan pesan
+	// "belum ada notifikasi" — yang terakhir itu berbohong kepada orang yang
+	// jelas-jelas baru saja melihat daftarnya di halaman sebelumnya.
+	if len(v.Events) == 0 && v.HasPrev {
+		body = append(body,
+			h.P(h.Class("text-base-content/70"), g.Text("Tak ada peristiwa lebih lama.")),
+			notifPager(v))
+	} else if len(v.Invites) == 0 && len(v.Events) == 0 {
 		body = append(body, emptyNotif())
 	}
 	return h.Div(h.Class("grid gap-4 min-w-0"), g.Group(body))
+}
+
+// notifPager = jalan ke peristiwa lebih lama. Link biasa (navigasi: harus bisa
+// di-bookmark & dimuat ulang), tap target 44px, flex-wrap untuk 375px.
+func notifPager(v NotifView) g.Node {
+	if v.NextCursor == "" && !v.HasPrev {
+		return nil
+	}
+	return h.Div(
+		h.Class("flex flex-wrap items-center gap-2"),
+		g.If(v.HasPrev, h.A(
+			h.Href("/notifications"), h.Class("btn btn-ghost min-h-11"),
+			g.Text("« Terbaru"),
+		)),
+		g.If(v.NextCursor != "", h.A(
+			h.Href("/notifications?after="+v.NextCursor), h.Class("btn min-h-11"),
+			g.Text("Lebih lama »"),
+		)),
+		g.If(v.NextCursor == "", h.Span(
+			h.Class("text-sm text-base-content/60"), g.Text("Ujung riwayat."),
+		)),
+	)
 }
 
 // inviteInbox = undangan menunggu keputusan. Terima/Tolak = form NATIVE POST →
