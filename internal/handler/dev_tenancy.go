@@ -65,7 +65,7 @@ func (h *Handler) DevSettingsTenancy(w http.ResponseWriter, r *http.Request) {
 	// Audit WAJIB di sini, bukan sekadar bagus: ini perubahan bentuk aplikasi yang
 	// tak bisa dibatalkan, jadi "siapa dan kapan" harus terekam. target = workspace
 	// primer (satu-satunya objek yang ada saat kenaikan).
-	h.audit(ctx, uid, "platform.tenancy.upgrade", prim.ID,
+	h.auditPlatform(ctx, uid, "platform.tenancy.upgrade", prim.ID,
 		map[string]string{"to": appmode.NameMulti})
 	http.Redirect(w, r, "/dev/settings?ok=tenancy", http.StatusSeeOther)
 }

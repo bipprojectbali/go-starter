@@ -13,11 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// recentAuthLimit = jumlah event auth terbaru yang ditampilkan di tabel panel.
-const recentAuthLimit = 20
-
 // Builder view-model panel /dev/logs: memetakan baris sqlc → tipe siap-render.
 // Dipisah dari dev_logs.go (handler) agar handler tetap ramping (batas 150 baris).
+// Yang di sini menangani PRESENCE; jejak audit ada di dev_logs_trail.go.
 
 // buildChart merakit JSON option ECharts + peak hour (day). Error di-log; JSON
 // minimal "{}" agar charts.js tak crash.
@@ -98,41 +96,6 @@ func (h *Handler) buildSpans(ctx context.Context, fromTS, toTS pgtype.Timestampt
 		})
 	}
 	return out
-}
-
-// buildAuthEvents memetakan event login/logout terbaru.
-func (h *Handler) buildAuthEvents(ctx context.Context) []dev.AuthRow {
-	rows, err := h.q(ctx).ListAuthEvents(ctx, recentAuthLimit)
-	if err != nil {
-		h.Log.Error("dev logs: auth events", "err", err)
-		return nil
-	}
-	out := make([]dev.AuthRow, 0, len(rows))
-	for _, r := range rows {
-		var uid int64
-		if r.TargetID != nil {
-			uid = *r.TargetID
-		}
-		out = append(out, dev.AuthRow{
-			Action: r.Action,
-			Method: authMethod(r.Metadata),
-			UserID: uid,
-			When:   fmtLocal(r.CreatedAt),
-		})
-	}
-	return out
-}
-
-// authMethod mengekstrak {"method":...} dari metadata JSONB audit. "" bila absen.
-func authMethod(raw []byte) string {
-	if len(raw) == 0 {
-		return ""
-	}
-	var m struct {
-		Method string `json:"method"`
-	}
-	_ = json.Unmarshal(raw, &m)
-	return m.Method
 }
 
 // fmtLocal memformat timestamptz ke waktu lokal aplikasi. "—" bila null.

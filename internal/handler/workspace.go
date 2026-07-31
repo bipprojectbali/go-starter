@@ -120,7 +120,7 @@ func (h *Handler) WorkspaceUpdate(w http.ResponseWriter, r *http.Request) {
 	session.SetTenantName(ctx, name)
 	// Audit (fail-soft). target = tenant sendiri; metadata TANPA nama (bukan PII,
 	// tapi konsisten: id saja). actor = user aktif.
-	h.audit(ctx, session.UserID(ctx), "workspace.rename", tenantID, nil)
+	h.auditWorkspace(ctx, session.UserID(ctx), "workspace.rename", tenantID, nil)
 	h.workspaceOK(w, r, "Nama workspace disimpan")
 }
 

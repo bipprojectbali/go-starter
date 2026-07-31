@@ -64,7 +64,7 @@ func (h *Handler) InviteCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// metadata TANPA PII: email undangan tak dicatat, hanya role.
-	h.audit(ctx, uid, "invite.create", session.TenantID(ctx), map[string]string{"role": role})
+	h.auditWorkspace(ctx, uid, "invite.create", session.TenantID(ctx), map[string]string{"role": role})
 	wsRedirect(w, r, "/members", "")
 }
 

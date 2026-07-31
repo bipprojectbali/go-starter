@@ -80,7 +80,7 @@ func (h *Handler) acceptInvite(ctx context.Context, token string, uid int64) err
 	}
 	session.SetActiveTenant(ctx, tenantID, name, inv.TenantSlug)
 	session.ClearPendingInvite(ctx)
-	h.audit(ctx, uid, "invite.accept", tenantID, map[string]string{"role": inv.Role})
+	h.auditWorkspace(ctx, uid, "invite.accept", tenantID, map[string]string{"role": inv.Role})
 	return nil
 }
 

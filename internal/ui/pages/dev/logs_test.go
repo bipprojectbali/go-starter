@@ -29,9 +29,16 @@ func sampleLogs() LogsData {
 		Spans: []SpanRow{
 			{Email: "a@x.com", FirstSeen: "02 Jul 09:00", LastSeen: "02 Jul 17:00", Hits: 40},
 		},
-		AuthEvents: []AuthRow{
-			{Action: "auth.login", Method: "google", UserID: 7, When: "02 Jul 09:00"},
-			{Action: "auth.logout", Method: "", UserID: 7, When: "02 Jul 17:00"},
+		Trail: TrailView{
+			Range: "day",
+			Rows: []TrailRow{
+				{Sentence: "Budi masuk lewat google.", Family: "auth",
+					Action: "auth.login", When: "02 Jul 09:00"},
+				{Sentence: "Budi mengubah role Siti menjadi admin.", Family: "member",
+					Action: "member.role.update", When: "02 Jul 10:00"},
+			},
+			Families: []FamilyOption{{Key: "auth", Label: "Masuk & keluar", Events: 2}},
+			Actors:   []ActorOption{{ID: 7, Label: "Budi", Events: 2}},
 		},
 	}
 }
@@ -88,13 +95,10 @@ func TestLogsPage_TrendUsesTrendChartID(t *testing.T) {
 func TestLogsPage_EmptyStates(t *testing.T) {
 	d := sampleLogs()
 	d.Spans = nil
-	d.AuthEvents = nil
+	d.Trail.Rows = nil
 	out := renderNode(t, LogsPage(d))
 	if !strings.Contains(out, "Belum ada aktivitas") {
 		t.Errorf("span kosong harus tampilkan pesan:\n%s", out)
-	}
-	if !strings.Contains(out, "Belum ada event") {
-		t.Errorf("auth kosong harus tampilkan pesan:\n%s", out)
 	}
 }
 

@@ -114,6 +114,6 @@ func (h *Handler) WorkspaceCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	// Langsung pindah ke workspace baru (user jadi owner di sana).
 	session.SetActiveTenant(ctx, newID, name, newSlug)
-	h.audit(ctx, uid, "workspace.create", newID, nil)
+	h.auditWorkspace(ctx, uid, "workspace.create", newID, nil)
 	http.Redirect(w, r, wsPath(newSlug, ""), http.StatusSeeOther)
 }

@@ -69,7 +69,7 @@ func (h *Handler) DevSettingsQuota(w http.ResponseWriter, r *http.Request) {
 	// DB dulu, cache kemudian. Terbalik = tulis yang gagal meninggalkan cache
 	// berbohong sampai proses restart.
 	settings.Set(settings.KeyWorkspaceQuotaDefault, value)
-	h.audit(ctx, uid, "settings.workspace_quota", 0, map[string]string{"value": value})
+	h.auditPlatform(ctx, uid, "settings.workspace_quota", 0, map[string]string{"value": value})
 	http.Redirect(w, r, "/dev/settings?ok=saved", http.StatusSeeOther)
 }
 

@@ -13,9 +13,37 @@ import (
 // file satu panel membuatnya tampak milik panel itu.
 
 // audit menulis jejak aksi admin atas USER lain (metadata TANPA PII — id saja).
+//
+// Untuk aksi yang sasarannya BUKAN user — workspace, platform — pakai
+// auditWorkspace/auditPlatform. `target_type` menentukan tabel mana yang boleh
+// di-JOIN saat jejaknya dibaca, jadi salah menyebutnya bukan cuma label keliru:
+// panel akan menampilkan NAMA ORANG yang id-nya kebetulan sama dengan id
+// workspace. Salah, dan terlihat meyakinkan.
 func (h *Handler) audit(ctx context.Context, actorID int64, action string, targetID int64, meta map[string]string) {
-	h.auditLog(ctx, actorID, action, "user", targetID, meta)
+	h.auditLog(ctx, actorID, action, auditTargetUser, targetID, meta)
 }
+
+// auditWorkspace = jejak aksi yang sasarannya WORKSPACE (buat, ganti nama,
+// arsip, hapus, suspend, undang). target_id = tenants.id.
+func (h *Handler) auditWorkspace(ctx context.Context, actorID int64, action string, tenantID int64, meta map[string]string) {
+	h.auditLog(ctx, actorID, action, auditTargetWorkspace, tenantID, meta)
+}
+
+// auditPlatform = jejak aksi yang tak menyasar satu baris pun — pengaturan yang
+// berlaku bagi semua orang (kuota global, kenaikan mode tenancy). target_id
+// diisi 0/id acuan dan TIDAK dipakai untuk mencari nama.
+func (h *Handler) auditPlatform(ctx context.Context, actorID int64, action string, targetID int64, meta map[string]string) {
+	h.auditLog(ctx, actorID, action, auditTargetPlatform, targetID, meta)
+}
+
+// Nilai target_type yang dikenal. Dipakai bersama SQL (memilih JOIN) & view
+// (memilih kalimat) — konstanta agar keduanya tak bisa berbeda diam-diam.
+const (
+	auditTargetUser      = "user"
+	auditTargetWorkspace = "workspace"
+	auditTargetPlatform  = "platform"
+	auditTargetSession   = "session"
+)
 
 // auditLog menulis satu baris audit dengan target_type eksplisit. Dasar untuk
 // audit() (target_type="user") & event auth (target_type="session"). Error
@@ -63,5 +91,5 @@ func (h *Handler) auditAuth(ctx context.Context, userID int64, action, method st
 	if method != "" {
 		meta = map[string]string{"method": method}
 	}
-	h.auditLog(ctx, userID, action, "session", userID, meta)
+	h.auditLog(ctx, userID, action, auditTargetSession, userID, meta)
 }

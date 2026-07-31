@@ -23,6 +23,14 @@ type Querier interface {
 	// read-only lewat tombol yang tampak rutin. Guard-nya di SQL, bukan cuma di
 	// handler — jalur yang tak lewat handler pun harus tertahan.
 	ArchiveTenant(ctx context.Context, id int64) error
+	// Jumlah peristiwa per KELUARGA aksi pada rentang ini (auth, workspace, member,
+	// user, invite, settings, platform) — dipakai untuk melabeli opsi filter dengan
+	// angka, sehingga operator tahu mana yang berisi sebelum mengkliknya.
+	//
+	// split_part di segmen pertama: penamaan aksi kita selalu `keluarga.sisanya`
+	// (auth.login, workspace.create, member.role.update), jadi keluarga bisa
+	// diturunkan tanpa tabel pemetaan yang harus dijaga selaras.
+	CountActivityByAction(ctx context.Context, arg CountActivityByActionParams) ([]CountActivityByActionRow, error)
 	// Berapa workspace yang DIMILIKI user (role owner) — untuk cek kuota sebelum
 	// membuat workspace baru. Diundang jadi member/admin TIDAK memakan kuota.
 	//
@@ -111,9 +119,36 @@ type Querier interface {
 	// menentukan bypass RLS (is_super) + role platform. super_admin TIDAK di sini
 	// (env-only via SUPER_ADMIN_EMAILS).
 	IsPlatformStaff(ctx context.Context, email string) (bool, error)
+	// Orang yang punya jejak pada rentang ini — isi dropdown "filter per-orang".
+	//
+	// Diturunkan dari DATA, bukan dari daftar user: memilih orang yang tak punya
+	// jejak sama sekali selalu menghasilkan halaman kosong, dan pilihan yang pasti
+	// kosong lebih buruk daripada pilihan yang tak ada. Ikut mengecil sendiri saat
+	// rentangnya dipersempit.
+	ListActivityActors(ctx context.Context, arg ListActivityActorsParams) ([]ListActivityActorsRow, error)
+	// Jejak aktivitas untuk panel /dev/logs: SEMUA aksi, bukan hanya login/logout.
+	//
+	// Sebelum ini panel hanya menampilkan `action IN ('auth.login','auth.logout')`,
+	// sementara 14 jenis aksi lain ikut tercatat dan tak pernah dilihat siapa pun —
+	// biayanya sudah dibayar penuh (kolom, index, penulisan di 16 tempat), hanya
+	// jalur bacanya yang berhenti di satu filter.
+	//
+	// NAMA di-JOIN saat DIBACA, tak pernah disalin ke metadata: kolom itu sengaja
+	// bebas PII, dan nama yang disalin ke sana jadi salinan permanen yang tak ikut
+	// terhapus bersama usernya. LEFT JOIN, sebab jejak wajib tetap terbaca setelah
+	// pelaku/sasarannya hilang — actor_user_id ON DELETE SET NULL, dan target_id
+	// sengaja BUKAN FK.
+	//
+	// Sasaran dicari dari DUA tabel sesuai target_type, dan syarat itu WAJIB ada di
+	// klausa JOIN-nya: tanpa `target_type = '...'`, id workspace akan mencocoki
+	// baris users yang id-nya kebetulan sama, lalu memampangkan nama orang yang tak
+	// terlibat. Salah, dan terlihat meyakinkan.
+	//
+	// Filter opsional lewat sqlc.narg (NULL = tanpa filter) supaya satu query
+	// melayani semua kombinasi — dua query terpisah akan berbeda diam-diam begitu
+	// salah satunya diubah.
+	ListActivityTrail(ctx context.Context, arg ListActivityTrailParams) ([]ListActivityTrailRow, error)
 	ListAuditLogs(ctx context.Context, pageSize int32) ([]AuditLog, error)
-	// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
-	ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error)
 	// Kandidat purge permanen: terhapus melewati masa tenggang. Dipanggil perintah
 	// terjadwal, TAK PERNAH di jalur request (purge = kerja berat & tak reversibel).
 	ListExpiredTenants(ctx context.Context, deletedAt pgtype.Timestamptz) ([]Tenant, error)

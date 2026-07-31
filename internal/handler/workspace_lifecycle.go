@@ -37,7 +37,7 @@ func (h *Handler) WorkspaceArchive(w http.ResponseWriter, r *http.Request) {
 		wsRedirect(w, r, "/settings", "failed")
 		return
 	}
-	h.audit(ctx, session.UserID(ctx), "workspace.archive", tenantID, nil)
+	h.auditWorkspace(ctx, session.UserID(ctx), "workspace.archive", tenantID, nil)
 	wsRedirect(w, r, "/settings", "")
 }
 
@@ -81,7 +81,7 @@ func (h *Handler) WorkspaceUnarchive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	h.audit(ctx, uid, "workspace.unarchive", t.ID, nil)
+	h.auditWorkspace(ctx, uid, "workspace.unarchive", t.ID, nil)
 	http.Redirect(w, r, wsPath(slug, "/settings"), http.StatusSeeOther)
 }
 
@@ -107,7 +107,7 @@ func (h *Handler) WorkspaceDelete(w http.ResponseWriter, r *http.Request) {
 		wsRedirect(w, r, "/settings", "failed")
 		return
 	}
-	h.audit(ctx, session.UserID(ctx), "workspace.delete", tenantID, nil)
+	h.auditWorkspace(ctx, session.UserID(ctx), "workspace.delete", tenantID, nil)
 	// Session masih menunjuk workspace yang baru saja dihapus — kosongkan agar
 	// Scope memilih ulang dari daftar yang masih hidup, bukan mencoba membukanya
 	// lagi dan berakhir 404 di halaman berikutnya.

@@ -7,7 +7,57 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const countActivityByAction = `-- name: CountActivityByAction :many
+SELECT
+    split_part(a.action, '.', 1) AS family,
+    count(*)::bigint             AS events
+FROM audit_logs a
+WHERE a.created_at >= $1::timestamptz
+  AND a.created_at <  $2::timestamptz
+GROUP BY family
+ORDER BY events DESC, family
+`
+
+type CountActivityByActionParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type CountActivityByActionRow struct {
+	Family string `json:"family"`
+	Events int64  `json:"events"`
+}
+
+// Jumlah peristiwa per KELUARGA aksi pada rentang ini (auth, workspace, member,
+// user, invite, settings, platform) — dipakai untuk melabeli opsi filter dengan
+// angka, sehingga operator tahu mana yang berisi sebelum mengkliknya.
+//
+// split_part di segmen pertama: penamaan aksi kita selalu `keluarga.sisanya`
+// (auth.login, workspace.create, member.role.update), jadi keluarga bisa
+// diturunkan tanpa tabel pemetaan yang harus dijaga selaras.
+func (q *Queries) CountActivityByAction(ctx context.Context, arg CountActivityByActionParams) ([]CountActivityByActionRow, error) {
+	rows, err := q.db.Query(ctx, countActivityByAction, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountActivityByActionRow{}
+	for rows.Next() {
+		var i CountActivityByActionRow
+		if err := rows.Scan(&i.Family, &i.Events); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
 
 const createAuditLog = `-- name: CreateAuditLog :one
 INSERT INTO audit_logs (actor_user_id, action, target_type, target_id, metadata, tenant_id)
@@ -46,6 +96,180 @@ func (q *Queries) CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) 
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listActivityActors = `-- name: ListActivityActors :many
+SELECT
+    a.actor_user_id::bigint AS actor_id,
+    u.name                  AS actor_name,
+    u.email                 AS actor_email,
+    count(*)::bigint        AS events
+FROM audit_logs a
+JOIN users u ON u.id = a.actor_user_id
+WHERE a.created_at >= $1::timestamptz
+  AND a.created_at <  $2::timestamptz
+GROUP BY a.actor_user_id, u.name, u.email
+ORDER BY events DESC, u.email
+`
+
+type ListActivityActorsParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type ListActivityActorsRow struct {
+	ActorID    int64   `json:"actor_id"`
+	ActorName  *string `json:"actor_name"`
+	ActorEmail string  `json:"actor_email"`
+	Events     int64   `json:"events"`
+}
+
+// Orang yang punya jejak pada rentang ini — isi dropdown "filter per-orang".
+//
+// Diturunkan dari DATA, bukan dari daftar user: memilih orang yang tak punya
+// jejak sama sekali selalu menghasilkan halaman kosong, dan pilihan yang pasti
+// kosong lebih buruk daripada pilihan yang tak ada. Ikut mengecil sendiri saat
+// rentangnya dipersempit.
+func (q *Queries) ListActivityActors(ctx context.Context, arg ListActivityActorsParams) ([]ListActivityActorsRow, error) {
+	rows, err := q.db.Query(ctx, listActivityActors, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityActorsRow{}
+	for rows.Next() {
+		var i ListActivityActorsRow
+		if err := rows.Scan(
+			&i.ActorID,
+			&i.ActorName,
+			&i.ActorEmail,
+			&i.Events,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActivityTrail = `-- name: ListActivityTrail :many
+SELECT
+    a.id,
+    a.action,
+    a.target_type,
+    a.target_id,
+    a.metadata,
+    a.created_at,
+    a.actor_user_id,
+    actor.name       AS actor_name,
+    actor.email      AS actor_email,
+    tu.name          AS target_user_name,
+    tu.email         AS target_user_email,
+    tt.name          AS target_workspace_name
+FROM audit_logs a
+LEFT JOIN users   actor ON actor.id = a.actor_user_id
+LEFT JOIN users   tu    ON tu.id    = a.target_id AND a.target_type IN ('user', 'session')
+LEFT JOIN tenants tt    ON tt.id    = a.target_id AND a.target_type = 'workspace'
+WHERE a.created_at >= $1::timestamptz
+  AND a.created_at <  $2::timestamptz
+  AND (a.created_at, a.id) < ($3::timestamptz, $4::bigint)
+  -- Prefiks, bukan sama-dengan: satu pilihan "workspace" menyaring seluruh
+  -- keluarga workspace.* tanpa menuntut daftar aksi di UI ikut diperbarui tiap
+  -- kali ada aksi baru — daftar yang harus dijaga selaras pasti tertinggal.
+  AND ($5::text IS NULL OR a.action LIKE $5::text || '%')
+  AND ($6::bigint IS NULL OR a.actor_user_id = $6::bigint)
+ORDER BY a.created_at DESC, a.id DESC
+LIMIT $7
+`
+
+type ListActivityTrailParams struct {
+	FromAt          pgtype.Timestamptz `json:"from_at"`
+	ToAt            pgtype.Timestamptz `json:"to_at"`
+	CursorCreatedAt pgtype.Timestamptz `json:"cursor_created_at"`
+	CursorID        int64              `json:"cursor_id"`
+	ActionPrefix    *string            `json:"action_prefix"`
+	ActorID         *int64             `json:"actor_id"`
+	PageSize        int32              `json:"page_size"`
+}
+
+type ListActivityTrailRow struct {
+	ID                  int64              `json:"id"`
+	Action              string             `json:"action"`
+	TargetType          string             `json:"target_type"`
+	TargetID            *int64             `json:"target_id"`
+	Metadata            []byte             `json:"metadata"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	ActorUserID         *int64             `json:"actor_user_id"`
+	ActorName           *string            `json:"actor_name"`
+	ActorEmail          *string            `json:"actor_email"`
+	TargetUserName      *string            `json:"target_user_name"`
+	TargetUserEmail     *string            `json:"target_user_email"`
+	TargetWorkspaceName *string            `json:"target_workspace_name"`
+}
+
+// Jejak aktivitas untuk panel /dev/logs: SEMUA aksi, bukan hanya login/logout.
+//
+// Sebelum ini panel hanya menampilkan `action IN ('auth.login','auth.logout')`,
+// sementara 14 jenis aksi lain ikut tercatat dan tak pernah dilihat siapa pun —
+// biayanya sudah dibayar penuh (kolom, index, penulisan di 16 tempat), hanya
+// jalur bacanya yang berhenti di satu filter.
+//
+// NAMA di-JOIN saat DIBACA, tak pernah disalin ke metadata: kolom itu sengaja
+// bebas PII, dan nama yang disalin ke sana jadi salinan permanen yang tak ikut
+// terhapus bersama usernya. LEFT JOIN, sebab jejak wajib tetap terbaca setelah
+// pelaku/sasarannya hilang — actor_user_id ON DELETE SET NULL, dan target_id
+// sengaja BUKAN FK.
+//
+// Sasaran dicari dari DUA tabel sesuai target_type, dan syarat itu WAJIB ada di
+// klausa JOIN-nya: tanpa `target_type = '...'`, id workspace akan mencocoki
+// baris users yang id-nya kebetulan sama, lalu memampangkan nama orang yang tak
+// terlibat. Salah, dan terlihat meyakinkan.
+//
+// Filter opsional lewat sqlc.narg (NULL = tanpa filter) supaya satu query
+// melayani semua kombinasi — dua query terpisah akan berbeda diam-diam begitu
+// salah satunya diubah.
+func (q *Queries) ListActivityTrail(ctx context.Context, arg ListActivityTrailParams) ([]ListActivityTrailRow, error) {
+	rows, err := q.db.Query(ctx, listActivityTrail,
+		arg.FromAt,
+		arg.ToAt,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.ActionPrefix,
+		arg.ActorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListActivityTrailRow{}
+	for rows.Next() {
+		var i ListActivityTrailRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Action,
+			&i.TargetType,
+			&i.TargetID,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.ActorUserID,
+			&i.ActorName,
+			&i.ActorEmail,
+			&i.TargetUserName,
+			&i.TargetUserEmail,
+			&i.TargetWorkspaceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAuditLogs = `-- name: ListAuditLogs :many

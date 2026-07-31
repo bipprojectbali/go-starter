@@ -169,6 +169,26 @@ salah membaca cakupan data.
     (`hits+1`) — agregasi di level baris, bukan insert-per-request — + throttle
     in-process 60 dtk/user. WAJIB fail-soft (error rekam tak menggagalkan request).
     Pasang SETELAH `RefreshIdentity` (butuh uid).
+    **Presence & audit menjawab pertanyaan BERBEDA — jangan digabung.** Presence =
+    "kapan orang ada" (agregat, murah, tanpa detail); `audit_logs` = "siapa
+    melakukan apa" (bukti, per-peristiwa). Keduanya tampil sebagai dua tabel
+    terpisah di `/dev/logs`. Godaan "biar detail" yang berakhir mencatat tiap
+    request melanggar Rule 13 — dan itu justru alasan bucket 15-menit ini ada.
+    **`audit_logs` tumbuh selamanya** — belum ada purge/scheduler (sama seperti
+    `PurgeTenant`). Task terbuka, bukan lupa.
+    **`target_type` menentukan tabel yang di-JOIN saat jejak dibaca**
+    (`user`/`session`→users, `workspace`→tenants, `platform`→tak di-JOIN), jadi
+    salah menyebutnya bukan label keliru melainkan NAMA ORANG yang keliru: id
+    workspace akan mencocoki baris users yang id-nya kebetulan sama. Pakai
+    `h.audit` (sasaran user) · `h.auditWorkspace` · `h.auditPlatform` — jangan
+    `auditLog` telanjang. Pernah terjadi: `h.audit` meng-hardcode `"user"` untuk
+    SEMUA aksi, dan tujuh aksi mengirim `tenants.id` (diperbaiki migrasi 00003).
+    **Kalimat peristiwa di `internal/activity/trail.go`** (pure, tanpa DB) —
+    action tak dikenal WAJIB jatuh ke kalimat netral + kodenya, jangan string
+    kosong: jejak dibaca justru saat ada yang aneh, dan baris yang menghilang
+    karena kodenya belum dikenal adalah kegagalan terburuk halaman ini. Nama
+    di-JOIN saat BACA, tak pernah disalin ke `metadata` (kolom itu bebas PII;
+    salinan nama di sana tak ikut terhapus bersama usernya).
 14. **Timezone: simpan UTC, agregasi `AT TIME ZONE`.** Semua `created_at`/`bucket_at`
     TIMESTAMPTZ (UTC). "Jam berapa user aktif" dikonversi ke lokal via `AT TIME ZONE
     $tz` di SQL; `APP_TIMEZONE` (default Asia/Jakarta) dibaca di config, di-inject
@@ -291,14 +311,57 @@ men-supersede pemilihan-via-session di 0003 #4. Gotcha yang mahal ditemukan ulan
   `acme`. Keputusan bypass diambil dari ROLE, tak pernah dari data DB.
 - **`/dev`, `/notifications`, `/invite/{token}`, `/workspace/new` SENGAJA tanpa
   slug** — cakupan datanya bukan satu tenant. Path mengikuti cakupan data.
-- **PII disamarkan di HANDLER, bukan di view.** Halaman anggota terbuka untuk
-  semua anggota (0004), tapi email rekan disamarkan bagi yang tak mengelola
-  (`maskEmail`). Kalau view yang menyamarkan, alamat ASLI tetap harus dioper ke
-  sana — dan satu pemakaian yang lupa akan mengirimnya ke browser, tempat ia
-  terbaca di view-source meski tak tampak di layar. Domain DIPERTAHANKAN (itu
-  yang membedakan rekan satu organisasi dari orang luar); panjang bagian lokal
-  TIDAK dibocorkan; email sendiri selalu utuh. Penyamaran WAJIB dijelaskan di
-  halaman — tanpa keterangan ia terbaca seperti data rusak.
+- **DUA pintu mengubah role, kabarnya harus SAMA.** `/w/{slug}/members` (pengelola
+  workspace) & `/dev/users` (operator platform) memanggil `UpdateMemberRole` dan
+  `authz.GuardSetRole` yang sama; keduanya WAJIB `h.notify(...,
+  "member.role.changed")`. Efeknya di sisi penerima identik — yang tak boleh
+  terjadi adalah ia mengetahui perubahan wewenangnya atau tidak, tergantung pintu
+  mana yang kebetulan dipakai. Di `/dev` tenant notifikasi = workspace **TARGET**
+  (dari form), BUKAN workspace aktor: panel itu lintas-workspace, jadi keduanya
+  sering berbeda. Sebaliknya **status & soft-delete SENGAJA tanpa notifikasi** —
+  keduanya menutup pintu login, jadi kabar in-app tak akan pernah terbaca; ia
+  hanya menumpuk untuk saat statusnya dipulihkan, ketika sudah basi.
+- **Daftar panjang wajib punya JALAN ke halaman berikutnya, bukan cuma `LIMIT`.**
+  Query keyset yang selalu diminta dari halaman pertama = baris ke-21 dst
+  mustahil dijangkau, dan gagalnya SENYAP (halaman tampil rapi, isinya saja tak
+  lengkap). Pola: ambil `pageSize+1` → `splitPage` (baris lebih hanya penanda
+  "masih ada", tak dirender — menghindari `COUNT` yang memindai seluruh tabel) →
+  cursor lewat `?after=` (`internal/handler/pagecursor.go`). **Keyset, bukan
+  OFFSET**: daftar diurut `created_at DESC` dan baris baru masuk di atas, jadi
+  OFFSET menggeser isi halaman di antara dua klik. Cursor rusak → halaman
+  pertama, JANGAN halaman kosong (terbaca sebagai "tak ada data"). Ujung daftar
+  dikatakan eksplisit; navigasinya link biasa (`<a>`), bukan Datastar — pindah
+  halaman itu NAVIGASI, harus bisa di-bookmark & dimuat ulang (sekaligus lolos
+  gotcha #16 tanpa menyentuhnya).
+- **Daftar anggota HANYA untuk pengelola** (owner/admin/platform), di kedua mode
+  — 0008 men-supersede 0004 §3 untuk baris ini. Ia DIREKTORI ORANG (nama, wajah,
+  keanggotaan dalam satu halaman yang bisa disalin sekaligus), dan member tak
+  bisa berbuat apa pun dengannya: nol manfaat, biaya PII tetap. Gerbang di
+  HANDLER (`canManageMembers` di baris pertama `MembersPage`, sebelum query
+  dijalankan) — bukan route, sebab 0004 tetap berlaku: satu alamat, aksi
+  mengikuti role. Ditolak **403 + penjelasan**, BUKAN 404: penerimanya sudah
+  terbukti anggota (Scope memvalidasinya), jadi menyangkal keberadaan halaman
+  hanya membuat orang mengira ada yang rusak. Menu `Anggota` WAJIB memakai izin
+  yang SAMA — `workspaceNav` menerima dua izin terpisah (`canMembers`,
+  `canSettings`) karena keduanya tak identik di mode single.
+- **PII disamarkan di HANDLER, bukan di view.** Kalau view yang menyamarkan,
+  alamat ASLI tetap harus dioper ke sana — dan satu pemakaian yang lupa akan
+  mengirimnya ke browser, tempat ia terbaca di view-source meski tak tampak di
+  layar. `maskEmail` kini nyaris tak tereksekusi (semua penglihat = pengelola)
+  tapi SENGAJA dipertahankan (0008 §5): aturan tampilan & aturan akses adalah dua
+  hal berbeda, dan yang satu tak boleh diam-diam bergantung pada yang lain.
+  Domain DIPERTAHANKAN (itu yang membedakan rekan satu organisasi dari orang
+  luar); panjang bagian lokal TIDAK dibocorkan; email sendiri selalu utuh.
+- **Penanda orang = NAMA (`users.name`), email cadangan.** Claim `name` Google
+  dulu dibaca lalu dibuang — `maskEmail` lahir sebagai kompensasi. Nama
+  di-refresh tiap login (`UpdateUserProfile`, COALESCE: argumen NULL =
+  "provider diam", BUKAN "hapus"). Nilainya USER-CONTROLLED → dibersihkan
+  `oauth.NormalizeDisplayName` (kontrol/newline dibuang, spasi diciutkan,
+  dipotong pada batas RUNE bukan byte) dan TAK PERNAH dipakai sebagai penanda
+  unik maupun untuk otorisasi — `id` yang dipakai. **Catatan untuk kelak**: fitur
+  "edit profil" akan tertimpa refresh tiap login; saat itu tiba, nama pilihan
+  sendiri harus jadi kolom terpisah yang diutamakan, bukan mematikan refresh
+  (avatar tetap perlu ikut berubah).
 - **View TAK BOLEH merakit path workspace sendiri** — oper `base` dari handler
   (`panel.Members`, `panel.WorkspaceView.Base`). Pelanggarannya senyap: form
   tetap ter-render rapi, baru ketahuan saat di-SUBMIT (pernah terjadi — semua

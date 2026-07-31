@@ -81,7 +81,7 @@ func (h *Handler) DevWorkspaceSuspend(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dev/workspaces?err=failed", http.StatusSeeOther)
 		return
 	}
-	h.audit(ctx, uid, "workspace.suspend", id, map[string]string{"reason": reason})
+	h.auditWorkspace(ctx, uid, "workspace.suspend", id, map[string]string{"reason": reason})
 	http.Redirect(w, r, "/dev/workspaces", http.StatusSeeOther)
 }
 

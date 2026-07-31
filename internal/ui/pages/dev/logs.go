@@ -21,7 +21,11 @@ type LogsData struct {
 	PeakHour    string    // KPI: jam tersibuk (mis. "14:00"); "" bila tak ada
 	ChartJSON   string    // option ECharts (bar/line) sudah di-marshal
 	Spans       []SpanRow // tabel "aktif jam berapa s/d jam berapa"
-	AuthEvents  []AuthRow // tabel login/logout terbaru
+	// Trail = jejak SEMUA aksi (audit_logs), menggantikan tabel login/logout.
+	// Presence & audit sengaja tetap dua tabel terpisah di halaman yang sama:
+	// yang satu menjawab "kapan orang ada" (agregat), yang lain "siapa melakukan
+	// apa" (bukti per-peristiwa). Digabung, keduanya jadi tak berguna.
+	Trail TrailView
 }
 
 // SpanRow = satu baris rentang aktivitas user (first/last seen sudah diformat lokal).
@@ -30,14 +34,6 @@ type SpanRow struct {
 	FirstSeen string
 	LastSeen  string
 	Hits      int64
-}
-
-// AuthRow = satu baris event auth (login/logout) siap tampil.
-type AuthRow struct {
-	Action string // "auth.login" | "auth.logout"
-	Method string // "password" | "google" | ""
-	UserID int64
-	When   string // waktu lokal terformat
 }
 
 // LogsPage merender dashboard aktivitas: KPI + tab rentang + chart + tabel.
@@ -49,13 +45,14 @@ func LogsPage(d LogsData) g.Node {
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-1"), g.Text("User Activity")),
 		h.P(h.Class("text-sm text-base-content/70 mb-4"),
-			g.Text("Jejak kehadiran user (presence) & event autentikasi. Waktu ditampilkan zona lokal aplikasi.")),
+			g.Text("Kehadiran user (presence) & jejak siapa melakukan apa. "+
+				"Waktu ditampilkan zona lokal aplikasi.")),
 
 		rangeTabs(d.Range),
 		kpiCards(d),
 		activityChart(chartID, d.ChartJSON),
 		spansCard(d.Spans),
-		authEventsCard(d.AuthEvents),
+		TrailCard(d.Trail),
 
 		// Runtime ECharts (vendored) + init (keduanya same-origin → CSP-safe).
 		h.Script(h.Src("/static/echarts.min.js")),
@@ -135,31 +132,6 @@ func spansCard(rows []SpanRow) g.Node {
 	}
 	return tableCard("Rentang aktivitas user", []string{"User", "Pertama", "Terakhir", "Aktivitas"}, body,
 		"Belum ada aktivitas pada rentang ini.")
-}
-
-// authEventsCard = tabel login/logout terbaru.
-func authEventsCard(rows []AuthRow) g.Node {
-	body := []g.Node{}
-	for _, e := range rows {
-		label := "Login"
-		badgeCls := "badge badge-success"
-		if e.Action == "auth.logout" {
-			label, badgeCls = "Logout", "badge badge-neutral"
-		}
-		method := e.Method
-		if method == "" {
-			method = "—"
-		}
-		body = append(body, h.Tr(
-			h.Class("border-b border-base-300"),
-			h.Td(h.Class("py-2 pr-4"), h.Span(h.Class(badgeCls), g.Text(label))),
-			h.Td(h.Class("py-2 pr-4"), g.Text(method)),
-			h.Td(h.Class("py-2 pr-4"), g.Text("#"+itoa64(e.UserID))),
-			h.Td(h.Class("py-2"), g.Text(e.When)),
-		))
-	}
-	return tableCard("Event autentikasi terbaru", []string{"Aksi", "Metode", "User", "Waktu"}, body,
-		"Belum ada event login/logout.")
 }
 
 // tableCard membungkus tabel dalam card daisyUI. empty = pesan bila tak ada baris.

@@ -11,43 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listAuthEvents = `-- name: ListAuthEvents :many
-SELECT id, actor_user_id, tenant_id, action, target_type, target_id, metadata, created_at FROM audit_logs
-WHERE action IN ('auth.login', 'auth.logout')
-ORDER BY created_at DESC, id DESC
-LIMIT $1
-`
-
-// Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
-func (q *Queries) ListAuthEvents(ctx context.Context, pageSize int32) ([]AuditLog, error) {
-	rows, err := q.db.Query(ctx, listAuthEvents, pageSize)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []AuditLog{}
-	for rows.Next() {
-		var i AuditLog
-		if err := rows.Scan(
-			&i.ID,
-			&i.ActorUserID,
-			&i.TenantID,
-			&i.Action,
-			&i.TargetType,
-			&i.TargetID,
-			&i.Metadata,
-			&i.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const presenceByDay = `-- name: PresenceByDay :many
 SELECT
     (date_trunc('day', bucket_at AT TIME ZONE $1::text))::date AS day_local,

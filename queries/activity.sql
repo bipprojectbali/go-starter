@@ -67,9 +67,8 @@ WHERE ap.bucket_at >= sqlc.arg(from_at)::timestamptz
 GROUP BY ap.user_id, u.email
 ORDER BY first_seen;
 
--- name: ListAuthEvents :many
--- Login/logout terbaru (subset audit_logs) untuk tabel aktivitas panel.
-SELECT * FROM audit_logs
-WHERE action IN ('auth.login', 'auth.logout')
-ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(page_size);
+-- ListAuthEvents DIHAPUS: ia menyaring `action IN ('auth.login','auth.logout')`
+-- sehingga 14 jenis aksi lain ikut tercatat tapi tak pernah terlihat, DAN ia tak
+-- menerima rentang sama sekali — memilih "Bulanan" tak mengubah isinya, jadi
+-- tab-nya berbohong. Digantikan ListActivityTrail di queries/audit.sql, yang
+-- menghormati rentang, bisa disaring, dan terpaginasi.

@@ -33,7 +33,14 @@ func (h *Handler) DevLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.ChartJSON, vm.PeakHour = h.buildChart(ctx, rng, fromTS, toTS, from, to)
 	vm.Spans = h.buildSpans(ctx, fromTS, toTS)
-	vm.AuthEvents = h.buildAuthEvents(ctx)
+
+	// Jejak aktivitas — MENGHORMATI rentang yang dipilih, tak seperti tabel
+	// login/logout yang digantikannya: dulu ia selalu 20 terbaru, jadi memilih
+	// "Bulanan" tak mengubah apa pun dan tab-nya berbohong.
+	rows, next := h.buildTrail(ctx, r, fromTS, toTS)
+	vm.Trail = trailViewOf(r, string(rng), rows, next,
+		h.buildTrailFamilies(ctx, fromTS, toTS),
+		h.buildTrailActors(ctx, fromTS, toTS))
 
 	h.renderShell(w, r, "User Activity", "go_starter /dev", "/dev/logs", devNav(r.Context()),
 		dev.LogsPage(vm))
