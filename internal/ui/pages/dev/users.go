@@ -13,8 +13,13 @@ import (
 
 // UserRow = data satu baris user untuk tabel (view model, bukan db.User).
 type UserRow struct {
-	ID            int64
-	Email         string
+	ID    int64
+	Email string
+	// Name = nama tampilan dari provider; "" bila tak diketahui (akun password
+	// dev, atau Google tak mengirimkannya). Di panel platform email TETAP tampil
+	// utuh di samping nama — operator platform memakainya untuk mencocokkan
+	// orang, dan nama tidak unik.
+	Name          string
 	Status        string
 	AvatarURL     string
 	IsRoot        bool            // super-admin env (kontrol dinonaktifkan)
@@ -68,13 +73,13 @@ func UserRowNode(u UserRow, roles []string, canManageSuper bool) g.Node {
 	return h.Tr(
 		h.ID(rowID),
 		h.Class("border-b border-base-300"),
-		// Kolom user: avatar + email (+ badge root).
+		// Kolom user: avatar + nama/email (+ badge root).
 		h.Td(
 			h.Class("py-2 pr-4"),
 			h.Div(
-				h.Class("flex items-center gap-2"),
-				ui.Avatar(u.AvatarURL, "", u.Email, 32),
-				h.Span(g.Text(u.Email)),
+				h.Class("flex items-center gap-2 min-w-0"),
+				ui.Avatar(u.AvatarURL, u.Name, u.Email, 32),
+				userIdent(u),
 				ui.When(u.IsRoot, badge("root", "outline")),
 			),
 		),
@@ -82,6 +87,23 @@ func UserRowNode(u UserRow, roles []string, canManageSuper bool) g.Node {
 		h.Td(h.Class("py-2 pr-4"), quotaControl(u)),
 		h.Td(h.Class("py-2 pr-4"), statusControl(u)),
 		h.Td(h.Class("py-2"), deleteControl(u)),
+	)
+}
+
+// userIdent = nama di atas, email di bawahnya. Berbeda dari panel workspace,
+// email di sini SELALU utuh: yang membacanya adalah operator platform, yang
+// justru bertugas mencocokkan orang — dan nama tak bisa dipakai untuk itu
+// (tidak unik, dan nilainya dikendalikan usernya sendiri di Google).
+//
+// Tanpa nama, email naik jadi baris utama alih-alih menyisakan baris kosong.
+func userIdent(u UserRow) g.Node {
+	if u.Name == "" {
+		return h.Span(h.Class("truncate"), g.Text(u.Email))
+	}
+	return h.Div(
+		h.Class("min-w-0"),
+		h.Div(h.Class("truncate"), g.Text(u.Name)),
+		h.Div(h.Class("truncate text-xs text-base-content/60"), g.Text(u.Email)),
 	)
 }
 

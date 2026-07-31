@@ -23,10 +23,15 @@ func toUserRows(users []db.User, byUser map[int64][]dev.WorkspaceRole) []dev.Use
 		if u.AvatarUrl != nil {
 			avatar = *u.AvatarUrl
 		}
+		name := ""
+		if u.Name != nil {
+			name = *u.Name
+		}
 		isRoot := isSuperAdminEmail(u.Email)
 		rows = append(rows, dev.UserRow{
 			ID:         u.ID,
 			Email:      u.Email,
+			Name:       name,
 			Status:     u.Status,
 			AvatarURL:  avatar,
 			IsRoot:     isRoot,
