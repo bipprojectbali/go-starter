@@ -32,16 +32,20 @@ assets, migrations, dan template di-embed via `embed.FS`).
 ## Mulai cepat
 
 ```bash
-# 1. Install tooling (sqlc, goose, air) + unduh aset vendored (sekali saja)
+# 1. Ganti nama project (module path + import + nama DB contoh)
+make rename name=nama-project-anda
+
+# 2. Install tooling (sqlc, goose, air) + unduh aset vendored (sekali saja)
 make setup
 
-# 2. Salin konfigurasi, sesuaikan DATABASE_URL / REDIS_ADDR
+# 3. Salin konfigurasi; sesuaikan DATABASE_URL, REDIS_ADDR, dan APP_NAME
+#    (APP_NAME menentukan nama di halaman depan & sidebar)
 cp .env.example .env
 
-# 3. Buat database dev & test
-createdb go_starter && createdb go_starter_test
+# 4. Buat database dev & test
+createdb nama-project-anda && createdb nama-project-anda_test
 
-# 4. Jalankan (live-reload; migrasi auto saat boot)
+# 5. Jalankan (live-reload; migrasi auto saat boot)
 make dev
 ```
 
@@ -123,6 +127,7 @@ butuh source/tooling yang tak ada di build single-binary.
 
 | Perintah | Aksi |
 |----------|------|
+| `make rename name=X` | ganti nama project setelah clone (module path, import, DB contoh) |
 | `make setup` | install tooling + unduh aset vendored |
 | `make dev` | live-reload (air): regenerate CSS → sqlc → build → run |
 | `make check` | **gerbang wajib**: sqlc · vet · gofmt · build · test |

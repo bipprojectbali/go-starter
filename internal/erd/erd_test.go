@@ -2,11 +2,8 @@ package erd
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // TestMermaid_Output menguji rendering teks Mermaid dari Schema in-memory
@@ -60,16 +57,14 @@ func TestMermaidType(t *testing.T) {
 // TestIntrospect_LiveDB memverifikasi introspeksi terhadap DB nyata (skip bila
 // TEST_DATABASE_URL kosong). Mengharap tabel inti + FK ke users terdeteksi.
 func TestIntrospect_LiveDB(t *testing.T) {
-	dsn := os.Getenv("TEST_DATABASE_URL")
-	if dsn == "" {
+	if pkgPool == nil {
 		t.Skip("TEST_DATABASE_URL tak di-set")
 	}
+	// Pool ber-schema milik paket ini: introspeksi memeriksa schema AKTIF, jadi
+	// tanpa ini ia membaca `public` — yang di database baru hasil clone tak
+	// berisi apa pun, dan gagalnya menunjuk ERD alih-alih migrasi.
+	pool := pkgPool
 	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
 
 	s, err := Introspect(ctx, pool)
 	if err != nil {

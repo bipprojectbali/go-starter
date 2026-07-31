@@ -48,7 +48,7 @@ func (h *Handler) DevUsersList(w http.ResponseWriter, r *http.Request) {
 	actorRole := authz.ParseRole(session.Role(ctx))
 	canManageSuper := session.IsRoot(ctx) || actorRole >= authz.RoleSuperAdmin
 	byUser := h.membershipsByUser(ctx, users) // satu query batch (anti N+1)
-	h.renderShell(w, r, "Users", "go_starter /dev", "/dev/users", devNav(ctx),
+	h.renderShell(w, r, "Users", devBrand(), "/dev/users", devNav(ctx),
 		dev.UsersPage(dev.UsersView{
 			Rows:           toUserRows(users, byUser),
 			Roles:          authz.AssignableRoles(appmode.IsSingle()),

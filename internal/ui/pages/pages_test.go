@@ -79,16 +79,21 @@ func TestRegister_TanpaFieldWorkspace(t *testing.T) {
 
 func TestLanding(t *testing.T) {
 	// Login → CTA ke home per-role (homePath yang dioper), teks "Buka aplikasi".
-	in := render(t, Landing(true, "/dev"))
+	in := render(t, Landing(true, "/dev", "Acme"))
 	if !strings.Contains(in, `href="/dev"`) || !strings.Contains(in, "Buka aplikasi") {
 		t.Errorf("landing login harus CTA ke homePath:\n%s", in)
 	}
 	// Anonim → CTA /login, homePath diabaikan.
-	anon := render(t, Landing(false, "/dev"))
+	anon := render(t, Landing(false, "/dev", "Acme"))
 	if !strings.Contains(anon, `href="/login"`) {
 		t.Errorf("landing anonim harus CTA /login:\n%s", anon)
 	}
 	if strings.Contains(anon, `href="/dev"`) {
 		t.Errorf("landing anonim tak boleh link ke home:\n%s", anon)
+	}
+	// Nama aplikasi DIOPER, tak ditulis view: tanpa ini setiap project turunan
+	// memampangkan nama template di halaman depannya.
+	if !strings.Contains(in, "Acme") {
+		t.Errorf("landing harus menampilkan nama aplikasi yang dioper:\n%s", in)
 	}
 }

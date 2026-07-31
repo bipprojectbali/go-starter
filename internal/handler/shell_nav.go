@@ -35,7 +35,7 @@ func navFor(ctx context.Context) []ui.NavItem {
 // cocok dengan menu yang ditampilkan.
 func brandFor(ctx context.Context) string {
 	if role := session.Role(ctx); isPlatformRole(role) || session.IsRoot(ctx) {
-		return "go_starter /dev"
+		return devBrand()
 	}
 	return session.TenantName(ctx)
 }

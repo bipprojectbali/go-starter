@@ -1,4 +1,4 @@
-.PHONY: help setup tools tailwind dev check build run clean migrate-new migrate-up test css
+.PHONY: help setup tools tailwind dev check build run clean migrate-new migrate-up test css rename
 
 # `make` polos (tanpa target) → tampilkan daftar perintah, BUKAN jalankan setup
 # (yang men-download Tailwind 76MB). Default goal wajib sebelum target apa pun.
@@ -14,7 +14,17 @@ GOOSE := $(GOBIN)/goose
 AIR   := $(GOBIN)/air
 
 BINARY := app
-TEST_DATABASE_URL ?= postgres://bip@localhost:5432/go_starter_test?sslmode=disable
+
+# Nama module = nama project. Diturunkan dari go.mod, bukan ditulis ulang di
+# sini: dua tempat yang menyimpan nama yang sama pasti berbeda suatu saat, dan
+# `make rename` hanya perlu menyentuh satu.
+PROJECT := $(shell head -1 go.mod | awk '{print $$2}')
+
+# User Postgres default = user OS yang menjalankan make ($(USER)), BUKAN nama
+# yang di-hardcode. Sebelumnya baris ini memuat username penulis template, jadi
+# setiap orang yang meng-clone mewarisi kredensial yang bukan miliknya dan
+# gagal dengan "role does not exist". Override kapan pun lewat env.
+TEST_DATABASE_URL ?= postgres://$(USER)@localhost:5432/$(PROJECT)_test?sslmode=disable
 
 # Versi aset vendored (lihat static/VENDOR.md).
 TAILWIND_VERSION := v4.3.2
@@ -23,7 +33,7 @@ TAILWIND_TARGET := $(shell uname -s | tr A-Z a-z | sed 's/darwin/macos/')-$(shel
 
 ## help: tampilkan daftar perintah (default saat `make` tanpa argumen)
 help:
-	@echo "go_starter — perintah tersedia:"
+	@echo "$(PROJECT) — perintah tersedia:"
 	@echo ""
 	@grep -E '^## [a-z-]+:' $(MAKEFILE_LIST) | sed 's/## /  /' | awk -F': ' '{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}' | sed 's/^  //'
 	@echo ""
@@ -55,7 +65,11 @@ tailwind:
 	fi
 
 ## css: generate app.css dari class di file .go (Tailwind v4 + daisyUI plugin)
-css:
+##
+## Bergantung `tailwind` dengan alasan yang sama seperti `dev`: binary-nya tak
+## di-commit, dan setiap target yang memanggilnya langsung akan gagal di clone
+## baru dengan pesan yang menyesatkan.
+css: tailwind
 	./tailwindcss -i static/input.css -o static/app.css --minify
 
 # Test berjalan PARALEL lagi: tiap paket punya schema Postgres sendiri
@@ -75,7 +89,14 @@ test:
 	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test ./...
 
 ## dev: live reload
-dev:
+##
+## Bergantung `tailwind` supaya clone baru langsung jalan. Binary Tailwind (76MB)
+## sengaja TIDAK di-commit, jadi tanpa ini `make dev` gagal di baris pertama build
+## dengan "./tailwindcss: No such file or directory" — pesan yang tak menyebut
+## `make setup` sama sekali, sehingga penerimanya harus menebak. Target tailwind
+## idempotent (skip bila binary sudah valid), jadi ongkosnya nol setelah unduhan
+## pertama.
+dev: tailwind
 	$(AIR)
 
 ## build: single binary (regenerate CSS dulu)
@@ -86,6 +107,14 @@ build: css
 ## run: build lalu jalankan
 run: build
 	./$(BINARY)
+
+## rename: ganti nama project setelah clone (make rename name=nama-baru)
+##
+## Mengubah module path + seluruh import + nama DB contoh sekaligus. Tanpa ini,
+## tiap clone menuntut penyisiran manual di ratusan tempat — pekerjaan yang
+## mudah setengah selesai, dan sisanya baru ketahuan berbulan-bulan kemudian.
+rename:
+	@./scripts/rename.sh $(name)
 
 ## migrate-new: buat migration baru (make migrate-new name=add_x)
 migrate-new:

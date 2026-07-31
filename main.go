@@ -181,6 +181,7 @@ func run() error {
 	// Alamat publik aplikasi — sumber redirect_uri OAuth & tautan undangan.
 	// Di-set SEBELUM wiring OAuth di bawah (yang merakit redirect_uri darinya).
 	handler.SetAppBaseURL(cfg.AppBaseURL)
+	handler.SetAppName(cfg.AppName)              // brand sidebar & judul halaman
 	handler.SetCSSPath(assetSrv.Path("app.css")) // inject path ber-hash ke Layout
 	handler.SetDevMode(!cfg.IsProduction())      // password auth = dev-only
 	handler.SetSuperAdminChecker(cfg.IsSuperAdminEmail)

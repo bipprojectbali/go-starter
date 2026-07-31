@@ -14,6 +14,10 @@ type LayoutData struct {
 	UserEmail string // "" bila belum login (nav sembunyi)
 	AvatarURL string // URL avatar Google (base); "" → inisial
 	CSSPath   string // path app.css (dengan cache-bust hash)
+	// Brand = nama aplikasi di header. DIOPER dari handler, tak pernah ditulis
+	// di sini: view yang menyimpan nama aplikasi berarti setiap project turunan
+	// harus menyisir layer tampilan untuk menggantinya (konvensi view murni-data).
+	Brand string
 }
 
 // Layout membungkus konten halaman dengan HTML5 lengkap: head, CSS, nav, dan
@@ -31,7 +35,7 @@ func Layout(d LayoutData, body ...g.Node) g.Node {
 			// Latar = base-200; permukaan (card) = base-100 → kartu menonjol.
 			// Token relatif daisyUI: hierarki ini benar otomatis di semua tema.
 			h.Class("min-h-screen bg-base-200 text-base-content"),
-			nav(d.UserEmail, d.AvatarURL),
+			nav(d.UserEmail, d.AvatarURL, d.Brand),
 			h.Main(h.Class("mx-auto max-w-2xl p-6"), g.Group(body)),
 			// Modal konfirmasi logout — hanya relevan bila ada nav (user login).
 			logoutModal(d.UserEmail),
@@ -53,7 +57,7 @@ func headNodes(cssPath string) []g.Node {
 }
 
 // nav menampilkan bar atas. Tombol logout + avatar muncul hanya bila user login.
-func nav(userEmail, avatarURL string) g.Node {
+func nav(userEmail, avatarURL, brand string) g.Node {
 	if userEmail == "" {
 		// Belum login (mis. halaman login) — tanpa nav, tapi tetap sediakan
 		// pemilih tema mengambang di pojok agar tema bisa diganti sebelum login.
@@ -64,7 +68,7 @@ func nav(userEmail, avatarURL string) g.Node {
 		data.Signals(map[string]any{"logoutConfirm": false}),
 		h.Div(
 			h.Class("mx-auto max-w-2xl p-4 flex items-center justify-between"),
-			h.A(h.Href("/"), h.Class("font-semibold"), g.Text("go_starter")),
+			h.A(h.Href("/"), h.Class("font-semibold"), g.Text(brand)),
 			h.Div(
 				h.Class("flex items-center gap-3"),
 				ThemeToggle(),

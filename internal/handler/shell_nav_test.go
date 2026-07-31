@@ -100,19 +100,42 @@ func TestNavFor_MemberTakDapatMenuDev(t *testing.T) {
 }
 
 // TestBrandFor_SelarasDenganNav: brand sidebar harus cocok dengan menu yang
-// tampil. Role tenant → NAMA WORKSPACE (bukan lagi "go_starter /admin"): setelah
-// peleburan, yang membedakan konteks adalah workspace-nya, bukan panelnya.
+// tampil. Role tenant → NAMA WORKSPACE: setelah peleburan panel, yang
+// membedakan konteks adalah workspace-nya, bukan panelnya.
+//
+// Brand platform diuji lewat devBrand(), BUKAN string harfiah: nama aplikasi
+// kini datang dari APP_NAME, dan menuliskannya di sini akan mengunci test ke
+// nama template — persis hardcode yang baru saja dicabut.
 func TestBrandFor_SelarasDenganNav(t *testing.T) {
 	cases := map[string]string{
 		"member":      "Acme",
 		"admin":       "Acme",
 		"owner":       "Acme",
-		"super_admin": "go_starter /dev",
+		"super_admin": devBrand(),
 	}
 	for role, want := range cases {
 		if got := brandFor(ctxWithRole(t, role)); got != want {
 			t.Errorf("role %s: brand %q, want %q", role, got, want)
 		}
+	}
+}
+
+// TestBrandFor_IkutAppName: brand platform WAJIB berubah bersama APP_NAME.
+// Tanpa test ini, mengembalikan hardcode tak akan memerahkan apa pun — dan
+// project turunan kembali memampangkan nama template di sidebarnya.
+func TestBrandFor_IkutAppName(t *testing.T) {
+	prev := AppName()
+	SetAppName("Vanguard")
+	t.Cleanup(func() { appName = prev })
+
+	if got := brandFor(ctxWithRole(t, "super_admin")); got != "Vanguard /dev" {
+		t.Errorf("brand platform harus mengikuti APP_NAME, got %q", got)
+	}
+	// Nama kosong TIDAK boleh menghapus nama yang sudah ada: env yang tak diisi
+	// harus jatuh ke default, bukan menghasilkan sidebar berlabel " /dev".
+	SetAppName("")
+	if got := brandFor(ctxWithRole(t, "super_admin")); got != "Vanguard /dev" {
+		t.Errorf("APP_NAME kosong tak boleh mengosongkan brand, got %q", got)
 	}
 }
 

@@ -26,6 +26,32 @@ var cssPath = "/static/app.css"
 // SetCSSPath menetapkan path CSS ber-hash (dipanggil dari main saat startup).
 func SetCSSPath(p string) { cssPath = p }
 
+// appName = nama aplikasi untuk brand & judul halaman. Di-inject dari config
+// (APP_NAME) via SetAppName, mengikuti pola setter global lainnya di file ini.
+//
+// Sebelumnya "go_starter" di-hardcode di tujuh tempat. Untuk sebuah TEMPLATE
+// yang memang dimaksudkan di-clone, itu bentuk hardcode yang paling mahal:
+// bukan cuma melanggar Rule 15, tapi membuat setiap project turunan memampangkan
+// nama template-nya di sidebar sampai ada yang menyisirnya satu per satu.
+//
+// Default "App" menyamai config.getEnv("APP_NAME", "App") — dua tempat yang
+// menyimpan default berbeda akan tampak sebagai nama yang berubah-ubah
+// tergantung jalur mana yang menyetelnya.
+var appName = "App"
+
+// SetAppName menetapkan nama aplikasi (dipanggil dari main saat startup).
+func SetAppName(n string) {
+	if n != "" {
+		appName = n
+	}
+}
+
+// AppName mengembalikan nama aplikasi yang aktif.
+func AppName() string { return appName }
+
+// devBrand = label brand panel platform, mis. "Acme /dev".
+func devBrand() string { return appName + " /dev" }
+
 // devMode menandai environment non-production. Menentukan apakah form login
 // password ditampilkan (password auth = dev-only; produksi hanya Google).
 var devMode bool
@@ -57,6 +83,7 @@ func SetAppTimezone(loc *time.Location) {
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title string, body g.Node) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	d := ui.LayoutData{
+		Brand:     appName,
 		Title:     title,
 		UserEmail: session.Email(r.Context()),
 		AvatarURL: session.AvatarURL(r.Context()),

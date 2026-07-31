@@ -39,6 +39,18 @@ konvensi + **gotcha yang mahal ditemukan ulang**.
   `RequireAuth` → `Scope` → `RefreshIdentity` → `TrackPresence` → `RequireEnforce(obj, act)`.
   `Scope` (multi-tenancy) buka tx ber-tenant SEBELUM `RefreshIdentity`/`TrackPresence`
   (keduanya pakai `h.q(ctx)`). Lihat § Multi-tenancy.
+- **Ini TEMPLATE yang di-clone.** Nama project & nama aplikasi tak boleh
+  di-hardcode di mana pun: module path diganti `make rename name=X`, dan nama
+  yang tampil di layar datang dari `APP_NAME` lewat `handler.SetAppName`
+  (`devBrand()` untuk sidebar `/dev`, `LayoutData.Brand` untuk header). Test
+  brand memakai `devBrand()`, BUKAN string harfiah — menuliskannya akan mengunci
+  test ke nama template. Target `dev`/`css` bergantung `tailwind` supaya clone
+  baru langsung jalan: binary-nya 76MB & gitignored, dan tanpa itu `make dev`
+  gagal dengan pesan yang tak menyebut `make setup`.
+- **Query yang menyaring `table_schema` WAJIB pakai `current_schema()`**, bukan
+  `'public'` harfiah — sama seperti GRANT di migrasi 00004. Pernah terjadi di
+  `internal/erd`: ERD tampil KOSONG di schema non-public, dan halamannya termuat
+  rapi sehingga terbaca seperti database kosong alih-alih filter yang keliru.
 - **Config dibaca HANYA di `internal/config`** — jangan `os.Getenv` tersebar.
 - **Handler tak menyimpan config**; nilai di-inject via setter global saat startup
   (pola `SetCSSPath`, `SetDevMode`, `SetGoogleOAuth`, `SetSuperAdminChecker`,

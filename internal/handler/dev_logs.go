@@ -42,6 +42,6 @@ func (h *Handler) DevLogs(w http.ResponseWriter, r *http.Request) {
 		h.buildTrailFamilies(ctx, fromTS, toTS),
 		h.buildTrailActors(ctx, fromTS, toTS))
 
-	h.renderShell(w, r, "User Activity", "go_starter /dev", "/dev/logs", devNav(r.Context()),
+	h.renderShell(w, r, "User Activity", devBrand(), "/dev/logs", devNav(r.Context()),
 		dev.LogsPage(vm))
 }

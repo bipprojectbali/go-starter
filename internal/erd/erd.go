@@ -43,13 +43,19 @@ type Schema struct {
 func Introspect(ctx context.Context, pool *pgxpool.Pool) (Schema, error) {
 	var s Schema
 
+	// Seluruh query di bawah menyaring `table_schema = current_schema()`, BUKAN
+	// 'public' harfiah. Dengan nama harfiah, ERD tampil KOSONG di deployment mana
+	// pun yang menaruh aplikasi di schema lain — halaman termuat rapi tanpa satu
+	// tabel pun, yang terbaca seperti database kosong alih-alih filter yang
+	// keliru. Terungkap saat template ini di-clone ke database baru.
+
 	// 1. Tabel + kolom (urut ordinal), skip tabel bookkeeping.
 	rows, err := pool.Query(ctx, `
 		SELECT c.table_name, c.column_name, c.data_type
 		FROM information_schema.columns c
 		JOIN information_schema.tables t
 		  ON t.table_schema = c.table_schema AND t.table_name = c.table_name
-		WHERE c.table_schema = 'public'
+		WHERE c.table_schema = current_schema()
 		  AND t.table_type = 'BASE TABLE'
 		  AND c.table_name NOT IN ('goose_db_version')
 		ORDER BY c.table_name, c.ordinal_position`)
@@ -97,7 +103,7 @@ func Introspect(ctx context.Context, pool *pgxpool.Pool) (Schema, error) {
 		  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
 		JOIN information_schema.constraint_column_usage ccu
 		  ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-		WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = 'public'`)
+		WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = current_schema()`)
 	if err != nil {
 		return s, fmt.Errorf("erd: query fk: %w", err)
 	}
@@ -139,7 +145,7 @@ func markConstraint(ctx context.Context, pool *pgxpool.Pool, ctype string, fn fu
 		FROM information_schema.table_constraints tc
 		JOIN information_schema.key_column_usage kcu
 		  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-		WHERE tc.constraint_type = $1 AND tc.table_schema = 'public'`, ctype)
+		WHERE tc.constraint_type = $1 AND tc.table_schema = current_schema()`, ctype)
 	if err != nil {
 		return fmt.Errorf("erd: query %s: %w", ctype, err)
 	}

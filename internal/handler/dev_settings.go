@@ -34,7 +34,7 @@ func (h *Handler) DevSettings(w http.ResponseWriter, r *http.Request) {
 	} else {
 		h.Log.Error("settings: baca workspace primer", "err", e)
 	}
-	h.renderShell(w, r, "Pengaturan", "go_starter /dev", "/dev/settings", devNav(r.Context()),
+	h.renderShell(w, r, "Pengaturan", devBrand(), "/dev/settings", devNav(r.Context()),
 		dev.Settings(dev.SettingsView{
 			SingleMode:    appmode.IsSingle(),
 			PrimaryName:   primaryName,
