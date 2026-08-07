@@ -597,6 +597,39 @@ paling sering diabaikan — ia bukan pengaman.
 - **Jangan tambah env baru untuk hal yang bisa diturunkan** dari env yang sudah
   ada. Tiap env baru adalah satu lagi hal yang bisa lupa diisi.
 
+## MCP server read-only (`internal/mcpserver`) — akses runtime untuk agent AI
+
+Memberi agent AI "mata" ke runtime dev/staging/prod (bug di staging tak lagi
+buta) — SEMUA read-only. SDK resmi `modelcontextprotocol/go-sdk` v1.7.0.
+
+- **ADAPTER TIPIS, bukan pintu baru.** Tiap tool memanggil ULANG fungsi baca yang
+  sudah aman (`erd.Introspect`, `db.CheckRLS`, `preflight.Run`, query `List*`/
+  `Count*`/`Presence*`), tak menulis logika/query baru. Menambah tool = memetakan
+  satu fungsi read-only ke satu handler. DILARANG: tool SQL/shell mentah, embed
+  `maintenance`/`MigrateWithLock`/`Create*`, mengalirkan nilai rahasia (lapor
+  keberadaan/panjang, bukan nilai — Rule 7/12).
+- **Read-only STRUKTURAL, bukan disiplin.** Semua akses DB lewat
+  `db.WithSuper(ctx, pool, fn)` → `SET LOCAL ROLE app_rw` → **DDL ditolak DB**.
+  `h.q(ctx)` TAK BISA dipakai (panic tanpa Scope middleware) — MCP tanpa request
+  context. Test `TestReadOnly_NolTulis` menghitung baris sebelum/sesudah tiap
+  tool = harus SAMA; kalau kelak ada tool menulis tak sengaja, itu yang menangkap.
+- **BUKAN service/proses terpisah.** `mcpserver.Handler()` = `http.Handler` biasa,
+  dipasang sebagai rute `/mcp` di app yang sudah jalan (Streamable HTTP, Stateless+
+  JSONResponse). Image/container/deploy/reverse-proxy SAMA. Ini keputusan yang
+  membedakannya dari refleks "MCP = binary terpisah" (benar untuk stdio subprocess,
+  SALAH untuk HTTP remote).
+- **Rute opt-in, dijaga Bearer.** `routes.go` mendaftarkan `/mcp` HANYA bila
+  `cfg.MCPToken != ""` (fitur yang membuka runtime ke AI tak menyala karena lupa).
+  Dijaga `mw.RequireBearer` (constant-time compare) — BUKAN RequireAuth (kliennya
+  agent/program, bukan manusia ber-session). Sejajar `/healthz`, di luar auth sesi.
+- **Satu server, dua transport.** `build()` merakit `*mcp.Server` sekali; dipakai
+  HTTP (`Handler`) & stdio (`ServeStdio`, subcommand `./app mcp` untuk dev). Jadi
+  kemampuan keduanya mustahil berbeda. Di stdio, logger WAJIB ke STDERR — stdout
+  milik protokol JSON-RPC (satu baris log ke sana merusak framing).
+- **Fase berikutnya (belum ada):** tool tulis terjaga (migrasi/purge) dev+staging
+  saja, gated `!IsProduction()`, tiap aksi → `audit_logs` (aktor "agent"). Produksi
+  tetap read-only.
+
 ## Batasan
 
 - Semua interaktivitas = **Datastar** (satu paradigma). Jangan tambah framework JS.
