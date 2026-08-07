@@ -10,10 +10,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// mcpRoute membawa rute /mcp opsional ke registerRoutes tanpa memaksa routes.go
+// mengimpor config/mcpserver — handler-nya dirakit di main (tempat cfg & pool
+// ada). Token kosong / handler nil = rute tak didaftarkan.
+type mcpRoute struct {
+	Token   string
+	Handler http.Handler
+}
+
 // registerRoutes mendaftarkan SEMUA route — single source of truth (§4.1).
 // devMode (=!production) menentukan apakah auth password diaktifkan; di produksi
 // hanya Google yang jadi jalur login.
-func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log *slog.Logger, devMode bool) {
+func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log *slog.Logger, devMode bool, mcp mcpRoute) {
 	// Urutan middleware penting: request-id dulu (dipakai log/recover),
 	// lalu recover (tangkap panic downstream), log, security headers.
 	r.Use(mw.RequestID)
@@ -24,6 +32,19 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	// Health (tanpa auth)
 	r.Get("/healthz", h.Liveness)
 	r.Get("/readyz", h.Readiness)
+
+	// MCP server READ-ONLY — hanya didaftarkan bila token diisi (opt-in).
+	//
+	// Sejajar /healthz (di luar auth SESSION): kliennya agent/program, bukan
+	// manusia ber-cookie, jadi ia dijaga Bearer token sendiri — bukan RequireAuth.
+	// Token kosong = rute TAK ADA sama sekali: fitur yang membuka runtime ke AI
+	// tak boleh menyala karena lupa, hanya karena sengaja diisi.
+	if mcp.Token != "" && mcp.Handler != nil {
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireBearer(mcp.Token))
+			r.Handle("/mcp", mcp.Handler)
+		})
+	}
 
 	// Static (embedded, tanpa auth)
 	r.Handle("/static/*", staticFS)
