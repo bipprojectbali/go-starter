@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
@@ -66,15 +67,20 @@ type trailItem struct {
 const trailPageSize = 30
 
 func (d *deps) activityTrail(ctx context.Context, _ *mcp.CallToolRequest, in rangeInput) (*mcp.CallToolResult, trailOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	from, to := d.window(in)
-	out := trailOut{Range: string(activity.ParseRange(in.Range))}
+	// Events non-nil → JSON "events":[] saat rentang kosong, bukan null.
+	out := trailOut{Range: string(activity.ParseRange(in.Range)), Events: []trailItem{}}
 
 	err := db.WithSuper(ctx, d.pool, func(q *db.Queries) error {
 		rows, err := q.ListActivityTrail(ctx, db.ListActivityTrailParams{
 			FromAt: from, ToAt: to,
 			// Halaman pertama: cursor = maksimum agar semua baris lolos syarat.
+			// Sama dengan firstPageCursor() yang teruji di handler (math.MaxInt64),
+			// bukan 1<<62 — konsisten dengan pola keyset yang sudah ada.
 			CursorCreatedAt: pgtype.Timestamptz{Valid: true, InfinityModifier: pgtype.Infinity},
-			CursorID:        1<<62 - 1,
+			CursorID:        math.MaxInt64,
 			PageSize:        trailPageSize,
 		})
 		if err != nil {
@@ -144,6 +150,8 @@ type kpiOut struct {
 }
 
 func (d *deps) activityKPIs(ctx context.Context, _ *mcp.CallToolRequest, in rangeInput) (*mcp.CallToolResult, kpiOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	from, to := d.window(in)
 	out := kpiOut{Range: string(activity.ParseRange(in.Range))}
 

@@ -51,6 +51,8 @@ type healthOut struct {
 }
 
 func (d *deps) runtimeHealth(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, healthOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	var out healthOut
 
 	// Ping lebih dulu — ini logika Readiness yang sama (handler/health.go).
@@ -90,6 +92,8 @@ type preflightIssue struct {
 }
 
 func (d *deps) preflight(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, preflightOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	// AutoCreateDB:false WAJIB — ini diagnosis, bukan perbaikan. Alat baca yang
 	// diam-diam membuat database tak bisa lagi dipakai menjawab "apa sebenarnya
 	// keadaan di sini". (Pola sama dengan `make doctor`.)
@@ -98,7 +102,9 @@ func (d *deps) preflight(ctx context.Context, _ *mcp.CallToolRequest, _ noInput)
 		RedisAddr:    d.cfg.RedisAddr,
 		AutoCreateDB: false,
 	})
-	out := preflightOut{OK: rep.OK()}
+	// Slice non-nil sejak awal → JSON "problems":[] saat kosong, bukan null.
+	// Klien (agent) tak perlu membedakan "tak ada masalah" dari "field absen".
+	out := preflightOut{OK: rep.OK(), Problems: []preflightIssue{}}
 	for _, p := range rep.Problems {
 		out.Problems = append(out.Problems, preflightIssue{What: p.What, Why: p.Why, Fix: p.Fix})
 	}
@@ -112,6 +118,8 @@ type migrationOut struct {
 }
 
 func (d *deps) migrationVersion(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, migrationOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	var out migrationOut
 	// Satu-satunya query baru di seluruh paket — tak ada helper Go yang membaca
 	// versi goose, dan sqlc tak menyentuh goose_db_version (tabel bookkeeping).
@@ -137,6 +145,8 @@ type statsOut struct {
 }
 
 func (d *deps) platformStats(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, statsOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	out := statsOut{Settings: map[string]string{}}
 	err := db.WithSuper(ctx, d.pool, func(q *db.Queries) error {
 		n, err := q.CountTenantsForPlatform(ctx)

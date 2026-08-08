@@ -17,6 +17,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"go_starter/internal/config"
 
@@ -30,6 +31,16 @@ const (
 	serverVersion = "0.1.0"
 )
 
+// toolTimeout membatasi lama satu panggilan tool menyentuh DB.
+//
+// SDK meneruskan ctx request HTTP APA ADANYA — tanpa deadline. Tanpa batas ini,
+// DB yang hang (koneksi staging lambat, lock panjang) membuat tool menggantung
+// tak berujung — persis skenario "bug di staging" yang jadi alasan tool ini ada.
+// Read-only jadi harus tetap cepat-gagal: lebih baik lapor "timeout" daripada
+// diam selamanya. 10 dtk cukup lapang untuk introspeksi skema (yang terberat),
+// masih jauh di bawah kesabaran manusia menunggu jawaban agent.
+const toolTimeout = 10 * time.Second
+
 // deps = ketergantungan yang dibagi seluruh tool. Dikumpulkan satu kali di build
 // lalu ditangkap closure tiap handler (pola internal/maintenance) — jadi handler
 // tak perlu menyimpan state sendiri, dan tak ada jalur untuk lupa mengoper pool.
@@ -37,6 +48,13 @@ type deps struct {
 	pool *pgxpool.Pool
 	cfg  *config.Config
 	log  *slog.Logger
+}
+
+// ctxWith memberi ctx tool sebuah deadline. Tiap handler membungkus ctx-nya
+// lewat ini SEBELUM menyentuh DB — satu jalur, jadi tak ada tool yang bisa lupa
+// dan menggantung tanpa batas.
+func (d *deps) ctxWith(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, toolTimeout)
 }
 
 // build merakit *mcp.Server lengkap dengan seluruh tool baca. Dipakai bersama

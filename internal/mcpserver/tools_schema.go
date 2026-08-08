@@ -23,6 +23,8 @@ type schemaOut struct {
 }
 
 func (d *deps) dbSchema(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, schemaOut, error) {
+	ctx, cancel := d.ctxWith(ctx)
+	defer cancel()
 	// Introspect menerima pool langsung & membaca information_schema — read-only
 	// murni, tak butuh tenant/scope. current_schema() sudah difilter di dalamnya.
 	sch, err := erd.Introspect(ctx, d.pool)
