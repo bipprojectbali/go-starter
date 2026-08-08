@@ -144,6 +144,10 @@ func run() (err error) {
 		DatabaseURL:  cfg.DatabaseURL,
 		RedisAddr:    cfg.RedisAddr,
 		AutoCreateDB: !cfg.IsProduction(),
+		// .env hanya dicek di dev (boot dari direktori repo). Di production env
+		// datang dari container/Portainer — .env tak ada & tak relevan; mengeceknya
+		// menolak boot karena file yang memang tak seharusnya ada.
+		FromFile: !cfg.IsProduction(),
 	}); !rep.OK() {
 		return errors.New(rep.String())
 	}
