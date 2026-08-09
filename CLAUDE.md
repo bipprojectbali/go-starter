@@ -608,6 +608,15 @@ buta) — SEMUA read-only. SDK resmi `modelcontextprotocol/go-sdk` v1.7.0.
   satu fungsi read-only ke satu handler. DILARANG: tool SQL/shell mentah, embed
   `maintenance`/`MigrateWithLock`/`Create*`, mengalirkan nilai rahasia (lapor
   keberadaan/panjang, bukan nilai — Rule 7/12).
+- **`platform_stats` menyaring settings lewat ALLOWLIST** (`exposedSettings` di
+  `tools_health.go`), bukan mengekspos seluruh `platform_settings`. Sebabnya
+  masa-depan: `platform_settings` bisa menampung key baru kapan saja (kredensial
+  SMTP, secret webhook), dan denylist/tanpa-filter akan membocorkannya diam-diam
+  ke agent — penambahnya sedang mengurus fitur lain, tak memikirkan MCP. Dengan
+  allowlist, key baru TAK muncul sampai sengaja didaftarkan, dan di titik itu
+  penambahnya menimbang "aman dibaca agent?". Menambah key ke allowlist =
+  keputusan sadar; JANGAN kembalikan ke "ekspos semua". Dikunci
+  `TestPlatformStats_AllowlistMenyaringKeySensitif`.
 - **Read-only STRUKTURAL, bukan disiplin.** Semua akses DB lewat
   `db.WithSuper(ctx, pool, fn)` → `SET LOCAL ROLE app_rw` → **DDL ditolak DB**.
   `h.q(ctx)` TAK BISA dipakai (panic tanpa Scope middleware) — MCP tanpa request

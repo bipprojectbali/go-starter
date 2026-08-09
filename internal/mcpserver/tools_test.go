@@ -169,6 +169,51 @@ func TestMigrationVersion_Terbaca(t *testing.T) {
 	}
 }
 
+// TestPlatformStats_AllowlistMenyaringKeySensitif: INTI perbaikan. platform_stats
+// hanya boleh mengeluarkan key yang di-allowlist. Key baru (mis. kredensial yang
+// ditambahkan setelah kode ini ditulis) TAK boleh bocor otomatis.
+//
+// Diuji dengan menaruh key palsu yang jelas sensitif ke platform_settings, lalu
+// memastikan ia TIDAK muncul di output — sementara key allowlist tetap muncul.
+func TestPlatformStats_AllowlistMenyaringKeySensitif(t *testing.T) {
+	d := testDeps(t)
+	ctx := context.Background()
+
+	// Key allowlist (harus muncul) + key sensitif palsu (harus disaring).
+	seedSetting(t, "workspace_quota_default", "5")
+	seedSetting(t, "smtp_password", "rahasia-yang-tak-boleh-bocor")
+	t.Cleanup(func() {
+		_, _ = pkgPool.Exec(ctx, "DELETE FROM platform_settings WHERE key IN ('smtp_password','workspace_quota_default')")
+	})
+
+	_, out, err := d.platformStats(ctx, nil, noInput{})
+	if err != nil {
+		t.Fatalf("platform_stats: %v", err)
+	}
+	if _, bocor := out.Settings["smtp_password"]; bocor {
+		t.Error("key sensitif smtp_password BOCOR — allowlist tak menyaring; ini pelanggaran Rule 7/12")
+	}
+	for _, v := range out.Settings {
+		if v == "rahasia-yang-tak-boleh-bocor" {
+			t.Error("nilai rahasia muncul di output dengan key lain — kebocoran")
+		}
+	}
+	if out.Settings["workspace_quota_default"] != "5" {
+		t.Errorf("key allowlist harus tetap muncul, got %q", out.Settings["workspace_quota_default"])
+	}
+}
+
+// seedSetting menulis satu baris platform_settings (UPSERT agar aman diulang).
+func seedSetting(t *testing.T, key, value string) {
+	t.Helper()
+	_, err := pkgPool.Exec(context.Background(),
+		`INSERT INTO platform_settings (key, value) VALUES ($1, $2)
+		 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, key, value)
+	if err != nil {
+		t.Fatalf("seed setting %s: %v", key, err)
+	}
+}
+
 // TestDBSchema_MermaidBerisi: introspeksi harus menemukan tabel & menghasilkan
 // teks Mermaid yang mengandung tabel inti.
 func TestDBSchema_MermaidBerisi(t *testing.T) {

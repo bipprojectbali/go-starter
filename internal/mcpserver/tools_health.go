@@ -5,6 +5,7 @@ import (
 
 	"go_starter/internal/db"
 	"go_starter/internal/preflight"
+	"go_starter/internal/settings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -144,6 +145,23 @@ type statsOut struct {
 	Settings       map[string]string `json:"settings" jsonschema:"pengaturan platform aktif (key→value)"`
 }
 
+// exposedSettings = ALLOWLIST key platform_settings yang aman dibaca agent MCP.
+//
+// Allowlist, BUKAN "ekspos semua". Bedanya menentukan apa yang terjadi saat
+// KEY BARU ditambahkan ke tabel kelak: dengan allowlist ia otomatis TAK muncul
+// (aman by default) sampai seseorang sengaja menaruhnya di sini — dan di titik
+// itulah ia menimbang "apakah nilai ini aman dibaca agent?". Tanpa allowlist,
+// menambah mis. kredensial SMTP ke platform_settings akan membocorkannya lewat
+// tool ini secara diam-diam, dan penambahnya (yang sedang mengurus fitur email,
+// bukan MCP) takkan pernah sadar. Ini pelanggaran Rule 7/12 yang menunggu terjadi.
+//
+// Arah aman jadi default — pola yang sama dengan RLS deny-default, Casbin
+// deny-default, dan rute MCP opt-in.
+var exposedSettings = map[string]bool{
+	settings.KeyWorkspaceQuotaDefault: true,
+	settings.KeyAuditRetentionDays:    true,
+}
+
 func (d *deps) platformStats(ctx context.Context, _ *mcp.CallToolRequest, _ noInput) (*mcp.CallToolResult, statsOut, error) {
 	ctx, cancel := d.ctxWith(ctx)
 	defer cancel()
@@ -166,7 +184,11 @@ func (d *deps) platformStats(ctx context.Context, _ *mcp.CallToolRequest, _ noIn
 			return err
 		}
 		for _, s := range rows {
-			out.Settings[s.Key] = s.Value
+			// Hanya yang di-allowlist — key tak dikenal (mungkin sensitif, mungkin
+			// ditambahkan setelah kode ini ditulis) SENGAJA dilewati.
+			if exposedSettings[s.Key] {
+				out.Settings[s.Key] = s.Value
+			}
 		}
 		return nil
 	})
