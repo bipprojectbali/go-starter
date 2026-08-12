@@ -59,6 +59,22 @@ func TestAppShell_SwitchAccount(t *testing.T) {
 	}
 }
 
+// TestUserMenu_Consolidated: "Ganti akun" + "Keluar" hidup dalam SATU dropdown
+// (details/summary) yang dipicu avatar user — bukan lagi dua tombol terpisah.
+// Keluar tetap lewat modal konfirmasi (signal logoutConfirm), bukan POST langsung.
+func TestUserMenu_Consolidated(t *testing.T) {
+	out := renderShell("/dev/users")
+	for _, want := range []string{
+		"<details", "<summary", // dropdown CSS-only (CSP-safe)
+		`href="/account/switch"`, "Ganti akun",
+		"Keluar", "$logoutConfirm = true", // Keluar → buka modal, bukan logout langsung
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("menu akun kurang %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {
 	out := renderShell("/dev/other")
 	if strings.Contains(out, `aria-current="page"`) {
