@@ -15,6 +15,9 @@ func Login(showPassword bool, errMsg string) g.Node {
 	return authPage(authOpts{
 		title: "Masuk", action: "/login", showPassword: showPassword, errMsg: errMsg,
 		switchText: "Belum punya akun?", switchHref: "/register", switchLabel: "Daftar",
+		// Tawarkan "Gunakan akun lain" hanya di halaman masuk: jalur inilah tempat
+		// user habis logout lalu ingin berganti akun Google (bukan saat daftar baru).
+		switchAccount: true,
 	})
 }
 
@@ -41,6 +44,7 @@ type authOpts struct {
 	showPassword, showWorkspace         bool
 	errMsg                              string
 	switchText, switchHref, switchLabel string
+	switchAccount                       bool // tampilkan tautan "Gunakan akun lain" (pemilih akun Google)
 }
 
 // authPage adalah kerangka bersama login & register: tombol Google + (opsional)
@@ -49,6 +53,9 @@ type authOpts struct {
 // menyuntik <script> yang diblokir CSP proyek (script-src tanpa unsafe-inline).
 func authPage(o authOpts) g.Node {
 	card := []g.Node{googleButton()}
+	if o.switchAccount {
+		card = append(card, switchAccountLink())
+	}
 	if o.showPassword {
 		if o.errMsg != "" {
 			card = append(card, ui.Alert(ui.VariantDestructive, "auth-error", g.Text(o.errMsg)))
@@ -80,6 +87,22 @@ func googleButton() g.Node {
 		h.Class("btn btn-outline w-full"),
 		ui.GoogleG(h.Class("size-[18px]")), // 18px = spesifikasi Google
 		g.Text("Masuk dengan Google"),
+	)
+}
+
+// switchAccountLink — tautan halus di bawah tombol Google untuk memulai flow
+// dengan pemilih akun (?switch=1 → prompt=select_account di handler). Menjawab
+// keluhan "login otomatis masuk ke akun sebelumnya": tanpa ini, satu-satunya sesi
+// Google di browser dipakai diam-diam. Navigasi GET biasa (bukan Datastar) — aman
+// dibatalkan (sesi lama utuh) dan lolos CSP.
+func switchAccountLink() g.Node {
+	return h.P(
+		h.Class("text-center text-sm"),
+		h.A(
+			h.Href("/api/auth/google?switch=1"),
+			h.Class("link link-hover text-base-content/70"),
+			g.Text("Gunakan akun lain"),
+		),
 	)
 }
 

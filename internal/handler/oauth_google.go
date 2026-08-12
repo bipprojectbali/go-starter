@@ -18,7 +18,7 @@ import (
 // provider. Interface (bukan *oauth.Provider konkret) agar test bisa menyuntik
 // stub tanpa memanggil Google. *oauth.Provider memenuhi ini.
 type googleProvider interface {
-	AuthURL(state, nonce, verifier string) string
+	AuthURL(state, nonce, verifier string, selectAccount bool) string
 	Exchange(ctx context.Context, code, verifier string) (rawIDToken string, err error)
 	oauth.Verifier // VerifyIDToken(ctx, rawIDToken, wantNonce) (*Claims, error)
 }
@@ -31,9 +31,28 @@ var googleOAuth googleProvider
 // tersedia). Bila tak dipanggil, handler membalas 503 (Google nonaktif).
 func SetGoogleOAuth(p googleProvider) { googleOAuth = p }
 
-// GoogleLogin — GET /api/auth/google. Mulai authorization-code flow: generate
-// state/nonce/verifier, simpan di session, redirect ke consent Google.
+// GoogleLogin — GET /api/auth/google. Mulai authorization-code flow untuk TAMU
+// (dijaga RequireGuest). ?switch=1 → jalur "Ganti akun" dari halaman masuk
+// (pemilih akun Google); login normal mulus tanpa pemilih.
 func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
+	h.startGoogleFlow(w, r, r.URL.Query().Get("switch") == "1")
+}
+
+// SwitchAccount — GET /account/switch. Pintu "Ganti akun" untuk user yang SUDAH
+// masuk. Berbeda dari GoogleLogin (dijaga RequireGuest → menolak yang sudah
+// masuk): ganti akun adalah penimpaan sesi yang DISENGAJA, bukan kecelakaan yang
+// dicegah RequireGuest. Karena itu punya route sendiri (dijaga RequireAuth) dan
+// SELALU memaksa pemilih akun Google — tanpa ini, Google diam-diam memakai sesi
+// browser terakhir dan "ganti akun" tak pernah benar-benar berganti.
+func (h *Handler) SwitchAccount(w http.ResponseWriter, r *http.Request) {
+	h.startGoogleFlow(w, r, true)
+}
+
+// startGoogleFlow memulai authorization-code flow: generate state/nonce/verifier,
+// simpan di session, redirect ke consent Google. selectAccount=true memaksa
+// prompt=select_account (pemilih akun). Inti bersama GoogleLogin & SwitchAccount
+// agar keduanya tak bisa menyimpang perlakuan.
+func (h *Handler) startGoogleFlow(w http.ResponseWriter, r *http.Request, selectAccount bool) {
 	if googleOAuth == nil {
 		http.Error(w, "login Google tidak tersedia", http.StatusServiceUnavailable)
 		return
@@ -60,7 +79,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, googleOAuth.AuthURL(state, nonce, verifier), http.StatusFound)
+	http.Redirect(w, r, googleOAuth.AuthURL(state, nonce, verifier, selectAccount), http.StatusFound)
 }
 
 // GoogleCallback — GET /api/auth/callback/google. Verifikasi state (anti-CSRF),

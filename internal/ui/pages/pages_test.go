@@ -40,6 +40,22 @@ func TestLogin_WithPassword_Dev(t *testing.T) {
 	}
 }
 
+// TestLogin_SwitchAccountLink: halaman masuk menawarkan "Gunakan akun lain"
+// (?switch=1 → pemilih akun Google). Menjawab keluhan "login otomatis masuk ke
+// akun sebelumnya" — tanpa jalur ini, sesi Google di browser dipakai diam-diam.
+func TestLogin_SwitchAccountLink(t *testing.T) {
+	out := render(t, Login(false, ""))
+	for _, want := range []string{"/api/auth/google?switch=1", "Gunakan akun lain"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("halaman masuk kurang tautan ganti akun %q:\n%s", want, out)
+		}
+	}
+	// Halaman DAFTAR tak menawarkannya (pendaftar baru, bukan ganti akun).
+	if reg := render(t, Register("", true)); strings.Contains(reg, "switch=1") {
+		t.Errorf("halaman daftar tak boleh menampilkan tautan ganti akun:\n%s", reg)
+	}
+}
+
 func TestLogin_RendersError(t *testing.T) {
 	out := render(t, Login(true, "Email atau password salah"))
 	if !strings.Contains(out, "Email atau password salah") {

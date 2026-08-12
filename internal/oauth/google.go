@@ -69,11 +69,21 @@ func New(ctx context.Context, clientID, clientSecret, redirectURL string) (*Prov
 //   - state: anti-CSRF (dicek constant-time di callback)
 //   - nonce: anti-replay id_token
 //   - PKCE S256: anti authorization-code injection
-func (p *Provider) AuthURL(state, nonce, verifier string) string {
-	return p.oauth.AuthCodeURL(state,
+//
+// selectAccount=true menambahkan prompt=select_account: Google WAJIB menampilkan
+// pemilih akun alih-alih diam-diam memakai satu-satunya sesi Google yang aktif di
+// browser. Tanpa ini, user yang habis logout lalu login lagi selalu masuk sebagai
+// akun yang SAMA — tampak seolah aplikasi "mengingat" akun, padahal yang mengingat
+// adalah sesi Google di browser (sesi kita sudah bersih). Dipakai jalur "Ganti akun".
+func (p *Provider) AuthURL(state, nonce, verifier string, selectAccount bool) string {
+	opts := []oauth2.AuthCodeOption{
 		oidc.Nonce(nonce),
 		oauth2.S256ChallengeOption(verifier),
-	)
+	}
+	if selectAccount {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "select_account"))
+	}
+	return p.oauth.AuthCodeURL(state, opts...)
 }
 
 // Exchange menukar authorization code jadi token, membuktikan kepemilikan PKCE

@@ -168,7 +168,12 @@ func shellSidebar(d ShellData) g.Node {
 		// Pintasan lintas-panel (sesuai role) — di atas blok user.
 		quickLinks(d),
 
-		// Footer user (bawah): avatar + email + logout.
+		// Pemilih tema — blok SENDIRI di bawah pintasan ("Ruang Kerja"), di atas
+		// footer identitas. Sengaja tak digabung ke baris avatar/email (dulu email
+		// panjang menumpuk ikon tema): Tema = preferensi tampilan, bukan aksi akun.
+		themeBlock(),
+
+		// Footer user (bawah): avatar + email + menu akun (Ganti akun / Keluar).
 		sidebarUser(d),
 	)
 }

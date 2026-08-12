@@ -30,15 +30,19 @@ func TestThemeToggle_RendersAllThemesAsControllers(t *testing.T) {
 	}
 }
 
-// TestThemeToggleUp_OpensUpward: varian footer sidebar buka ke atas (dropdown-top)
-// agar tak terpotong di tepi bawah layar.
-func TestThemeToggleUp_OpensUpward(t *testing.T) {
-	out := renderNode(t, ThemeToggleUp())
+// TestThemeMenu_OpensUpwardAsRow: varian sidebar = baris menu (bukan tombol ikon)
+// yang buka ke ATAS (dropdown-top) agar tak terpotong di tepi bawah layar, dan
+// full-width agar seragam dengan menu nav lain.
+func TestThemeMenu_OpensUpwardAsRow(t *testing.T) {
+	out := renderNode(t, ThemeMenu())
 	if !strings.Contains(out, "dropdown-top") {
-		t.Errorf("ThemeToggleUp harus dropdown-top:\n%s", out)
+		t.Errorf("ThemeMenu harus dropdown-top:\n%s", out)
+	}
+	if !strings.Contains(out, "w-full") {
+		t.Errorf("ThemeMenu harus full-width (baris menu):\n%s", out)
 	}
 	// Tetap membawa kontrol tema (bukan cuma arah beda).
 	if !strings.Contains(out, "theme-controller") {
-		t.Errorf("ThemeToggleUp harus tetap punya theme-controller:\n%s", out)
+		t.Errorf("ThemeMenu harus tetap punya theme-controller:\n%s", out)
 	}
 }

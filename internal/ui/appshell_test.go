@@ -46,6 +46,47 @@ func TestAppShell_ActiveLink(t *testing.T) {
 	}
 }
 
+// TestAppShell_SwitchAccount: footer sidebar menawarkan "Ganti akun" (pindah akun
+// tanpa logout dulu) berdampingan dengan "Keluar". Link GET ke /account/switch
+// (dijaga RequireAuth — /api/auth/google?switch=1 dijaga RequireGuest, memantul
+// balik untuk user yang sudah masuk).
+func TestAppShell_SwitchAccount(t *testing.T) {
+	out := renderShell("/dev/users")
+	for _, want := range []string{"Ganti akun", `href="/account/switch"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("footer sidebar kurang %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestUserMenu_Consolidated: "Ganti akun" + "Keluar" hidup dalam SATU dropdown
+// (details/summary) yang dipicu avatar user — bukan lagi dua tombol terpisah.
+// Keluar tetap lewat modal konfirmasi (signal logoutConfirm), bukan POST langsung.
+func TestUserMenu_Consolidated(t *testing.T) {
+	out := renderShell("/dev/users")
+	for _, want := range []string{
+		"<details", "<summary", // dropdown CSS-only (CSP-safe)
+		`href="/account/switch"`, "Ganti akun",
+		"Keluar", "$logoutConfirm = true", // Keluar → buka modal, bukan logout langsung
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("menu akun kurang %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestSidebar_ThemeBlockSeparate: pemilih tema hadir di sidebar sebagai baris
+// menu tersendiri (dropdown-top, theme-controller) — dipisah dari footer identitas
+// agar email panjang tak menumpuk ikon tema. Regresi keluhan "numpuk dengan tema".
+func TestSidebar_ThemeBlockSeparate(t *testing.T) {
+	out := renderShell("/dev/users")
+	for _, want := range []string{"data-theme-dropdown", "theme-controller", "dropdown-top"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("blok tema sidebar kurang %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {
 	out := renderShell("/dev/other")
 	if strings.Contains(out, `aria-current="page"`) {

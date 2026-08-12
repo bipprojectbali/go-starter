@@ -72,13 +72,9 @@ func nav(userEmail, avatarURL, brand string) g.Node {
 			h.Div(
 				h.Class("flex items-center gap-3"),
 				ThemeToggle(),
-				Avatar(avatarURL, "", userEmail, 32),
-				h.Span(h.Class("text-sm"), g.Text(userEmail)),
-				h.Button(
-					h.Class("btn btn-outline btn-sm"),
-					ConfirmTrigger("logoutConfirm"), // buka modal, bukan langsung logout
-					g.Text("Keluar"),
-				),
+				// Menu akun (avatar+email dipicu → Ganti akun / Keluar). Komponen
+				// & rasional sama dengan footer sidebar (userMenu di shelluser.go).
+				userMenu(avatarURL, userEmail, false),
 			),
 		),
 	)
