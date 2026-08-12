@@ -85,6 +85,25 @@ func TestGoogleLogin_SwitchAccount(t *testing.T) {
 	}
 }
 
+// TestSwitchAccount_ForcesPicker: pintu ganti akun untuk yang sudah masuk
+// (/account/switch) SELALU memaksa pemilih akun, apa pun query-nya — tanpa itu
+// Google memakai sesi browser terakhir & "ganti akun" tak berganti.
+func TestSwitchAccount_ForcesPicker(t *testing.T) {
+	env, _ := setupTest(t)
+	stub := &stubProvider{}
+	SetGoogleOAuth(stub)
+	t.Cleanup(func() { SetGoogleOAuth(nil) })
+
+	stub.gotSelectAccount = false
+	rec := env.do(httptest.NewRequest(http.MethodGet, "/account/switch", nil), env.h.SwitchAccount)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("SwitchAccount harus redirect 302, got %d", rec.Code)
+	}
+	if !stub.gotSelectAccount {
+		t.Error("/account/switch harus selalu memaksa selectAccount=true")
+	}
+}
+
 func TestGoogleCallback_StateMismatch(t *testing.T) {
 	env, _ := setupTest(t)
 	SetGoogleOAuth(&stubProvider{claims: &oauth.Claims{Sub: "g1", Email: "a@x.com", EmailVerified: true}})

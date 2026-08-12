@@ -47,10 +47,12 @@ func TestAppShell_ActiveLink(t *testing.T) {
 }
 
 // TestAppShell_SwitchAccount: footer sidebar menawarkan "Ganti akun" (pindah akun
-// tanpa logout dulu) berdampingan dengan "Keluar". Link GET ke flow OAuth ?switch=1.
+// tanpa logout dulu) berdampingan dengan "Keluar". Link GET ke /account/switch
+// (dijaga RequireAuth — /api/auth/google?switch=1 dijaga RequireGuest, memantul
+// balik untuk user yang sudah masuk).
 func TestAppShell_SwitchAccount(t *testing.T) {
 	out := renderShell("/dev/users")
-	for _, want := range []string{"Ganti akun", `href="/api/auth/google?switch=1"`} {
+	for _, want := range []string{"Ganti akun", `href="/account/switch"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("footer sidebar kurang %q:\n%s", want, out)
 		}

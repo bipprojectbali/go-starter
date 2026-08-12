@@ -74,10 +74,10 @@ func nav(userEmail, avatarURL, brand string) g.Node {
 				ThemeToggle(),
 				Avatar(avatarURL, "", userEmail, 32),
 				h.Span(h.Class("text-sm"), g.Text(userEmail)),
-				// Ganti akun tanpa logout dulu (pemilih akun Google via ?switch=1).
-				// Link GET, aman dibatalkan — lihat shelluser.go untuk rasionalnya.
+				// Ganti akun tanpa logout dulu (pemilih akun Google). /account/switch
+				// dijaga RequireAuth — lihat shelluser.go untuk rasionalnya.
 				h.A(
-					h.Href("/api/auth/google?switch=1"),
+					h.Href("/account/switch"),
 					h.Class("btn btn-ghost btn-sm"),
 					g.Text("Ganti akun"),
 				),

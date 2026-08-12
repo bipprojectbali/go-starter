@@ -23,12 +23,14 @@ func sidebarUser(d ShellData) g.Node {
 			),
 			ThemeToggleUp(),
 		),
-		// Ganti akun = pindah akun tanpa harus logout dulu. Link GET ke flow OAuth
-		// dgn ?switch=1 (pemilih akun Google). Bukan aksi destruktif: bila dibatalkan
-		// di Google, sesi saat ini tetap utuh — jadi tanpa modal konfirmasi. Callback
-		// OAuth memutar & menimpa identitas (session.Renew), sehingga akun tergantikan.
+		// Ganti akun = pindah akun tanpa harus logout dulu. Link GET ke /account/switch
+		// (dijaga RequireAuth — pintu ganti akun untuk yang SUDAH masuk; /api/auth/google
+		// dijaga RequireGuest jadi tak bisa dipakai di sini). Handler memaksa pemilih akun
+		// Google. Bukan aksi destruktif: bila dibatalkan di Google, sesi saat ini tetap
+		// utuh — jadi tanpa modal konfirmasi. Callback OAuth memutar & menimpa identitas
+		// (session.Renew), sehingga akun tergantikan.
 		h.A(
-			h.Href("/api/auth/google?switch=1"),
+			h.Href("/account/switch"),
 			h.Class("btn btn-ghost btn-sm w-full"),
 			g.Attr("title", "Ganti akun"),
 			lucide.UsersRound(h.Class("size-4")),

@@ -71,6 +71,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 	r.With(h.RequireGuest).Get("/api/auth/google", h.GoogleLogin)
 	r.Get(handler.PathGoogleCallback, h.GoogleCallback)
 
+	// Ganti akun untuk yang SUDAH masuk — kebalikan RequireGuest: penimpaan sesi
+	// yang DISENGAJA, bukan kecelakaan. Butuh RequireAuth (guest tak "berganti"
+	// dari mana-mana; halaman masuk sudah punya "Gunakan akun lain"). Handler
+	// selalu memaksa pemilih akun Google. Callback-nya = jalur yang sama.
+	r.With(mw.RequireAuth).Get("/account/switch", h.SwitchAccount)
+
 	// Logout SELALU tersedia, tanpa gerbang tamu: ia justru jalan keluarnya.
 	r.Post("/logout", h.Logout)
 
