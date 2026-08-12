@@ -1,9 +1,56 @@
 package oauth
 
 import (
+	"net/url"
 	"regexp"
+	"strings"
 	"testing"
+
+	"golang.org/x/oauth2"
 )
+
+// newAuthURLProvider membangun Provider tanpa jaringan (tak lewat New/discovery
+// OIDC): AuthURL hanya menyentuh field oauth, jadi verifier boleh nil di sini.
+// (newTestProvider di verify_test.go menyetel verifier tapi bukan oauth — beda tujuan.)
+func newAuthURLProvider() *Provider {
+	return &Provider{
+		oauth: &oauth2.Config{
+			ClientID:    "test-client",
+			RedirectURL: "https://app.example.com/cb",
+			Endpoint:    oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth"},
+			Scopes:      []string{"openid", "email", "profile"},
+		},
+	}
+}
+
+// promptParam mengekstrak nilai query "prompt" dari URL consent yang dihasilkan.
+func promptParam(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse AuthURL: %v", err)
+	}
+	return u.Query().Get("prompt")
+}
+
+func TestAuthURL_SelectAccount(t *testing.T) {
+	p := newAuthURLProvider()
+
+	// Login normal: TANPA prompt=select_account (flow mulus, tak ada klik ekstra).
+	if got := promptParam(t, p.AuthURL("s", "n", "v", false)); got != "" {
+		t.Errorf("login normal tak boleh set prompt, got %q", got)
+	}
+
+	// Ganti akun: WAJIB prompt=select_account (Google tampilkan pemilih akun).
+	got := p.AuthURL("s", "n", "v", true)
+	if p := promptParam(t, got); p != "select_account" {
+		t.Errorf("ganti akun harus prompt=select_account, got %q", p)
+	}
+	// State & PKCE challenge tetap ada di kedua mode (proteksi tak boleh hilang).
+	if !strings.Contains(got, "state=s") || !strings.Contains(got, "code_challenge=") {
+		t.Errorf("AuthURL kehilangan state/PKCE: %s", got)
+	}
+}
 
 func TestNormalizeAvatarURL(t *testing.T) {
 	cases := []struct {

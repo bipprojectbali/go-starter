@@ -18,7 +18,7 @@ import (
 // provider. Interface (bukan *oauth.Provider konkret) agar test bisa menyuntik
 // stub tanpa memanggil Google. *oauth.Provider memenuhi ini.
 type googleProvider interface {
-	AuthURL(state, nonce, verifier string) string
+	AuthURL(state, nonce, verifier string, selectAccount bool) string
 	Exchange(ctx context.Context, code, verifier string) (rawIDToken string, err error)
 	oauth.Verifier // VerifyIDToken(ctx, rawIDToken, wantNonce) (*Claims, error)
 }
@@ -52,6 +52,11 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	verifier := oauth.NewVerifier()
 
+	// ?switch=1 → jalur "Ganti akun": paksa Google menampilkan pemilih akun
+	// (prompt=select_account). Login normal tak memakainya agar tetap mulus —
+	// pemilih akun hanya muncul saat user memang ingin berganti akun.
+	selectAccount := r.URL.Query().Get("switch") == "1"
+
 	session.PutOAuthFlow(r.Context(), state, nonce, verifier)
 	// Commit session + tulis cookie SEBELUM redirect (state harus persist agar
 	// bisa diverifikasi saat callback).
@@ -60,7 +65,7 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, googleOAuth.AuthURL(state, nonce, verifier), http.StatusFound)
+	http.Redirect(w, r, googleOAuth.AuthURL(state, nonce, verifier, selectAccount), http.StatusFound)
 }
 
 // GoogleCallback — GET /api/auth/callback/google. Verifikasi state (anti-CSRF),

@@ -20,13 +20,15 @@ var errEmailNotVerified = errors.New("oauth: email belum terverifikasi provider"
 // Exchange mengembalikan rawIDToken palsu; VerifyIDToken mengembalikan claims
 // yang di-set test (atau error) — memungkinkan uji jalur sukses & penolakan.
 type stubProvider struct {
-	claims      *oauth.Claims
-	verifyErr   error
-	exchangeErr error
-	gotNonce    string // nonce yang diterima VerifyIDToken (untuk assert)
+	claims           *oauth.Claims
+	verifyErr        error
+	exchangeErr      error
+	gotNonce         string // nonce yang diterima VerifyIDToken (untuk assert)
+	gotSelectAccount bool   // nilai selectAccount yang diterima AuthURL (untuk assert)
 }
 
-func (s *stubProvider) AuthURL(state, nonce, verifier string) string {
+func (s *stubProvider) AuthURL(state, nonce, verifier string, selectAccount bool) string {
+	s.gotSelectAccount = selectAccount
 	return "https://accounts.google.com/o/oauth2/v2/auth?state=" + state
 }
 func (s *stubProvider) Exchange(ctx context.Context, code, verifier string) (string, error) {
@@ -57,6 +59,30 @@ func (e *testEnv) doCallback(t *testing.T, storedState, queryState string) *http
 	}))
 	wrapped.ServeHTTP(rec, req)
 	return rec
+}
+
+func TestGoogleLogin_SwitchAccount(t *testing.T) {
+	env, _ := setupTest(t)
+	stub := &stubProvider{}
+	SetGoogleOAuth(stub)
+	t.Cleanup(func() { SetGoogleOAuth(nil) })
+
+	// ?switch=1 → jalur "Ganti akun": handler harus meminta pemilih akun.
+	stub.gotSelectAccount = false
+	rec := env.do(httptest.NewRequest(http.MethodGet, "/api/auth/google?switch=1", nil), env.h.GoogleLogin)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("GoogleLogin harus redirect 302, got %d", rec.Code)
+	}
+	if !stub.gotSelectAccount {
+		t.Error("?switch=1 harus meneruskan selectAccount=true ke AuthURL")
+	}
+
+	// Login normal (tanpa ?switch) → flow mulus, TANPA pemilih akun.
+	stub.gotSelectAccount = true // set true dulu → pastikan handler benar-benar mereset
+	env.do(httptest.NewRequest(http.MethodGet, "/api/auth/google", nil), env.h.GoogleLogin)
+	if stub.gotSelectAccount {
+		t.Error("login normal tak boleh set selectAccount=true")
+	}
 }
 
 func TestGoogleCallback_StateMismatch(t *testing.T) {
