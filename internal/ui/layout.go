@@ -52,6 +52,9 @@ func headNodes(cssPath string) []g.Node {
 		h.Link(h.Rel("stylesheet"), h.Href(cssPath)),
 		// theme.js SINKRON (bukan defer): set data-theme sebelum paint → no-FOUC.
 		h.Script(h.Src("/static/theme.js")),
+		// dropdown.js: close-on-outside-click untuk <details.dropdown> (menu akun,
+		// Tema, switcher). Tak butuh pre-paint → defer.
+		h.Script(h.Src("/static/dropdown.js"), h.Defer()),
 		h.Script(h.Src("/static/datastar.js"), h.Type("module"), h.Defer()),
 	}
 }
