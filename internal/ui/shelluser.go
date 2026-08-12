@@ -1,8 +1,9 @@
 package ui
 
-// shelluser.go — blok identitas user di dasar sidebar (avatar, email, tema,
-// logout). Berdiri sendiri: satu-satunya bagian sidebar yang menyentuh sesi user
-// dan pemicu modal logout.
+// shelluser.go — blok identitas user di dasar sidebar (avatar, email, logout).
+// Berdiri sendiri: satu-satunya bagian sidebar yang menyentuh sesi user dan
+// pemicu modal logout. Tema SENGAJA TIDAK di sini (blok terpisah di atas footer,
+// lihat themeBlock) agar grouping tak bercampur: identitas ≠ preferensi tampilan.
 
 import (
 	lucide "github.com/eduardolat/gomponents-lucide"
@@ -11,14 +12,13 @@ import (
 )
 
 // sidebarUser = blok identitas di dasar sidebar. Avatar+email = PEMICU dropdown
-// akun (Ganti akun / Keluar); Tema tetap di sampingnya (preferensi tampilan,
-// bukan aksi akun). Dulu tiga tombol bertumpuk — digabung jadi satu menu yang
-// dibuka saat user diklik.
+// akun (Ganti akun / Keluar), mengisi lebar penuh baris. Dulu tiga tombol
+// bertumpuk (avatar, tema, logout) — tema dipindah ke blok sendiri, aksi akun
+// digabung jadi satu menu yang dibuka saat user diklik.
 func sidebarUser(d ShellData) g.Node {
 	return h.Div(
-		h.Class("border-t border-base-300 p-3 flex items-center justify-between gap-2 min-w-0"),
+		h.Class("border-t border-base-300 p-3 min-w-0"),
 		userMenu(d.AvatarURL, d.UserEmail, true),
-		ThemeToggleUp(),
 	)
 }
 
@@ -37,18 +37,22 @@ func sidebarUser(d ShellData) g.Node {
 // false untuk header (buka ke bawah, rata kanan).
 func userMenu(avatarURL, email string, openUp bool) g.Node {
 	ddCls := "dropdown dropdown-end"
+	sumCls := "btn btn-ghost btn-sm justify-between gap-1 px-1 h-auto py-1 min-w-0"
 	menuCls := "dropdown-content menu bg-base-100 border border-base-300 rounded-box z-50 mt-2 w-56 p-2 shadow-lg"
 	if openUp {
-		ddCls = "dropdown dropdown-top flex-1 min-w-0"
+		// Footer sidebar: isi lebar penuh agar email panjang menyusut & terpotong
+		// rapi (truncate) alih-alih meluber/menumpuk elemen tetangga.
+		ddCls = "dropdown dropdown-top w-full min-w-0"
+		sumCls = "btn btn-ghost btn-sm w-full justify-between gap-1 px-1 h-auto py-1 min-w-0"
 		menuCls = "dropdown-content menu bg-base-100 border border-base-300 rounded-box z-50 mb-2 w-56 p-2 shadow-lg"
 	}
 	return h.Details(
 		h.Class(ddCls),
 		h.Summary(
-			h.Class("btn btn-ghost btn-sm justify-between gap-1 px-1 h-auto py-1 min-w-0"),
+			h.Class(sumCls),
 			g.Attr("aria-label", "Menu akun"),
 			h.Div(
-				h.Class("flex items-center gap-2 min-w-0"),
+				h.Class("flex items-center gap-2 min-w-0 flex-1"),
 				Avatar(avatarURL, "", email, 32),
 				h.Span(h.Class("app-navlabel text-sm truncate"), g.Text(email)),
 			),

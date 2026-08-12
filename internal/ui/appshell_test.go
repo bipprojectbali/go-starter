@@ -75,6 +75,18 @@ func TestUserMenu_Consolidated(t *testing.T) {
 	}
 }
 
+// TestSidebar_ThemeBlockSeparate: pemilih tema hadir di sidebar sebagai baris
+// menu tersendiri (dropdown-top, theme-controller) — dipisah dari footer identitas
+// agar email panjang tak menumpuk ikon tema. Regresi keluhan "numpuk dengan tema".
+func TestSidebar_ThemeBlockSeparate(t *testing.T) {
+	out := renderShell("/dev/users")
+	for _, want := range []string{"data-theme-dropdown", "theme-controller", "dropdown-top"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("blok tema sidebar kurang %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {
 	out := renderShell("/dev/other")
 	if strings.Contains(out, `aria-current="page"`) {
