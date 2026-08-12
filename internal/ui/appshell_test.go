@@ -87,6 +87,21 @@ func TestSidebar_ThemeBlockSeparate(t *testing.T) {
 	}
 }
 
+// TestDropdownJS_LoadedEverywhere: close-on-outside-click (dropdown.js) dimuat di
+// KEDUA jalur render lewat headNodes — AppShell (dashboard, punya menu akun+Tema)
+// & Layout (landing/login, punya pemilih tema mengambang). Tanpa ini <details>
+// native tak menutup saat klik di luar.
+func TestDropdownJS_LoadedEverywhere(t *testing.T) {
+	if out := renderShell("/dev/users"); !strings.Contains(out, "/static/dropdown.js") {
+		t.Errorf("AppShell harus memuat dropdown.js:\n%s", out)
+	}
+	var sb strings.Builder
+	Layout(LayoutData{Title: "T", UserEmail: "a@x.com"}, g.Text("x")).Render(&sb)
+	if !strings.Contains(sb.String(), "/static/dropdown.js") {
+		t.Errorf("Layout harus memuat dropdown.js:\n%s", sb.String())
+	}
+}
+
 func TestAppShell_InactiveWhenPathDiffers(t *testing.T) {
 	out := renderShell("/dev/other")
 	if strings.Contains(out, `aria-current="page"`) {
