@@ -43,7 +43,7 @@ func Workspaces(rows []WorkspaceRow, page int, total int64, size int, errMsg str
 				ui.TableScroll(h.Table(
 					h.Class("w-full text-sm"),
 					h.THead(h.Tr(
-						h.Class("border-b border-base-300 text-left text-base-content/70"),
+						h.Class("border-b border-base-300 text-left text-base-content/80"),
 						th("Workspace"), th("Status"), th("Anggota"), th("Aksi"),
 					)),
 					h.TBody(g.Map(rows, workspaceRow)),
@@ -62,7 +62,7 @@ func workspaceRow(t WorkspaceRow) g.Node {
 		h.Td(h.Class("py-2 pr-4"), h.Div(
 			h.Class("flex flex-col min-w-0"),
 			h.Span(h.Class("truncate font-medium"), g.Text(t.Name)),
-			h.Span(h.Class("text-xs text-base-content/60 truncate"), g.Text("/w/"+t.Slug)),
+			h.Span(h.Class("text-xs text-base-content/80 truncate"), g.Text("/w/"+t.Slug)),
 		)),
 		h.Td(h.Class("py-2 pr-4"), workspaceStatus(t)),
 		h.Td(h.Class("py-2 pr-4"), g.Text(strconv.FormatInt(t.Members, 10))),
@@ -78,7 +78,7 @@ func workspaceStatus(t WorkspaceRow) g.Node {
 		return h.Div(
 			h.Class("flex flex-col gap-1 min-w-0"),
 			badge("terhapus", "error"),
-			h.Span(h.Class("text-xs text-base-content/60"), g.Text("dalam masa tenggang")),
+			h.Span(h.Class("text-xs text-base-content/80"), g.Text("dalam masa tenggang")),
 		)
 	}
 	switch t.Status {
@@ -86,7 +86,7 @@ func workspaceStatus(t WorkspaceRow) g.Node {
 		nodes := []g.Node{h.Class("flex flex-col gap-1 min-w-0"), badge("ditangguhkan", "warning")}
 		if t.Reason != "" {
 			nodes = append(nodes, h.Span(
-				h.Class("text-xs text-base-content/60 break-words"), g.Text(t.Reason)))
+				h.Class("text-xs text-base-content/80 break-words"), g.Text(t.Reason)))
 		}
 		return h.Div(nodes...)
 	case "archived":
@@ -141,7 +141,7 @@ func workspacePager(page int, total int64, size int) g.Node {
 		links = append(links, pagerLink(page-1, "Sebelumnya"))
 	}
 	links = append(links, h.Span(
-		h.Class("text-sm text-base-content/60 px-2"),
+		h.Class("text-sm text-base-content/80 px-2"),
 		g.Text("Halaman "+strconv.Itoa(page)+" dari "+strconv.Itoa(last)),
 	))
 	if page < last {

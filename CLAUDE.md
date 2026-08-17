@@ -109,7 +109,7 @@ di ruang kerja = salah baca cakupan.
    `--color-error`) dari daisyUI, TANPA `@theme` manual. **Tree-shaken**: class tak dipakai di
    markup `.go` = tak digenerate; pakai di markup dulu. daisyUI TAK punya
    `bg-sidebar`/`text-muted-foreground`/`--color-destructive` (Basecoat lama) — padanan:
-   sidebar=`bg-base-200`, muted=`text-base-content/70`, destructive=`error`. `daisyui.js` WAJIB
+   sidebar=`bg-base-200`, muted=`text-base-content/80`, destructive=`error`. `daisyui.js` WAJIB
    ada saat build (di-commit).
 5. **`data.Class` key ber-hyphen wajib di-quote** (`{translate-x-0:...}` = JS invalid, crash).
    Ditutup `ui.ClassOn(class, expr)`. Pakai helper.

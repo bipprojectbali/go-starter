@@ -40,7 +40,7 @@ type SettingsView struct {
 func Settings(v SettingsView) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Pengaturan Platform")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Aturan yang berlaku untuk seluruh platform. Perubahan langsung aktif tanpa restart.")),
 	}
 	if v.Err != "" {
@@ -65,7 +65,7 @@ func retentionCard(v SettingsView) g.Node {
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-1"), g.Text("Masa Simpan Jejak Aktivitas")),
-			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+			h.P(h.Class("text-sm text-base-content/80 mb-3"),
 				g.Text("Jejak yang lebih tua dari batas ini dihapus permanen oleh "+
 					"pemeliharaan harian. Menaikkannya menyimpan lebih banyak; "+
 					"menurunkannya membuang yang sudah lewat batas baru — dan itu "+
@@ -87,7 +87,7 @@ func retentionCard(v SettingsView) g.Node {
 				),
 				h.Button(h.Type("submit"), h.Class("btn btn-primary min-h-11"), g.Text("Simpan")),
 			),
-			h.P(h.Class("text-xs text-base-content/60 mt-2"),
+			h.P(h.Class("text-xs text-base-content/80 mt-2"),
 				g.Text("Minimal "+strconv.Itoa(v.RetentionMin)+" hari — sama dengan masa "+
 					"tenggang workspace terhapus, agar jejak penghapusan tak hilang "+
 					"sebelum workspace-nya sendiri benar-benar dibuang.")),
@@ -102,7 +102,7 @@ func quotaCard(v SettingsView) g.Node {
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-1"), g.Text("Kuota Workspace")),
-			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+			h.P(h.Class("text-sm text-base-content/80 mb-3"),
 				g.Text("Berapa workspace yang boleh DIMILIKI seorang user. "+
 					"Diundang sebagai anggota workspace orang lain tidak memakan kuota.")),
 			h.FormEl(
@@ -125,7 +125,7 @@ func quotaCard(v SettingsView) g.Node {
 			// Dampak perubahan dinyatakan eksplisit: tanpa ini operator tak tahu
 			// bahwa user ber-hak-khusus SENGAJA tak ikut berubah, lalu mengira
 			// pengaturannya tak bekerja.
-			h.P(h.Class("text-xs text-base-content/60 mt-3"),
+			h.P(h.Class("text-xs text-base-content/80 mt-3"),
 				g.Text("Berlaku bagi semua user yang belum diberi hak khusus. "+
 					overrideNote(v.OverrideN)+
 					" Hak khusus per-user diatur di halaman Users.")),
@@ -161,10 +161,10 @@ func tenancyCard(v SettingsView) g.Node {
 			h.Div(
 				h.Class("card-body min-w-0"),
 				h.H2(h.Class("font-semibold mb-1"), g.Text("Mode Tenancy")),
-				h.P(h.Class("text-sm text-base-content/70"),
+				h.P(h.Class("text-sm text-base-content/80"),
 					g.Text("Aplikasi ini berjalan sebagai MULTI-WORKSPACE. Setiap user "+
 						"dapat memiliki workspace sendiri, dibatasi kuota di bawah.")),
-				h.P(h.Class("text-xs text-base-content/60 mt-2"),
+				h.P(h.Class("text-xs text-base-content/80 mt-2"),
 					g.Text("Mode ini permanen — turun kembali ke satu aplikasi akan "+
 						"menyembunyikan setiap workspace selain yang utama, jadi database menolaknya.")),
 			),
@@ -175,7 +175,7 @@ func tenancyCard(v SettingsView) g.Node {
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold mb-1"), g.Text("Mode Tenancy")),
-			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+			h.P(h.Class("text-sm text-base-content/80 mb-3"),
 				g.Text("Aplikasi ini berjalan sebagai SATU APLIKASI. Semua orang bekerja "+
 					"di ruang yang sama, dan tak ada yang bisa membuat workspace sendiri.")),
 			// Yang PALING sering ditanyakan sebelum menekan: apa yang berubah, dan

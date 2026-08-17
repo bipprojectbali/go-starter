@@ -16,7 +16,7 @@ func Landing(loggedIn bool, homePath, brand string) g.Node {
 			g.Text(brand),
 		),
 		h.P(
-			h.Class("text-lg text-base-content/70 mb-8 max-w-md mx-auto"),
+			h.Class("text-lg text-base-content/80 mb-8 max-w-md mx-auto"),
 			g.Text("Starter full-stack Go: cepat, ringan, single binary. Datastar + gomponents + Postgres."),
 		),
 		landingCTA(loggedIn, homePath),

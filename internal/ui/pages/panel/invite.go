@@ -24,7 +24,7 @@ func InviteResult(workspaceName, errMsg string, canAccept bool) g.Node {
 	return h.Div(
 		h.Class("mx-auto w-full max-w-md"),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Undangan Workspace")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Anda diundang bergabung ke workspace berikut.")),
 		ui.Card(
 			h.P(h.Class("text-lg font-semibold"), g.Text(workspaceName)),

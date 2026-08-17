@@ -26,7 +26,7 @@ func HealthPage(res health.Result) g.Node {
 	return h.Div(
 		h.ID("health-panel"),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("File Health")),
-		h.P(h.Class("text-sm text-base-content/70 mb-4"),
+		h.P(h.Class("text-sm text-base-content/80 mb-4"),
 			g.Text("Ambang: per-tipe (handler 150, service 300, dst) + hard limit 500 baris / 20.000 karakter. Hanya dev.")),
 		healthSummary(summary, summaryVariant),
 		healthToolbar(res),
@@ -38,7 +38,7 @@ func HealthPage(res health.Result) g.Node {
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
-							h.Class("border-b border-base-300 text-left text-base-content/70"),
+							h.Class("border-b border-base-300 text-left text-base-content/80"),
 							h.Th(h.Class("py-2 pr-4 w-8"),
 								h.Input(h.Type("checkbox"), h.ID("health-select-all"), h.Title("Pilih halaman ini")),
 							),
@@ -125,7 +125,7 @@ func kindSelect(res health.Result) g.Node {
 func healthPagination() g.Node {
 	return h.Div(
 		h.Class("mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"),
-		h.Span(h.ID("health-page-info"), h.Class("text-base-content/70")),
+		h.Span(h.ID("health-page-info"), h.Class("text-base-content/80")),
 		// flex-wrap di BARIS TOMBOL, bukan hanya di wrapper luar: prev + angka
 		// halaman + next tak muat satu baris di 375px dan akan mendorong lebar
 		// halaman bila tak boleh membungkus (konvensi mobile-first).
@@ -165,7 +165,7 @@ func healthRow(r health.Report) g.Node {
 			h.Input(h.Type("checkbox"), g.Attr("data-health-check", "true"), h.Title("Pilih file ini")),
 		),
 		h.Td(h.Class("py-2 pr-4 font-mono text-xs"), g.Text(r.Path)),
-		h.Td(h.Class("py-2 pr-4 text-base-content/70"), g.Text(r.Kind)),
+		h.Td(h.Class("py-2 pr-4 text-base-content/80"), g.Text(r.Kind)),
 		h.Td(h.Class("py-2 pr-4"), g.Text(lineCell)),
 		h.Td(h.Class("py-2 pr-4"), g.Text(strconv.Itoa(r.Chars))),
 		h.Td(h.Class("py-2"), healthStatus(r)),

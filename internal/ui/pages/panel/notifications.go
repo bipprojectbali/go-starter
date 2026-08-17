@@ -44,7 +44,7 @@ type NotifView struct {
 func Notifications(v NotifView) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Notifikasi")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Undangan workspace dan kabar keanggotaan Anda.")),
 	}
 	if v.ErrMsg != "" {
@@ -62,7 +62,7 @@ func Notifications(v NotifView) g.Node {
 	// jelas-jelas baru saja melihat daftarnya di halaman sebelumnya.
 	if len(v.Events) == 0 && v.HasPrev {
 		body = append(body,
-			h.P(h.Class("text-base-content/70"), g.Text("Tak ada peristiwa lebih lama.")),
+			h.P(h.Class("text-base-content/80"), g.Text("Tak ada peristiwa lebih lama.")),
 			notifPager(v))
 	} else if len(v.Invites) == 0 && len(v.Events) == 0 {
 		body = append(body, emptyNotif())
@@ -87,7 +87,7 @@ func notifPager(v NotifView) g.Node {
 			g.Text("Lebih lama »"),
 		)),
 		g.If(v.NextCursor == "", h.Span(
-			h.Class("text-sm text-base-content/60"), g.Text("Ujung riwayat."),
+			h.Class("text-sm text-base-content/80"), g.Text("Ujung riwayat."),
 		)),
 	)
 }
@@ -118,7 +118,7 @@ func inviteCard(i NotifInviteRow) g.Node {
 			h.Class("min-w-0"),
 			h.P(h.Class("font-medium break-words"),
 				g.Text("Bergabung ke "+i.Workspace)),
-			h.P(h.Class("text-sm text-base-content/70"),
+			h.P(h.Class("text-sm text-base-content/80"),
 				g.Text("Sebagai "+i.Role+" · berlaku s/d "+i.Expires)),
 		),
 		h.Div(
@@ -150,7 +150,7 @@ func eventList(events []NotifRow) g.Node {
 		rows = append(rows, h.Div(
 			h.Class(cls),
 			h.P(h.Class("min-w-0 break-words"), g.Text(e.Text)),
-			h.Span(h.Class("text-xs text-base-content/60 shrink-0"), g.Text(e.When)),
+			h.Span(h.Class("text-xs text-base-content/80 shrink-0"), g.Text(e.When)),
 		))
 	}
 	return h.Div(
@@ -169,7 +169,7 @@ func emptyNotif() g.Node {
 		h.Div(
 			h.Class("card-body items-center text-center gap-1 py-10"),
 			h.P(h.Class("font-medium"), g.Text("Belum ada notifikasi")),
-			h.P(h.Class("text-sm text-base-content/70"),
+			h.P(h.Class("text-sm text-base-content/80"),
 				g.Text("Undangan workspace dan kabar keanggotaan akan muncul di sini.")),
 		),
 	)

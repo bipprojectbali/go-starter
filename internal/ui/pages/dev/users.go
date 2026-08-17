@@ -71,7 +71,7 @@ func UsersPage(v UsersView) g.Node {
 					h.Class("w-full text-sm"),
 					h.THead(
 						h.Tr(
-							h.Class("border-b border-base-300 text-left text-base-content/70"),
+							h.Class("border-b border-base-300 text-left text-base-content/80"),
 							th("User"), th("Role"), th("Kuota"), th("Status"), th("Aksi"),
 						),
 					),
@@ -118,7 +118,7 @@ func usersPager(v UsersView) g.Node {
 		// sama dengan halaman yang tombolnya gagal dirender — dan operator akan
 		// mengira masih ada user yang tak bisa ia jangkau.
 		g.If(v.NextCursor == "", h.Span(
-			h.Class("text-sm text-base-content/60"),
+			h.Class("text-sm text-base-content/80"),
 			g.Text("Ujung daftar."),
 		)),
 	)
@@ -161,7 +161,7 @@ func userIdent(u UserRow) g.Node {
 	return h.Div(
 		h.Class("min-w-0"),
 		h.Div(h.Class("truncate"), g.Text(u.Name)),
-		h.Div(h.Class("truncate text-xs text-base-content/60"), g.Text(u.Email)),
+		h.Div(h.Class("truncate text-xs text-base-content/80"), g.Text(u.Email)),
 	)
 }
 
@@ -173,7 +173,7 @@ func userIdent(u UserRow) g.Node {
 // Root env dikecualikan: ia super_admin di semua workspace, kuota tak berlaku.
 func quotaControl(u UserRow) g.Node {
 	if u.IsRoot {
-		return h.Span(h.Class("text-base-content/50 text-sm"), g.Text("—"))
+		return h.Span(h.Class("text-base-content/80 text-sm"), g.Text("—"))
 	}
 	id := strconv.FormatInt(u.ID, 10)
 	origin := "global"
@@ -190,7 +190,7 @@ func quotaControl(u UserRow) g.Node {
 			h.Class("input input-sm w-16"),
 		),
 		h.Button(h.Type("submit"), h.Class("btn btn-sm"), g.Text("Set")),
-		h.Span(h.Class("text-xs text-base-content/60"), g.Text(origin)),
+		h.Span(h.Class("text-xs text-base-content/80"), g.Text(origin)),
 	}
 	form := h.FormEl(nodes...)
 	if !u.QuotaOverride {
@@ -217,13 +217,13 @@ func roleControl(u UserRow, roles []string, canManageSuper bool) g.Node {
 		return badge("root (semua workspace)", "")
 	}
 	if len(u.Workspaces) == 0 {
-		return h.Span(h.Class("text-base-content/50 text-sm"), g.Text("—"))
+		return h.Span(h.Class("text-base-content/80 text-sm"), g.Text("—"))
 	}
 	items := make([]g.Node, 0, len(u.Workspaces))
 	for _, ws := range u.Workspaces {
 		items = append(items, h.Div(
 			h.Class("flex items-center gap-2"),
-			h.Span(h.Class("text-xs text-base-content/70 truncate max-w-[10rem]"), g.Text(ws.Name)),
+			h.Span(h.Class("text-xs text-base-content/80 truncate max-w-[10rem]"), g.Text(ws.Name)),
 			workspaceRoleSelect(u.ID, roles, ws),
 		))
 	}

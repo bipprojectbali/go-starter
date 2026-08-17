@@ -44,7 +44,7 @@ func LogsPage(d LogsData) g.Node {
 	}
 	return h.Div(
 		h.H1(h.Class("text-xl font-semibold mb-1"), g.Text("User Activity")),
-		h.P(h.Class("text-sm text-base-content/70 mb-4"),
+		h.P(h.Class("text-sm text-base-content/80 mb-4"),
 			g.Text("Kehadiran user (presence) & jejak siapa melakukan apa. "+
 				"Waktu ditampilkan zona lokal aplikasi.")),
 
@@ -138,9 +138,9 @@ func spansCard(rows []SpanRow) g.Node {
 func tableCard(title string, headers []string, body []g.Node, empty string) g.Node {
 	var content g.Node
 	if len(body) == 0 {
-		content = h.P(h.Class("text-sm text-base-content/70 py-2"), g.Text(empty))
+		content = h.P(h.Class("text-sm text-base-content/80 py-2"), g.Text(empty))
 	} else {
-		ths := []g.Node{h.Class("border-b border-base-300 text-left text-base-content/70")}
+		ths := []g.Node{h.Class("border-b border-base-300 text-left text-base-content/80")}
 		for _, hd := range headers {
 			ths = append(ths, h.Th(h.Class("py-2 pr-4 font-medium"), g.Text(hd)))
 		}

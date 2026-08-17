@@ -51,7 +51,7 @@ func Workspace(v WorkspaceView) g.Node {
 	switch {
 	case v.Archived:
 		fields = append(fields, h.P(
-			h.Class("text-sm text-base-content/60"),
+			h.Class("text-sm text-base-content/80"),
 			g.Text("Workspace diarsipkan — hanya-baca. Aktifkan kembali untuk mengubah."),
 		))
 	case v.CanEdit:
@@ -65,7 +65,7 @@ func Workspace(v WorkspaceView) g.Node {
 		)
 	default:
 		fields = append(fields, h.P(
-			h.Class("text-sm text-base-content/60"),
+			h.Class("text-sm text-base-content/80"),
 			g.Text("Hanya owner yang dapat mengubah nama workspace."),
 		))
 	}
@@ -73,7 +73,7 @@ func Workspace(v WorkspaceView) g.Node {
 	body := []g.Node{
 		data.Signals(map[string]any{"name": v.Name}),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Pengaturan Workspace")),
-		h.P(h.Class("text-base-content/70 mb-4"), g.Text("Kelola nama workspace Anda.")),
+		h.P(h.Class("text-base-content/80 mb-4"), g.Text("Kelola nama workspace Anda.")),
 	}
 	if v.ErrMsg != "" {
 		body = append(body, ui.Alert(ui.VariantDestructive, "workspace-err", g.Text(v.ErrMsg)))
@@ -125,7 +125,7 @@ func dangerZone(v WorkspaceView) g.Node {
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold text-error mb-1"), g.Text("Zona Bahaya")),
-			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+			h.P(h.Class("text-sm text-base-content/80 mb-3"),
 				g.Text("Tindakan di bawah memengaruhi seluruh anggota workspace.")),
 			h.Div(h.Class("grid gap-3"), g.Group(actions)),
 		),
@@ -139,7 +139,7 @@ func lifecycleAction(action, label, desc, btnClass string) g.Node {
 	return h.FormEl(
 		h.Method("post"), h.Action(action),
 		h.Class("flex flex-wrap items-center justify-between gap-2 min-w-0"),
-		h.P(h.Class("text-sm text-base-content/70 flex-1 min-w-0 break-words"), g.Text(desc)),
+		h.P(h.Class("text-sm text-base-content/80 flex-1 min-w-0 break-words"), g.Text(desc)),
 		h.Button(h.Type("submit"), h.Class("btn btn-sm "+btnClass), g.Text(label)),
 	)
 }
@@ -151,14 +151,14 @@ func lifecycleAction(action, label, desc, btnClass string) g.Node {
 func WorkspaceSuspended(name, reason string) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Workspace Ditangguhkan")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Akses ke workspace "+name+" sedang ditangguhkan oleh pengelola platform.")),
 	}
 	if reason != "" {
 		body = append(body, ui.Alert(ui.VariantDestructive, "suspend-reason", g.Text(reason)))
 	}
 	body = append(body, h.P(
-		h.Class("text-sm text-base-content/60 mt-4"),
+		h.Class("text-sm text-base-content/80 mt-4"),
 		g.Text("Data Anda tetap utuh. Hubungi pengelola platform untuk mengaktifkannya kembali."),
 	))
 	return h.Div(h.Class("grid gap-4 min-w-0 max-w-xl mx-auto py-8"), g.Group(body))

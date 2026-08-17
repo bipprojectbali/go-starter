@@ -42,7 +42,7 @@ func ConfirmModal(sig, title, message, confirmLabel, confirmPostURL string) g.No
 			h.Div(
 				h.Class("card-body gap-4"),
 				h.H2(h.Class("text-lg font-semibold"), g.Text(title)),
-				h.P(h.Class("text-sm text-base-content/70"), g.Text(message)),
+				h.P(h.Class("text-sm text-base-content/80"), g.Text(message)),
 				h.Div(
 					h.Class("flex justify-end gap-2"),
 					h.Button(

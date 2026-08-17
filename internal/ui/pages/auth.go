@@ -100,7 +100,7 @@ func switchAccountLink() g.Node {
 		h.Class("text-center text-sm"),
 		h.A(
 			h.Href("/api/auth/google?switch=1"),
-			h.Class("link link-hover text-base-content/70"),
+			h.Class("link link-hover text-base-content/80"),
 			g.Text("Gunakan akun lain"),
 		),
 	)
@@ -108,7 +108,7 @@ func switchAccountLink() g.Node {
 
 // passwordDivider memberi pemisah visual "atau" antara Google dan form password.
 func passwordDivider() g.Node {
-	return h.P(h.Class("text-center text-sm text-base-content/70"), g.Text("atau"))
+	return h.P(h.Class("text-center text-sm text-base-content/80"), g.Text("atau"))
 }
 
 // passwordFields adalah form email/password NATIVE (dev-only). Submit = POST biasa

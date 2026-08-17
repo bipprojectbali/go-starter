@@ -47,7 +47,7 @@ type InviteRow struct {
 func Members(base string, roles []string, members []MemberRow, invites []InviteRow, canManage bool, selfID int64, errMsg string) g.Node {
 	body := []g.Node{
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Anggota Workspace")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Kelola siapa saja yang punya akses ke workspace ini.")),
 	}
 	if errMsg != "" {
@@ -75,9 +75,9 @@ func MembersForbidden() g.Node {
 	return h.Div(
 		h.Class("grid gap-4 min-w-0 max-w-xl mx-auto py-8"),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Anggota Workspace")),
-		h.P(h.Class("text-base-content/70"),
+		h.P(h.Class("text-base-content/80"),
 			g.Text("Daftar anggota hanya bisa dibuka oleh owner & admin workspace.")),
-		h.P(h.Class("text-sm text-base-content/60"),
+		h.P(h.Class("text-sm text-base-content/80"),
 			g.Text("Hubungi mereka bila Anda perlu mengundang seseorang atau "+
 				"mengubah akses.")),
 	)
@@ -100,14 +100,14 @@ func memberList(base string, roles []string, members []MemberRow, canManage bool
 			// seperti data rusak — dan orang akan melaporkannya sebagai bug alih-alih
 			// memahaminya sebagai perlindungan.
 			g.If(!canManage, h.P(
-				h.Class("text-xs text-base-content/60 mb-2"),
+				h.Class("text-xs text-base-content/80 mb-2"),
 				g.Text("Alamat email rekan disembunyikan. Hanya owner & admin "+
 					"workspace yang melihatnya."),
 			)),
 			ui.TableScroll(h.Table(
 				h.Class("w-full text-sm"),
 				h.THead(h.Tr(
-					h.Class("border-b border-base-300 text-left text-base-content/70"),
+					h.Class("border-b border-base-300 text-left text-base-content/80"),
 					// "Anggota", bukan "Email": kolomnya kini berisi nama orang, dan
 					// bagi anggota biasa email tak muncul di sana sama sekali.
 					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Anggota")),
@@ -175,7 +175,7 @@ func memberIdent(m MemberRow) g.Node {
 	return h.Div(
 		h.Class("min-w-0"),
 		h.Div(h.Class("truncate"), g.Text(m.Name)),
-		h.Div(h.Class("truncate text-xs text-base-content/60"), g.Text(m.Email)),
+		h.Div(h.Class("truncate text-xs text-base-content/80"), g.Text(m.Email)),
 	)
 }
 
@@ -224,7 +224,7 @@ func inviteForm(base string) g.Node {
 				),
 				h.Button(h.Type("submit"), h.Class("btn btn-primary"), g.Text("Undang")),
 			),
-			h.P(h.Class("text-xs text-base-content/60 mt-2"),
+			h.P(h.Class("text-xs text-base-content/80 mt-2"),
 				g.Text("Email belum dikirim otomatis — salin tautan undangan di bawah dan kirim manual.")),
 		),
 	)
@@ -242,7 +242,7 @@ func inviteList(base string, invites []InviteRow) g.Node {
 				h.Type("text"), h.Value(i.Link), h.ReadOnly(),
 				h.Class("input input-sm w-full min-w-[16rem] font-mono text-xs"),
 			)),
-			h.Td(h.Class("py-2 pr-4 text-xs text-base-content/60"), g.Text(i.Expires)),
+			h.Td(h.Class("py-2 pr-4 text-xs text-base-content/80"), g.Text(i.Expires)),
 			h.Td(h.Class("py-2"), h.FormEl(
 				h.Method("post"),
 				h.Action(base+"/members/invite/"+strconv.FormatInt(i.ID, 10)+"/delete"),
@@ -258,7 +258,7 @@ func inviteList(base string, invites []InviteRow) g.Node {
 			ui.TableScroll(h.Table(
 				h.Class("w-full text-sm"),
 				h.THead(h.Tr(
-					h.Class("border-b border-base-300 text-left text-base-content/70"),
+					h.Class("border-b border-base-300 text-left text-base-content/80"),
 					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Email")),
 					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Role")),
 					h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Tautan")),

@@ -33,7 +33,7 @@ func WorkspaceNew(errMsg string) g.Node {
 	return h.Div(
 		h.Class("mx-auto w-full max-w-md"),
 		h.H1(h.Class("text-xl font-semibold mb-2"), g.Text("Workspace Baru")),
-		h.P(h.Class("text-base-content/70 mb-4"),
+		h.P(h.Class("text-base-content/80 mb-4"),
 			g.Text("Buat ruang kerja baru. Anda otomatis jadi owner-nya.")),
 		ui.Card(card...),
 	)

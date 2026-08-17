@@ -91,7 +91,7 @@ func TrailCard(v TrailView) g.Node {
 		h.Div(
 			h.Class("card-body min-w-0"),
 			h.H2(h.Class("font-semibold"), g.Text("Jejak Aktivitas")),
-			h.P(h.Class("text-sm text-base-content/70 mb-3"),
+			h.P(h.Class("text-sm text-base-content/80 mb-3"),
 				g.Text("Siapa melakukan apa, pada rentang waktu yang dipilih di atas.")),
 			trailFilters(v),
 			trailTable(v),
@@ -164,7 +164,7 @@ func trailActorSelect(v TrailView) g.Node {
 		h.Method("get"), h.Action("/dev/logs"),
 		h.Class("flex flex-wrap items-center gap-2 min-w-0"),
 		g.Group(hidden),
-		h.Label(h.Class("text-sm text-base-content/70"), h.For("trail-actor"), g.Text("Oleh:")),
+		h.Label(h.Class("text-sm text-base-content/80"), h.For("trail-actor"), g.Text("Oleh:")),
 		// text-base (≥16px) agar iOS tak auto-zoom saat select difokus.
 		h.Select(h.ID("trail-actor"), h.Name("by"),
 			h.Class("select select-sm text-base min-h-11 max-w-full"), g.Group(opts)),
@@ -181,7 +181,7 @@ func trailTable(v TrailView) g.Node {
 		if v.Family != "" || v.ActorID != 0 {
 			msg = "Tak ada aktivitas yang cocok dengan filter ini. Coba pilih \"Semua\"."
 		}
-		return h.P(h.Class("text-sm text-base-content/70 py-2"), g.Text(msg))
+		return h.P(h.Class("text-sm text-base-content/80 py-2"), g.Text(msg))
 	}
 	rows := make([]g.Node, 0, len(v.Rows))
 	for _, t := range v.Rows {
@@ -192,7 +192,7 @@ func trailTable(v TrailView) g.Node {
 				h.Div(h.Class("break-words"), g.Text(t.Sentence)),
 				// Kode mentah sebagai rujukan kecil: kalimatnya untuk dibaca, kodenya
 				// untuk dicari di kode sumber saat menyelidiki lebih jauh.
-				h.Div(h.Class("text-xs text-base-content/50 font-mono break-words"), g.Text(t.Action)),
+				h.Div(h.Class("text-xs text-base-content/80 font-mono break-words"), g.Text(t.Action)),
 			)),
 			h.Td(h.Class("py-2 pr-4"), h.Span(h.Class(familyBadge(t.Family)), g.Text(t.Family))),
 			h.Td(h.Class("py-2 whitespace-nowrap"), g.Text(t.When)),
@@ -201,7 +201,7 @@ func trailTable(v TrailView) g.Node {
 	return ui.TableScroll(h.Table(
 		h.Class("w-full text-sm"),
 		h.THead(h.Tr(
-			h.Class("border-b border-base-300 text-left text-base-content/70"),
+			h.Class("border-b border-base-300 text-left text-base-content/80"),
 			h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Peristiwa")),
 			h.Th(h.Class("py-2 pr-4 font-medium"), g.Text("Jenis")),
 			h.Th(h.Class("py-2 font-medium"), g.Text("Waktu")),
@@ -250,7 +250,7 @@ func trailPager(v TrailView) g.Node {
 			h.Class("btn min-h-11"), g.Text("Lebih lama »"),
 		)),
 		g.If(v.NextCursor == "", h.Span(
-			h.Class("text-sm text-base-content/60"), g.Text("Ujung jejak pada rentang ini."),
+			h.Class("text-sm text-base-content/80"), g.Text("Ujung jejak pada rentang ini."),
 		)),
 	)
 }

@@ -48,7 +48,7 @@ func panelSubLabel(d ShellData) g.Node {
 	if d.Panel.style().Label != "" {
 		return panelChip(d.Panel)
 	}
-	return h.Span(h.Class("app-navlabel text-xs text-base-content/60 truncate"), g.Text(d.BrandLabel))
+	return h.Span(h.Class("app-navlabel text-xs text-base-content/80 truncate"), g.Text(d.BrandLabel))
 }
 
 // panelChip = penanda TEKS panel yang sedang dibuka. Teks + warna sekaligus:
@@ -117,7 +117,7 @@ func workspaceSwitchItem(ws WorkspaceOption, active bool) g.Node {
 	name := h.Div(
 		h.Class("flex flex-col items-start leading-tight min-w-0"),
 		h.Span(h.Class("truncate"), g.Text(ws.Name)),
-		h.Span(h.Class("text-xs text-base-content/60"), g.Text(ws.Role)),
+		h.Span(h.Class("text-xs text-base-content/80"), g.Text(ws.Role)),
 	)
 	if active {
 		return h.Li(h.Div(
