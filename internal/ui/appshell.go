@@ -77,7 +77,7 @@ func AppShell(d ShellData, content ...g.Node) g.Node {
 	if cssPath == "" {
 		cssPath = "/static/app.css"
 	}
-	head := append(headNodes(cssPath),
+	head := append(headNodes(cssPath, appShellSEO(d)),
 		// sidebar.js SINKRON (bukan defer): set data-sidebar sebelum paint → no flicker.
 		h.Script(h.Src("/static/sidebar.js")),
 	)
@@ -176,4 +176,15 @@ func shellSidebar(d ShellData) g.Node {
 		// Footer user (bawah): avatar + email + menu akun (Ganti akun / Keluar).
 		sidebarUser(d),
 	)
+}
+
+// appShellSEO menurunkan metadata head untuk halaman dashboard. Panel privat
+// (/dev, /w/{slug}, /notifications) SELALU noindex: isinya di balik login, jadi
+// mengindeksnya ke mesin pencari percuma (crawler tak bisa masuk) sekaligus
+// membocorkan struktur internal. Title tetap dioper agar tab browser bermakna.
+func appShellSEO(d ShellData) SEO {
+	return SEO{
+		Title:   d.Title,
+		NoIndex: true,
+	}
 }

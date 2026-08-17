@@ -55,6 +55,12 @@ func registerRoutes(r chi.Router, h *handler.Handler, staticFS http.Handler, log
 		http.Redirect(w, r, "/static/favicon.svg", http.StatusMovedPermanently)
 	})
 
+	// SEO tingkat-situs (publik, tanpa auth) — dirakit dari base URL + APP_NAME
+	// (bukan file statik) agar host & identitas selalu benar di belakang proxy.
+	r.Get("/robots.txt", h.Robots)
+	r.Get("/sitemap.xml", h.Sitemap)
+	r.Get("/manifest.webmanifest", h.Manifest)
+
 	// Publik: landing page (TIDAK redirect ke /login). Scope buka tx ber-tenant
 	// bila login (no-op anonim) — RefreshIdentity/TrackPresence butuh h.q(ctx).
 	// RefreshIdentity agar redirect per-role pakai role SEGAR dari DB (self-heal

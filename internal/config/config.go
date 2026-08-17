@@ -76,6 +76,12 @@ type Config struct {
 	// dibalik; baris DB-nya dijaga trigger yang menolak penurunan.
 	AppName string
 
+	// AppDescription = deskripsi aplikasi untuk SEO (meta description,
+	// og:description) & Web App Manifest. APP_DESCRIPTION, default kosong →
+	// handler memakai deskripsi bawaan template. Diisi project turunan agar
+	// snippet mesin pencari & pratinjau share mencerminkan produknya sendiri.
+	AppDescription string
+
 	// MCPToken = rahasia Bearer yang menjaga rute /mcp (server MCP read-only).
 	// MCP_TOKEN, default KOSONG.
 	//
@@ -153,6 +159,7 @@ func MustLoad() *Config {
 		AppTimezone:          getEnv("APP_TIMEZONE", "Asia/Jakarta"),
 		MaxWorkspacesPerUser: getEnvInt("MAX_WORKSPACES_PER_USER", 3),
 		AppName:              getEnv("APP_NAME", "App"),
+		AppDescription:       strings.TrimSpace(getEnv("APP_DESCRIPTION", "")),
 		MCPToken:             getEnv("MCP_TOKEN", ""),
 	}
 	// MCP_TOKEN opsional & lintas-lingkungan (bukan cuma production): kalau diisi,

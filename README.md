@@ -2,10 +2,11 @@
 
 Starter web full-stack Go: **satu bahasa, satu binary, satu perintah build**.
 Cepat, ringan, modern (2026), agent-friendly. Output = single binary (static
-assets, migrations, dan template di-embed via `embed.FS`).
+assets, migrations, template di-embed via `embed.FS`).
 
 > Runtime tetap butuh **PostgreSQL** + **Redis** — "nol artefak tambahan", bukan
-> "nol infra". Lihat [`STARTER.md`](STARTER.md) untuk spesifikasi & alasan arsitektur.
+> "nol infra". Konvensi & gotcha di [`CLAUDE.md`](CLAUDE.md); keputusan arsitektur di
+> `docs/decisions/`. (Spec desain awal diarsipkan di `docs/archive/STARTER-original.md`.)
 
 ## Stack
 
@@ -38,7 +39,7 @@ make rename name=nama-project-anda
 # 2. Install tooling (sqlc, goose, air) + unduh aset vendored (sekali saja)
 make setup
 
-# 3. Salin konfigurasi; sesuaikan DATABASE_URL, REDIS_ADDR, dan APP_NAME
+# 3. Salin konfigurasi; sesuaikan DATABASE_URL, REDIS_ADDR, APP_NAME
 #    (APP_NAME menentukan nama di halaman depan & sidebar)
 cp .env.example .env
 
@@ -64,12 +65,13 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 | `PORT` | — | default `8080` |
 | `ENV` | — | `dev` (default) \| `production` |
 | `AUTO_MIGRATE` | — | default `true` |
-| `SESSION_KEY` | prod | kunci sesi (wajib di production) |
+| `SESSION_KEY` | prod | kunci sesi (wajib di production, min 32 char) |
 | `GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | prod | OAuth Google (wajib di production) |
 | `SUPER_ADMIN_EMAILS` | — | email super-admin "root", dipisah koma |
 | `APP_TIMEZONE` | — | zona waktu (IANA) agregasi panel aktivitas, default `Asia/Jakarta` |
-| `MAX_WORKSPACES_PER_USER` | — | kuota workspace per user (default `3`); diundang tak memakan kuota |
+| `MAX_WORKSPACES_PER_USER` | — | fallback kuota workspace per user (default `3`); diundang tak memakan kuota |
 | `APP_NAME` | — | nama aplikasi; dipakai membuat workspace primer saat boot pertama |
+| `MCP_TOKEN` | — | aktifkan rute MCP read-only (≥32 char); kosong = tak didaftarkan |
 
 > Isolasi tenant & bentuk aplikasi **tidak punya env**. Hak DB diturunkan
 > per-transaksi lalu dibuktikan saat boot; mode tenancy hidup di
@@ -80,51 +82,52 @@ Buka <http://localhost:8080>. Aplikasi memigrasi DB otomatis (`AUTO_MIGRATE=true
 
 - **Google OAuth** = jalur login utama. **Password** hanya di dev (`ENV != production`)
   untuk mempermudah agen/dev masuk.
-- **Model role 2-bidang** (multi-tenancy). Dua bidang tegak-lurus:
+- **Model role 2-bidang** (tegak-lurus):
   - **PLATFORM** (lintas-tenant): `super_admin` (dari `SUPER_ADMIN_EMAILS`, immutable,
     nol baris DB) + `staff` (tabel `platform_staff`, mutable, akses terbatas).
   - **WORKSPACE** (isolasi RLS): `owner > admin > member` — role **per-workspace**.
-- **Satu user, banyak workspace** (model membership, seperti Slack/Notion/GitHub):
+- **Satu user, banyak workspace** (model membership seperti Slack/Notion/GitHub):
   register (isi **Nama Workspace**) otomatis membuat workspace pertama + jadi owner;
-  user bisa membuat workspace lain (dibatasi `MAX_WORKSPACES_PER_USER`) **dan**
-  diundang membantu workspace orang lain dengan role berbeda. Pindah workspace lewat
-  dropdown di sidebar. Lihat `docs/decisions/0003`.
-- **Undangan**: owner/admin mengundang lewat email di `/admin/members` → tautan
-  bertoken (berlaku 7 hari, sekali pakai). Penerima yang belum punya akun otomatis
-  bergabung setelah register.
+  user bisa membuat workspace lain (dibatasi kuota) **dan** diundang membantu
+  workspace orang lain dengan role berbeda. Pindah workspace lewat dropdown sidebar.
+  Lihat `docs/decisions/0003`.
+- **Undangan**: owner/admin mengundang lewat email di `/w/{slug}/members` → tautan
+  bertoken (7 hari, sekali pakai). Penerima yang belum punya akun otomatis bergabung
+  setelah register.
 - **Notifikasi** (`/notifications`, ada di semua panel): undangan masuk muncul
-  sendiri di sini — penerima yang **sudah punya akun tak perlu tautan sama sekali**,
-  cukup klik Terima/Tolak. Ditambah kabar keanggotaan (role diubah, dikeluarkan).
-  Badge di sidebar menghitung yang belum dibaca + undangan yang belum ditindak.
-  *Email keluar belum otomatis — untuk penerima yang BELUM punya akun, tautan di
-  `/admin/members` masih disalin manual.*
-- Setelah login, redirect per-role: platform (super_admin/staff)→`/dev`,
-  owner/admin→`/admin`, member→`/user`. Landing `/` dapat diakses semua.
+  sendiri — penerima yang **sudah punya akun tak perlu tautan**, cukup klik
+  Terima/Tolak. Plus kabar keanggotaan (role diubah, dikeluarkan). Badge sidebar
+  menghitung yang belum dibaca + undangan belum ditindak. *Email keluar belum
+  otomatis — untuk penerima yang BELUM punya akun, tautan masih disalin manual.*
+- Setelah login, redirect per-role: platform (super_admin/staff) → `/dev`, lainnya →
+  `/w/{slug}`. Landing `/` dapat diakses semua.
 - Data tiap workspace terisolasi **Postgres RLS** (bukan cuma filter app) — lihat
-  `docs/decisions/0002`. Satu DSN: koneksi dibuka sebagai owner (migrasi), lalu
-  tiap transaksi aplikasi menurunkan haknya ke `app_rw` sehingga RLS mengikat —
-  termasuk di dev (`docs/decisions/0007`).
+  `docs/decisions/0002`. Satu DSN: koneksi dibuka sebagai owner (migrasi), lalu tiap
+  transaksi app menurunkan haknya ke `app_rw` sehingga RLS mengikat — termasuk di
+  dev (`docs/decisions/0007`).
 - **Workspace** = nama tampilan tenant (kode tetap `tenant`). Nama boleh duplikat,
-  slug unik & immutable (`acme`, `acme-2`). Owner ganti nama di `/admin/workspace`.
+  slug unik & immutable (`acme`, `acme-2`). Owner ganti nama di pengaturan workspace.
 
 ## Panel
+
+Semua halaman workspace ada di `/w/{slug}`; aksi mengikuti role (bukan alamat
+berbeda per-role — lihat `docs/decisions/0004`).
 
 | Rute | Akses | Isi |
 |------|-------|-----|
 | `/dev/users` | platform (super_admin/staff) | kelola role/status/hapus user + audit trail |
-| `/dev/logs` | platform (super_admin/staff) | aktivitas user (presence "aktif jam berapa"), KPI + chart (harian/mingguan/bulanan) + event login/logout |
+| `/dev/logs` | platform | aktivitas user (presence), KPI + chart (harian/mingguan/bulanan) + event login/logout |
+| `/dev/settings` | super_admin (`platform:settings`) | kuota global + mode tenancy (single→multi) |
 | `/dev/health` | platform, **dev-only** | scan kesehatan file `.go` (baris/karakter vs ambang) |
 | `/dev/erd` | platform, **dev-only** | diagram ERD dari katalog live Postgres (Mermaid) |
-| `/admin` | admin+ | dashboard admin (stub) |
-| `/admin/members` | owner/admin kelola, admin+ lihat | anggota workspace + undangan |
-| `/admin/workspace` | owner ubah, admin+ lihat | pengaturan workspace (ganti nama) |
+| `/w/{slug}/members` | pengelola (owner/admin/platform) | anggota workspace + undangan |
+| `/w/{slug}/workspace` | owner ubah, admin+ lihat | pengaturan workspace (ganti nama) |
 | `/notifications` | semua user login | undangan masuk + kabar keanggotaan (lintas-workspace) |
 | `/workspace/new` | semua user login | buat workspace baru (dibatasi kuota) |
 | `/invite/{token}` | publik | terima undangan bergabung |
-| `/user` | user+ | beranda user (stub) |
 
-Panel dev-only (`/dev/health`, `/dev/erd`) tak terdaftar di production karena
-butuh source/tooling yang tak ada di build single-binary.
+Panel dev-only (`/dev/health`, `/dev/erd`) tak terdaftar di production karena butuh
+source/tooling yang tak ada di build single-binary.
 
 ## Perintah (Makefile)
 
@@ -139,11 +142,11 @@ butuh source/tooling yang tak ada di build single-binary.
 | `make build` | single binary (`./app`) — regenerate CSS + sqlc dulu |
 | `make run` | build lalu jalankan |
 | `make css` | generate `static/app.css` dari class di file `.go` |
+| `make migrate-new name=x` | buat file migrasi goose baru |
 
 Subcommand binary (di luar Makefile): `./app migrate` (migrasi lalu exit),
-`./app doctor` (periksa lingkungan), `./app mcp` (server MCP read-only via stdio,
+`./app doctor` (periksa lingkungan), `./app mcp` (server MCP read-only via stdio
 untuk dev — lihat [MCP](#mcp-server-read-only-akses-runtime-untuk-agent-ai)).
-| `make migrate-new name=x` | buat file migrasi goose baru |
 
 ## Struktur
 
@@ -164,6 +167,10 @@ internal/
   handler/         # HTTP handler, satu file per fitur
   ui/              # gomponents: layout, komponen, halaman, helper Datastar bertipe (dsx)
   activity/        # agregasi presence + option ECharts (panel /dev/logs)
+  maintenance/     # purge tenant terjadwal + retensi audit (in-process)
+  settings/        # kuota & mode tenancy (platform_settings)
+  mcpserver/       # server MCP read-only (rute /mcp + stdio)
+  preflight/       # cek lingkungan (dipakai boot & make doctor)
   health/          # scanner file-health (dev)
   erd/             # introspeksi katalog → teks Mermaid (dev)
   assets/          # cache-busting aset ber-hash
@@ -181,9 +188,9 @@ Test yang butuh DB memakai `TEST_DATABASE_URL` dan di-`skip` bila kosong.
 
 ## Deploy
 
-`make build` menghasilkan satu binary `./app` (assets & migrasi ter-embed).
-Set `ENV=production` + variabel wajib (lihat tabel konfigurasi). Binary butuh
-Postgres + Redis yang dapat dijangkau. Lihat [`CHANGELOG.md`](CHANGELOG.md).
+`make build` menghasilkan satu binary `./app` (assets & migrasi ter-embed). Set
+`ENV=production` + variabel wajib (lihat tabel konfigurasi). Binary butuh Postgres +
+Redis yang dapat dijangkau. Lihat [`CHANGELOG.md`](CHANGELOG.md).
 
 ### Deploy produksi (Docker + Portainer)
 
@@ -206,8 +213,8 @@ peran** via subcommand: `app migrate` (migrasi lalu exit) & `app` tanpa argumen
      baru start, dengan **`AUTO_MIGRATE=false`** (app tak migrate sendiri).
    - **Fail-safe:** migrate gagal (exit ≠ 0) → app **tak pernah start**.
 
-**Aturan `AUTO_MIGRATE`:** `true` hanya di dev (migrate saat boot). **Produksi
-WAJIB `false`** — migrasi dikerjakan container `migrate` terpisah.
+**Aturan `AUTO_MIGRATE`:** `true` hanya di dev (migrate saat boot). **Produksi WAJIB
+`false`** — migrasi dikerjakan container `migrate` terpisah.
 
 **Rollback:**
 - **App:** re-pull tag image lama via Portainer.
@@ -220,20 +227,19 @@ uptime monitor. Image distroless tanpa shell → probe dari **luar** container.
 
 ## MCP server read-only (akses runtime untuk agent AI)
 
-Server [MCP](https://modelcontextprotocol.io) **read-only** memberi agent AI
-"mata" ke runtime dev/staging/produksi — health, jejak audit, KPI presence,
-skema DB, versi migrasi, `doctor` — **tanpa akses tulis**. Berguna saat bug di
-staging/prod: agent bisa melihat keadaan nyata, bukan menebak dari lokal.
+Server [MCP](https://modelcontextprotocol.io) **read-only** memberi agent AI "mata"
+ke runtime dev/staging/produksi — health, jejak audit, KPI presence, skema DB, versi
+migrasi, `doctor` — **tanpa akses tulis**. Berguna saat bug di staging/prod: agent
+melihat keadaan nyata, bukan menebak dari lokal.
 
-**Bukan service/proses terpisah.** Ia rute `/mcp` di aplikasi `app` yang sudah
-jalan (`http.Handler`, Streamable HTTP) — image sama, container sama, di belakang
-reverse proxy yang sudah ada. Deploy tak berubah; cukup tambah **satu env**.
+**Bukan service/proses terpisah.** Ia rute `/mcp` di aplikasi `app` yang sudah jalan
+(`http.Handler`, Streamable HTTP) — image sama, container sama, di belakang reverse
+proxy yang ada. Deploy tak berubah; cukup tambah **satu env**.
 
 **Aktifkan (staging/prod):** set `MCP_TOKEN` (≥32 char) di service `app` via
-Portainer. Kosong = rute **tak didaftarkan** (opt-in — fitur yang membuka runtime
-ke AI tak menyala karena lupa). Rute dijaga **Bearer token**; beda per-lingkungan
-(bocor staging tak boleh membuka prod). Endpoint hanya di jaringan internal +
-reverse proxy — **jangan expose port MCP** ke host.
+Portainer. Kosong = rute **tak didaftarkan** (opt-in). Dijaga **Bearer token**, beda
+per-lingkungan (bocor staging tak boleh membuka prod). Endpoint hanya di jaringan
+internal + reverse proxy — **jangan expose port MCP** ke host.
 
 **Client** (`.mcp.json`, lihat [`.mcp.json.example`](.mcp.json.example)): token di
 **header** (`Authorization: Bearer ${VAR}`, bukan di URL — query string bocor ke
@@ -241,7 +247,9 @@ access-log), nilai via env, nama env beda per-lingkungan.
 
 **Dev lokal:** `./app mcp` — stdio, tanpa server/token.
 
-**Read-only itu struktural, bukan janji:** tiap tool memanggil ulang jalur baca
-yang ada lewat `db.WithSuper` → `SET LOCAL ROLE app_rw` → **DDL ditolak database**.
-Tak ada tool SQL/shell mentah; rahasia tak pernah dialirkan (dilaporkan
+**Read-only itu struktural, bukan janji:** tiap tool memanggil ulang jalur baca yang
+ada lewat `db.WithSuper` → `SET LOCAL ROLE app_rw` → **DDL ditolak database**. Tak
+ada tool SQL/shell mentah; rahasia tak pernah dialirkan (dilaporkan
 keberadaan/panjang, bukan nilai).
+</content>
+</invoke>

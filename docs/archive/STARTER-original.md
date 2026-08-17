@@ -1,4 +1,12 @@
 
+> **⚠️ ARSIP — dokumen historis, jangan dijadikan acuan.** Ini spesifikasi desain
+> ASLI (`STARTER.md`), diarsipkan 2026-08-11. Sebagian sudah **usang** vs kode kini
+> (mis. Basecoat→daisyUI, contoh `todos`, narasi pengganti-HTMX, River, argon2id).
+> Acuan yang benar: [`CLAUDE.md`](../../CLAUDE.md) (konvensi + gotcha),
+> [`README.md`](../../README.md) (cara pakai), `docs/decisions/` (keputusan
+> arsitektur mutakhir). Disimpan untuk konteks "kenapa awalnya begini", bukan "begini
+> sekarang".
+
 # STARTER.md — go_starter
 
 Spesifikasi starter template **`go_starter`** — web base super cepat, super ringan, modern (2026), agent-friendly, dengan output **single binary**.

@@ -80,7 +80,27 @@ func SetAppTimezone(loc *time.Location) {
 // renderPage mengirim halaman penuh (navigasi biasa, §4.4 jalur 1). Email &
 // avatar untuk nav dibaca dari SESSION (di-set saat login) — tanpa hit DB tiap
 // render. Error di-log, tak ditelan.
+//
+// SEO default = NOINDEX (aman: anggap privat). Halaman yang MEMANG publik &
+// layak diindeks (landing, login) memakai renderPublicPage yang menyetel
+// metadata lengkap. Default konservatif ini mencegah halaman ber-token/privat
+// (undangan, "workspace ditangguhkan") bocor ke mesin pencari tanpa sengaja.
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title string, body g.Node) {
+	seo := ui.SEO{Title: title, SiteName: appName, NoIndex: true}
+	h.renderPageSEO(w, r, title, seo, body)
+}
+
+// renderPublicPage seperti renderPage tapi untuk halaman PUBLIK yang layak
+// diindeks: merakit metadata SEO lengkap (canonical, Open Graph, Twitter Card)
+// dari base URL + path request. desc kosong → deskripsi aplikasi default.
+func (h *Handler) renderPublicPage(w http.ResponseWriter, r *http.Request, title, desc string, body g.Node) {
+	seo := publicSEO(r, title, desc, r.URL.Path)
+	h.renderPageSEO(w, r, title, seo, body)
+}
+
+// renderPageSEO adalah inti bersama: kirim halaman penuh dengan metadata SEO
+// eksplisit. renderPage / renderPublicPage cuma menyiapkan SEO-nya.
+func (h *Handler) renderPageSEO(w http.ResponseWriter, r *http.Request, title string, seo ui.SEO, body g.Node) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	d := ui.LayoutData{
 		Brand:     appName,
@@ -88,6 +108,7 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, title strin
 		UserEmail: session.Email(r.Context()),
 		AvatarURL: session.AvatarURL(r.Context()),
 		CSSPath:   cssPath,
+		SEO:       seo,
 	}
 	if err := ui.Layout(d, body).Render(w); err != nil {
 		h.Log.Error("render page", "path", r.URL.Path, "err", err)

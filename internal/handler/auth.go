@@ -24,12 +24,15 @@ const maxWorkspaceNameLen = 60
 // ?err= (dari redirect PRG) → alert. Menutup juga jalur /login?err=inactive dari
 // RefreshIdentity/OAuth yang dulu tak pernah dirender (pesan hilang senyap).
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Masuk", pages.Login(devMode, authErrMsg(r.URL.Query().Get("err"))))
+	// Publik & indexable: halaman masuk sah muncul di hasil pencarian merek.
+	h.renderPublicPage(w, r, "Masuk", "Masuk ke "+appName+" untuk mengakses ruang kerja Anda.",
+		pages.Login(devMode, authErrMsg(r.URL.Query().Get("err"))))
 }
 
 // RegisterPage — GET /register (full page). ?err= → alert (pola PRG).
 func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	h.renderPage(w, r, "Daftar", pages.Register(authErrMsg(r.URL.Query().Get("err")), appmode.IsMulti()))
+	h.renderPublicPage(w, r, "Daftar", "Buat akun "+appName+" dan mulai ruang kerja pertama Anda.",
+		pages.Register(authErrMsg(r.URL.Query().Get("err")), appmode.IsMulti()))
 }
 
 // authErrMsg memetakan kode error auth (query ?err=) ke pesan ramah. Kode ringkas

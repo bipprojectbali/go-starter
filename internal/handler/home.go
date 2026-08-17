@@ -13,5 +13,7 @@ import (
 func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
 	loggedIn := session.UserID(r.Context()) != 0
 	home := homeFor(r.Context())
-	h.renderPage(w, r, appName, pages.Landing(loggedIn, home, appName))
+	// Landing = halaman publik utama → metadata SEO lengkap (indexable). Deskripsi
+	// kosong → memakai deskripsi aplikasi default (config APP_DESCRIPTION).
+	h.renderPublicPage(w, r, appName, "", pages.Landing(loggedIn, home, appName))
 }
